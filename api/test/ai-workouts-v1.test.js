@@ -229,6 +229,10 @@ test('validator rejects duplicates, forbidden ids/equipment, invalid schedule/ra
     [{ ...validResponse(), routines: [{ ...validResponse().routines[0], exercises: [{ ...validResponse().routines[0].exercises[0], weight: 40 }] }] }, /campo não permitido|carga absoluta/i],
     [{ ...validResponse(), routines: [{ ...validResponse().routines[0], exercises: [{ ...validResponse().routines[0].exercises[0], progression: 'Aumente para 40 kg na próxima semana.' }] }] }, /carga absoluta/i],
     [{ ...validResponse(), routines: [{ ...validResponse().routines[0], exercises: [{ ...validResponse().routines[0].exercises[0], note: 'Use halteres de 25 lbs.' }] }] }, /carga absoluta/i],
+    [{ ...validResponse(), routines: [{ ...validResponse().routines[0], exercises: [{ ...validResponse().routines[0].exercises[0], progression: 'Aumente para 40kg na próxima semana.' }] }] }, /carga absoluta/i],
+    [{ ...validResponse(), routines: [{ ...validResponse().routines[0], exercises: [{ ...validResponse().routines[0].exercises[0], note: 'Use 25lbs com boa técnica.' }] }] }, /carga absoluta/i],
+    [{ ...validResponse(), routines: [{ ...validResponse().routines[0], exercises: [{ ...validResponse().routines[0].exercises[0], progression: 'Progrida para 12,5 quilos.' }] }] }, /carga absoluta/i],
+    [{ ...validResponse(), routines: [{ ...validResponse().routines[0], exercises: [{ ...validResponse().routines[0].exercises[0], note: 'Comece com 22.5 pounds.' }] }] }, /carga absoluta/i],
     [{ ...validResponse(), schedule: [] }, /agenda/i],
     [{ refusal: 'Não posso ajudar' }, /recusada/i],
     [{ ...validResponse(), _completion: { truncated: true } }, /truncada/i]

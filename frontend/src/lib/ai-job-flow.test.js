@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { applyAiPlanToState, generateAiWorkout } from './ai-job-flow.js'
+import { applyAiPlanToState, canonicalAiMissingFields, generateAiWorkout, persistCanonicalAiContext } from './ai-job-flow.js'
 
 describe('AI job flow', () => {
   it('creates a job, polls to applied and refreshes canonical AI context', async () => {
@@ -54,5 +54,53 @@ describe('AI job flow', () => {
     await expect(generateAiWorkout({ request, idempotencyKey: 'request-1', wait: async () => {} }))
       .rejects.toThrow('Geração interrompida.')
     expect(calls).toEqual(['/api/ai/jobs', '/api/ai/job?id=job-1'])
+  })
+
+  it('persists profile, gym and measurement with chained revisions before refreshing context and status', async () => {
+    const calls = []
+    const request = vi.fn(async (path, options) => {
+      calls.push({ path, options, body: options?.body ? JSON.parse(options.body) : null })
+      if (path === '/api/ai/context' && calls.length === 1) return { rev: 7, completeness: { eligible: false, missing: ['perfil'] } }
+      if (path === '/api/ai/profile') return { rev: 8 }
+      if (path === '/api/ai/gym') return { rev: 9 }
+      if (path === '/api/ai/measurements') return { rev: 10 }
+      if (path === '/api/ai/context') return { rev: 10, completeness: { eligible: true, missing: [], blockers: [] } }
+      if (path === '/api/ai/status') return { configured: true, eligible: true, missing: [], blockers: [] }
+      throw new Error(`unexpected ${path}`)
+    })
+    const profile = {
+      ageBand: 'adult', heightCm: 170, goal: 'Força', experience: 'intermediario',
+      availableDays: [1, 3, 5], minutesPerSession: 45, targetAreas: ['back'],
+      favoriteExerciseIds: ['0001'], blockedExerciseIds: ['0002'], limitations: '',
+      consent: true, guardianConsent: false, equipment: ['dumbbell'], gymName: 'Academia Centro'
+    }
+
+    const result = await persistCanonicalAiContext({ request, profile, weight: 74.2, weightUnit: 'kg', observedAt: '2026-08-29' })
+
+    expect(calls.map(call => call.path)).toEqual([
+      '/api/ai/context', '/api/ai/profile', '/api/ai/gym', '/api/ai/measurements',
+      '/api/ai/context', '/api/ai/status'
+    ])
+    expect(calls[1]).toEqual(expect.objectContaining({
+      path: '/api/ai/profile',
+      body: expect.objectContaining({ rev: 7, ageBand: 'adult', availableDays: [1, 3, 5], consent: true, guardianConsent: null })
+    }))
+    expect(calls[2]).toEqual(expect.objectContaining({
+      path: '/api/ai/gym', body: { rev: 8, name: 'Academia Centro', genericEquipment: ['dumbbell'], specificMachines: [] }
+    }))
+    expect(calls[3]).toEqual(expect.objectContaining({
+      path: '/api/ai/measurements', body: { rev: 9, kind: 'weight', value: 74.2, unit: 'kg', observedAt: '2026-08-29' }
+    }))
+    expect(result.context.rev).toBe(10)
+    expect(result.status.configured).toBe(true)
+  })
+
+  it('requires explicit age, consent, guardian consent, days and gym', () => {
+    const profile = {
+      heightCm: 170, goal: 'Força', experience: 'iniciante', minutesPerSession: 45,
+      equipment: ['dumbbell'], gymName: 'Academia', availableDays: [1], ageBand: '14to17', consent: true
+    }
+    expect(canonicalAiMissingFields({ profile, weight: 70 })).toEqual(['autorização do responsável'])
+    expect(canonicalAiMissingFields({ profile: { ...profile, guardianConsent: true }, weight: 70 })).toEqual([])
   })
 })
