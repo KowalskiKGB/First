@@ -42,7 +42,7 @@ test('connection grants allow plans and deny revoked cross access immediately', 
     actorId: 'student1',
     connectionId: requested.connection.id,
     accept: true,
-    grants: { measurementsWrite: false },
+    grants: { plansWrite: true, measurementsWrite: false },
     now,
     randomId
   }).collaboration;

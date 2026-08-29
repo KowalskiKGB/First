@@ -181,38 +181,115 @@ test('only the counterpart to requestedBy can accept or refuse a connection', ()
   assert.equal(accepted.connection.status, 'active');
 });
 
-test('trainer accepting a student request cannot widen student grants', () => {
-  const randomId = (() => {
-    let value = 0;
-    return () => `id-${++value}`;
-  })();
-  let current = collaboration({
+test('student request captures only explicit boolean grants and trainer cannot widen them', async t => {
+  const fixture = routeFixture(t, collaboration({
     profiles: [
       profile('student-a'),
       profile('trainer-a', ['student', 'trainer'], { shareCode: 'A'.repeat(32) })
     ]
-  });
-  const requested = requestConnection({
-    collaboration: current,
-    actorId: 'student-a',
-    shareCode: 'A'.repeat(32),
-    now: NOW,
-    randomId
-  });
-  current = requested.collaboration;
+  }));
 
-  const accepted = respondConnection({
-    collaboration: current,
-    actorId: 'trainer-a',
-    connectionId: requested.connection.id,
-    accept: true,
-    grants: { measurementsWrite: true, liveActivityRead: true },
-    now: NOW,
-    randomId
+  const requested = await invoke(fixture, 'POST /api/connections/request', {
+    user: { id: 'student-a' },
+    body: {
+      rev: 0,
+      shareCode: 'A'.repeat(32),
+      grants: { plansWrite: false, workoutsRead: true, measurementsWrite: 'yes', unknown: true }
+    }
+  });
+  assert.equal(requested.status, 200);
+  assert.deepEqual(requested.body.connections[0].grants, {
+    plansWrite: false,
+    workoutsRead: true,
+    progressRead: false,
+    measurementsWrite: false,
+    liveActivityRead: false
   });
 
-  assert.equal(accepted.connection.grants.measurementsWrite, false);
-  assert.equal(accepted.connection.grants.liveActivityRead, false);
+  const accepted = await invoke(fixture, 'POST /api/connections/respond', {
+    user: { id: 'trainer-a' },
+    body: {
+      rev: 1,
+      connectionId: requested.body.connections[0].id,
+      accept: true,
+      grants: { plansWrite: true, measurementsWrite: true, liveActivityRead: true }
+    }
+  });
+  assert.equal(accepted.status, 200);
+  assert.deepEqual(accepted.body.connections[0].grants, requested.body.connections[0].grants);
+});
+
+test('trainer request receives only grants explicitly consented by the student on accept', async t => {
+  const fixture = routeFixture(t, collaboration({
+    profiles: [
+      profile('student-a', ['student'], { shareCode: 'B'.repeat(32) }),
+      profile('trainer-a', ['student', 'trainer'])
+    ]
+  }));
+
+  const requested = await invoke(fixture, 'POST /api/connections/request', {
+    user: { id: 'trainer-a' },
+    body: {
+      rev: 0,
+      shareCode: 'B'.repeat(32),
+      grants: { plansWrite: true, workoutsRead: true, measurementsWrite: true }
+    }
+  });
+  assert.equal(requested.status, 200);
+  assert.deepEqual(requested.body.connections[0].grants, {
+    plansWrite: false,
+    workoutsRead: false,
+    progressRead: false,
+    measurementsWrite: false,
+    liveActivityRead: false
+  });
+
+  const accepted = await invoke(fixture, 'POST /api/connections/respond', {
+    user: { id: 'student-a' },
+    body: {
+      rev: 1,
+      connectionId: requested.body.connections[0].id,
+      accept: true,
+      grants: { plansWrite: true, workoutsRead: 'yes', measurementsWrite: false }
+    }
+  });
+  assert.equal(accepted.status, 200);
+  assert.deepEqual(accepted.body.connections[0].grants, {
+    plansWrite: true,
+    workoutsRead: false,
+    progressRead: false,
+    measurementsWrite: false,
+    liveActivityRead: false
+  });
+});
+
+test('accept revalidates that the student has no other active trainer', async t => {
+  const active = {
+    id: 'connection-active', studentId: 'student-a', trainerId: 'trainer-a', requestedBy: 'student-a',
+    status: 'active', grants: { plansWrite: true }, createdAt: NOW, respondedAt: NOW, endedAt: null
+  };
+  const pending = {
+    id: 'connection-pending', studentId: 'student-a', trainerId: 'trainer-b', requestedBy: 'trainer-b',
+    status: 'pending', grants: {}, createdAt: NOW, respondedAt: null, endedAt: null
+  };
+  const fixture = routeFixture(t, collaboration({
+    profiles: [
+      profile('student-a'),
+      profile('trainer-a', ['student', 'trainer']),
+      profile('trainer-b', ['student', 'trainer'])
+    ],
+    connections: [active, pending]
+  }));
+
+  const res = await invoke(fixture, 'POST /api/connections/respond', {
+    user: { id: 'student-a' },
+    body: { rev: 0, connectionId: pending.id, accept: true, grants: { plansWrite: true } }
+  });
+
+  assert.equal(res.status, 409);
+  assert.deepEqual(res.body, { error: 'student already linked' });
+  assert.equal(fixture.read().rev, 0);
+  assert.equal(fixture.read().connections.find(item => item.id === pending.id).status, 'pending');
 });
 
 test('linked clients require an active connection and state projections honor each read grant', async t => {
@@ -257,15 +334,24 @@ test('linked clients require an active connection and state projections honor ea
   assert.equal(reads, 2);
 });
 
-test('collaboration projection includes only published programs assigned to the signed-in student', async t => {
+test('collaboration projection includes only published programs behind an active student connection', async t => {
   const fixture = routeFixture(t, collaboration({
     profiles: [profile('student-a')],
     clients: [
       { id: 'client-a', trainerId: 'trainer-a', studentUserId: 'student-a', name: 'A', archivedAt: null },
+      { id: 'client-ended', trainerId: 'trainer-ended', studentUserId: 'student-a', name: 'Ended', archivedAt: null },
+      { id: 'client-pending', trainerId: 'trainer-pending', studentUserId: 'student-a', name: 'Pending', archivedAt: null },
       { id: 'client-b', trainerId: 'trainer-b', studentUserId: 'student-b', name: 'B', archivedAt: null }
+    ],
+    connections: [
+      { id: 'active', trainerId: 'trainer-a', studentId: 'student-a', status: 'active', grants: {} },
+      { id: 'ended', trainerId: 'trainer-ended', studentId: 'student-a', status: 'ended', grants: {} },
+      { id: 'pending', trainerId: 'trainer-pending', studentId: 'student-a', status: 'pending', grants: {} }
     ],
     programs: [
       { id: 'program-a', trainerId: 'trainer-a', clientId: 'client-a', name: 'A', status: 'published', routines: [] },
+      { id: 'program-ended', trainerId: 'trainer-ended', clientId: 'client-ended', name: 'Ended', status: 'published', routines: [] },
+      { id: 'program-pending', trainerId: 'trainer-pending', clientId: 'client-pending', name: 'Pending', status: 'published', routines: [] },
       { id: 'program-b', trainerId: 'trainer-b', clientId: 'client-b', name: 'B', status: 'published', routines: [{ secret: true }] },
       { id: 'draft-a', trainerId: 'trainer-a', clientId: 'client-a', name: 'Draft', status: 'draft', routines: [] }
     ]
@@ -277,6 +363,43 @@ test('collaboration projection includes only published programs assigned to the 
   assert.deepEqual(res.body.programs.map(item => item.id), ['program-a']);
   assert.equal(JSON.stringify(res.body).includes('program-b'), false);
   assert.equal(JSON.stringify(res.body).includes('secret'), false);
+});
+
+test('route errors and successful personal detail writes exercise safe HTTP projections', async t => {
+  const client = {
+    id: 'client-a', trainerId: 'trainer-a', studentUserId: null, name: 'Aluno',
+    goal: '', phone: '', notes: '', targetSessionsPerWeek: 3, inactiveAfterDays: 7,
+    createdAt: NOW, updatedAt: NOW, archivedAt: null
+  };
+  const fixture = routeFixture(t, collaboration({
+    profiles: [profile('trainer-a', ['student', 'trainer'])],
+    clients: [client],
+    notifications: [{ id: 'notification-a', userId: 'trainer-a', readAt: null }]
+  }));
+
+  const unauthenticated = await invoke(fixture, 'GET /api/personal/workspace');
+  assert.deepEqual({ status: unauthenticated.status, body: unauthenticated.body }, {
+    status: 401, body: { error: 'not signed in' }
+  });
+
+  const measurement = await invoke(fixture, 'POST /api/personal/measurements', {
+    user: { id: 'trainer-a' },
+    body: { rev: 0, clientId: client.id, kind: 'weight', value: 75, unit: 'kg', observedAt: '2026-08-29' }
+  });
+  assert.equal(measurement.status, 200);
+  assert.equal(measurement.body.measurements[0].value, 75);
+
+  const detail = await invoke(fixture, 'GET /api/personal/client', {
+    user: { id: 'trainer-a' }, url: `/api/personal/client?id=${client.id}`
+  });
+  assert.equal(detail.status, 200);
+  assert.equal(detail.body.client.id, client.id);
+
+  const notifications = await invoke(fixture, 'POST /api/notifications/read', {
+    user: { id: 'trainer-a' }, body: { rev: 1 }
+  });
+  assert.equal(notifications.status, 200);
+  assert.equal(fixture.read().notifications[0].readAt !== null, true);
 });
 
 test('foreign trainer client IDs are non-enumerable on reads and writes', async t => {
