@@ -1,9 +1,7 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
-
 import { createJsonStore, RevisionConflictError } from './lib/json-store.js';
 import { INITIAL_COLLABORATION, migrateCollaboration } from './domain/schema.js';
-
 const DEFAULT_GRANTS = {
   plansWrite: false,
   workoutsRead: false,
@@ -26,7 +24,6 @@ const DEFAULT_AVAILABILITY = [
   ...[1, 2, 3, 4, 5].map(weekday => ({ weekday, start: '06:00', end: '21:00', slotMinutes: 60 })),
   { weekday: 6, start: '07:00', end: '13:00', slotMinutes: 60 }
 ];
-
 const isoDate = value => String(value || '').slice(0, 10);
 const text = (value, max = 160) => String(value || '').trim().slice(0, max);
 const money = value => {
@@ -59,14 +56,12 @@ const boundedInteger = (value, min, max, fallback) => {
 const explicitGrants = grants => Object.fromEntries(
   Object.keys(DEFAULT_GRANTS).map(key => [key, grants?.[key] === true])
 );
-
 function appendAudit(collaboration, entry) {
   return {
     ...collaboration,
     audit: [...collaboration.audit, { id: entry.id, actorId: entry.actorId, action: entry.action, entity: entry.entity, entityId: entry.entityId, clientId: entry.clientId || null, createdAt: entry.now }]
   };
 }
-
 function notify(collaboration, randomId, userId, title, body, resourceId, now) {
   if (!userId) return collaboration;
   return {
@@ -74,9 +69,7 @@ function notify(collaboration, randomId, userId, title, body, resourceId, now) {
     notifications: [...collaboration.notifications, { id: randomId(), userId, type: 'personal', title, body, resourceId, createdAt: now, readAt: null }]
   };
 }
-
 export { INITIAL_COLLABORATION };
-
 export function ensureProfile({ collaboration, userId, roles = [], name, now, randomId, randomShareCode = randomId }) {
   const existing = collaboration.profiles.find(profile => profile.userId === userId);
   const nextRoles = [...new Set(['student', ...(existing?.roles || []), ...roles])].filter(role => role === 'student' || role === 'trainer');
