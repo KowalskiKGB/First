@@ -1,8 +1,14 @@
-import { describe, expect, it } from 'vitest'
+import React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   CONNECTION_GRANTS,
+  CONNECTION_ENDPOINTS,
+  connectionEndPayload,
   connectionCounterpart,
+  connectionRequestPayload,
+  connectionResponsePayload,
   connectionStatusLabel,
   grantLabels,
   normalizeExplicitGrants,
@@ -20,6 +26,38 @@ const studentRequest = {
   status: 'pending',
   grants: { plansWrite: true, workoutsRead: false },
 }
+
+let Connections
+let collaborationState
+let accountState
+const load = vi.fn()
+const mutate = vi.fn()
+const useCollaboration = selector => selector(collaborationState)
+const useStore = selector => selector(accountState)
+
+vi.doMock('../store/useCollaboration.js', () => ({ useCollaboration }))
+vi.doMock('../store/useStore.js', () => ({ useStore }))
+vi.doMock('../sheets.jsx', () => ({ confirmSheet: vi.fn() }))
+
+beforeAll(async () => {
+  ;({ default: Connections } = await import('../views/student/Connections.jsx'))
+})
+
+beforeEach(() => {
+  accountState = { user: { id: 'student-1' } }
+  collaborationState = {
+    ownerId: 'student-1',
+    context: 'student',
+    profile: { userId: 'student-1', roles: ['student', 'trainer'], shareCode: 'A'.repeat(32), shareCodeExpiresAt: '2026-09-29' },
+    connections: [],
+    notifications: [],
+    loading: false,
+    error: null,
+    message: null,
+    load,
+    mutate,
+  }
+})
 
 describe('share code', () => {
   it('keeps at most 128 bits of uppercase hexadecimal input', () => {
@@ -74,6 +112,37 @@ describe('explicit grants', () => {
     expect(grantLabels({ workoutsRead: true })).toEqual(['Read completed workouts'])
     expect(grantLabels({})).toEqual(['No permissions granted'])
   })
+
+  it('builds the exact request, response, end, and notification endpoint payloads', () => {
+    expect(CONNECTION_ENDPOINTS).toEqual({
+      request: '/api/connections/request',
+      respond: '/api/connections/respond',
+      end: '/api/connections/end',
+      readNotifications: '/api/notifications/read',
+    })
+    expect(connectionRequestPayload('trainer', 'a '.repeat(32), { plansWrite: true })).toEqual({
+      actorRole: 'trainer',
+      shareCode: 'A'.repeat(32),
+      grants: {},
+    })
+    expect(connectionRequestPayload('student', 'B'.repeat(32), { plansWrite: true })).toEqual({
+      actorRole: 'student',
+      shareCode: 'B'.repeat(32),
+      grants: {
+        plansWrite: true,
+        workoutsRead: false,
+        progressRead: false,
+        measurementsWrite: false,
+        liveActivityRead: false,
+      },
+    })
+    expect(connectionResponsePayload(studentRequest, 'trainer-1', true, { measurementsWrite: true })).toEqual({
+      connectionId: 'connection-1',
+      accept: true,
+      grants: {},
+    })
+    expect(connectionEndPayload('connection-1')).toEqual({ connectionId: 'connection-1' })
+  })
 })
 
 describe('connection relationship', () => {
@@ -97,8 +166,44 @@ describe('connection relationship', () => {
     expect(requestDirection({ ...studentRequest, status: 'active' }, 'trainer-1').canRespond).toBe(false)
   })
 
+  it('fails closed when requestedBy is not either participant', () => {
+    expect(requestDirection({ ...studentRequest, requestedBy: 'stranger' }, 'trainer-1')).toEqual({
+      direction: 'unrelated',
+      label: 'Not available',
+      canRespond: false,
+    })
+  })
+
   it('distinguishes a refused request from an ended active connection', () => {
     expect(connectionStatusLabel({ status: 'ended', respondedAt: '2026-08-29', endedAt: '2026-08-29' })).toBe('Refused')
     expect(connectionStatusLabel({ status: 'ended', respondedAt: '2026-08-28', endedAt: '2026-08-29' })).toBe('Ended')
+  })
+})
+
+describe('connections view boundaries', () => {
+  it('uses the active student context for a dual-role account', () => {
+    const markup = renderToStaticMarkup(React.createElement(Connections))
+    expect(markup).toContain('Choose exactly what this Personal may access')
+    expect(markup).toContain('type="checkbox"')
+    expect(markup).not.toContain('No permissions are requested now')
+  })
+
+  it('uses the active trainer context for a dual-role account', () => {
+    collaborationState = { ...collaborationState, context: 'trainer' }
+    const markup = renderToStaticMarkup(React.createElement(Connections))
+    expect(markup).toContain('No permissions are requested now')
+    expect(markup).not.toContain('type="checkbox"')
+  })
+
+  it('shows the fail-closed revocation state instead of a generic load error', () => {
+    collaborationState = {
+      ...collaborationState,
+      profile: null,
+      error: 'forbidden',
+      message: 'Permission revoked',
+    }
+    const markup = renderToStaticMarkup(React.createElement(Connections))
+    expect(markup).toContain('Permission revoked')
+    expect(markup).not.toContain('Could not load connections')
   })
 })
