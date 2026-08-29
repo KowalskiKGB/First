@@ -13,9 +13,8 @@
 **Recommendation:** APPROVE for the private/self-hosted deployment.
 
 **Key Metrics:**
-- Commit range: `origin/main..5da1fa3` at final local review
-- Files changed: 64
-- Shortstat: 8,194 insertions, 273 deletions
+- Base Personal release reviewed through `efdc80a`: 64 files, 8,194 insertions and 273 deletions
+- Final addendum: native authentication, program synchronization, push delivery and Android hardening
 - Security regressions detected: 0
 - Blocking test gaps in the reviewed high-risk surface: 0
 
@@ -27,8 +26,12 @@ The release adds the Personal/instructor workspace to the isolated First repo:
 - student/trainer roles, explicit connection consent, grants, inbox and audit;
 - Personal dashboard, student list, student detail, agenda and finance views;
 - controlled forms for clients, programs, measurements, appointments and receivables;
-- Playwright E2E coverage for the professional workspace across mobile, tablet and desktop.
-- final release fixes for private media cache documentation and Node 22 Docker lockfile metadata.
+- Playwright E2E coverage for the professional workspace across mobile, tablet and desktop;
+- Web Push delivery for persisted relationship and program events;
+- conversion of published programs into executable student routines without replacing manual plans;
+- authenticated Capacitor access with offline local fallback;
+- Android WebAuthn for Apps, Digital Asset Links and disabled system data backup;
+- final release fixes for private media cache and Node 22 Docker lockfile metadata.
 
 ## High-Risk Files Reviewed
 
@@ -41,8 +44,12 @@ The release adds the Personal/instructor workspace to the isolated First repo:
 | `frontend/src/store/useCollaboration.js` | High | Approved |
 | `frontend/src/views/personal/PersonalGuard.jsx` | High | Approved |
 | `frontend/src/lib/connections.js` | High | Approved |
+| `frontend/src/lib/personal-forms.js` | High | Approved |
+| `frontend/src/store/useStore.js` | High | Approved |
 | `frontend/src/views/student/Connections.jsx` | Medium | Approved |
 | `frontend/e2e/personal-workspace.spec.js` | Medium | Approved |
+| `frontend/android/app/src/main/AndroidManifest.xml` / `MainActivity.java` | High | Approved |
+| `frontend/public/.well-known/assetlinks.json` | High | Approved |
 | `web/nginx.conf` / `nginx.conf` | Medium | Approved |
 | `frontend/package-lock.json` | Low | Approved |
 
@@ -50,9 +57,9 @@ The release adds the Personal/instructor workspace to the isolated First repo:
 
 No blocking findings found in the reviewed differential.
 
-Final addendum: commit `5da1fa3` changes only `frontend/package-lock.json` optional/peer metadata
-so `npm ci` succeeds inside `node:22-alpine`. It adds no application code and was validated by
-frontend tests, frontend build and Docker Compose build.
+Final addendum: the post-review changes were rechecked around mobile authentication, program
+projection, push delivery, Android association, private caching and deployment. No new blocking
+finding was introduced.
 
 ## Security Notes
 
@@ -60,17 +67,24 @@ frontend tests, frontend build and Docker Compose build.
 - Cross-user connection actions validate actor role, participants and `requestedBy` in `api/personal.js:132` and `api/personal.js:164`.
 - Appointment and receivable writes validate ownership, ID matching, conflicts, dates and money boundaries in `api/personal.js:440` and `api/personal.js:479`.
 - Production personal writes require exact same-origin requests in `api/personal.js:673`.
+- Capacitor writes without a browser Origin require the explicit native-client marker; a conflicting
+  browser Origin remains rejected.
 - Client-side loss of `401/403` access clears Personal state in `frontend/src/store/useCollaboration.js:24` and routes away from the Personal area in `frontend/src/views/personal/PersonalGuard.jsx:32`.
 - The frontend helper rejects invalid connection actor roles before sending requests in `frontend/src/lib/connections.js:25`.
+- Android WebAuthn is bound to the package and domain by Digital Asset Links, while
+  `android:allowBackup="false"` prevents automatic cloud backup of local training data.
+- `/media/` remains behind Basic Auth; `/.well-known/assetlinks.json` and the native API path remain
+  reachable without whole-host Basic Auth.
 
 ## Test Coverage Evidence
 
-- `npm test` in `api`: 61 passed.
-- `npm run test:coverage` in `api`: all files 99.77% lines, 82.35% branches, 90.87% functions.
-- `npm test` in `frontend`: 332 passed.
+- `npm test` in `api`: 66 passed.
+- `npm run test:coverage` in `api`: all files 99.77% lines, 82.96% branches, 91.93% functions.
+- `npm test` in `frontend`: 341 passed.
 - `npm run test:e2e` in `frontend`: 3 passed for 360x800, 768x1024 and 1440x900.
 - `npm run build` in `frontend`: success; expected catalogue chunk warning only.
 - `docker compose -f docker-compose.yml build api web`: success after lockfile synchronization.
+- `npm run build:mobile` and Android `assembleDebug`: success with all 2,648 offline media files.
 - local Compose smoke: `/api/health` 200, app shell 200 with CSP, real `/media/img/...jpg` 200 with `Cache-Control: private, no-store`.
 - `npm audit --omit=dev` in `api` and `frontend`: 0 vulnerabilities.
 - `git diff --check`: clean.
@@ -79,7 +93,9 @@ frontend tests, frontend build and Docker Compose build.
 
 - The app still uses a single JSON document and must run as one API replica.
 - Finance is manual accounts receivable; no payment processor or webhook exists.
-- The Personal program is published and visible, but automatic ingestion into the student's local workout engine is still roadmap work.
+- Web Push is optional transport; offline delivery relies on the persisted inbox and later refresh.
+- A signed production APK/AAB must add its release-certificate SHA-256 fingerprint to Digital Asset
+  Links; the validated debug APK uses the checked-in debug fingerprint.
 - Full frontend global coverage is below 80% because of legacy untested screens, although the new Personal code and critical API paths have focused tests and E2E.
 
 ## Methodology
