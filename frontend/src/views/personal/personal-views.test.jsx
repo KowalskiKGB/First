@@ -18,6 +18,7 @@ let Finance
 let PersonalHome
 let StudentDetail
 let Students
+let useUI
 let collaborationState = {}
 const useCollaboration = selector => selector(collaborationState)
 useCollaboration.getState = () => collaborationState
@@ -25,6 +26,7 @@ useCollaboration.setState = state => { collaborationState = { ...collaborationSt
 vi.doMock('../../store/useCollaboration.js', () => ({ useCollaboration }))
 
 beforeAll(async () => {
+  ;({ useUI } = await import('../../store/useUI.js'))
   ;({ default: Agenda } = await import('./Agenda.jsx'))
   ;({ default: Finance } = await import('./Finance.jsx'))
   ;({ default: PersonalHome } = await import('./PersonalHome.jsx'))
@@ -67,6 +69,16 @@ beforeEach(() => {
 
 const render = (element, initialEntries = ['/']) => renderToStaticMarkup(<MemoryRouter initialEntries={initialEntries}>{element}</MemoryRouter>)
 
+function findElement(node, predicate) {
+  if (!React.isValidElement(node)) return null
+  if (predicate(node)) return node
+  for (const child of React.Children.toArray(node.props.children)) {
+    const found = findElement(child, predicate)
+    if (found) return found
+  }
+  return null
+}
+
 describe('professional Personal views SSR', () => {
   it('renders the operational dashboard and priority reason', () => {
     const markup = render(<PersonalHome />)
@@ -102,6 +114,23 @@ describe('professional Personal views SSR', () => {
     const markup = render(<Agenda />)
     expect(markup).toContain('Today timeline')
     expect(markup).toContain('Next classes by student')
+  })
+
+  it('keeps the trainer timezone when rescheduling from the global schedule', () => {
+    useCollaboration.setState({
+      profile: { userId: 'trainer-1', roles: ['trainer'], timezone: 'America/New_York' },
+      workspace: { ...workspace, clients: [{ ...client, nextAppointment: workspace.agenda.today[0] }] },
+    })
+    useUI.setState({ sheets: [] })
+    const reschedule = findElement(Agenda(), element => element.props.children === 'Reschedule')
+
+    reschedule.props.onClick()
+
+    const sheet = useUI.getState().sheets.at(-1).render(vi.fn())
+    const content = sheet.type(sheet.props)
+    const mutation = findElement(content, element => typeof element.props.children === 'function')
+    const form = mutation.props.children({ submit: vi.fn(), busy: false })
+    expect(form.props.timeZone).toBe('America/New_York')
   })
 
   it('renders finance KPIs, textual history and client status', () => {
