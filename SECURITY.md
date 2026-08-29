@@ -61,8 +61,9 @@ publicly, coordinate that disclosure in the advisory thread first.
   the session cookie isn't marked `Secure`.
 - Scanner output with no working exploit, and `npm audit` findings in build-time
   devDependencies (Vite, Vitest, Capacitor CLI) that never reach a running instance.
-- Any separately licensed exercise images or GIFs added by an operator. First does not include,
-  fetch, or enable that media by default.
+- Rights to separately licensed exercise images or GIFs. The production Compose can fetch the
+  pinned private media set into a Docker volume, but those binaries are not part of this source
+  license and remain the operator's responsibility.
 
 ## Security model
 
