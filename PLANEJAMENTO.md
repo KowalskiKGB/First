@@ -12,13 +12,13 @@
 
 ## Restrições globais
 
-- O modo aluno autônomo, guest, PWA e app móvel standalone deve continuar funcionando sem personal e sem chamadas colaborativas.
+- O modo aluno autônomo e guest deve continuar funcionando sem personal; no Capacitor, uma conta autenticada usa colaboração online e o treino local permanece disponível no fallback offline.
 - Na primeira versão, cada aluno pode manter apenas um vínculo ativo com personal; um personal pode acompanhar vários alunos.
 - Um usuário pode ter os papéis `student`, `trainer` ou ambos; o papel de trainer é autoativado e não representa certificação profissional.
 - O aluno é o titular dos dados e concede permissões explícitas; papel de administrador não concede automaticamente acesso de personal.
 - Permissões iniciais do vínculo: `plans:write`, `workouts:read` e `progress:read`. `measurements:write` e `liveActivity:read` começam desligadas.
-- Alterações de programa autorizadas valem apenas para treinos futuros, geram notificação e nunca reescrevem histórico ou treino em andamento.
-- A inbox persistida é a fonte da verdade; Web Push é apenas transporte opcional.
+- Alterações de programa autorizadas valem apenas para rotinas gerenciadas pelo personal, geram notificação e nunca reescrevem rotinas manuais, histórico ou treino em andamento.
+- A inbox persistida é a fonte da verdade; Web Push entrega eventos de vínculo e programa quando há inscrição disponível.
 - Sem microserviços, fila, WebSocket, marketplace, pagamentos, chat, diagnóstico clínico ou recomendação médica nesta expansão.
 - JSON permanece enquanto houver uma única instância da API. SQLite só entra após contenção, múltiplos processos ou consultas inviáveis serem demonstrados.
 - Toda entrada externa recebe validação de tipo, tamanho, unidade, intervalo e autorização no servidor.
@@ -31,7 +31,7 @@
 - [x] Código importado em histórico Git independente, sem remote ou relação de fork.
 - [x] Segredos e dados de runtime removidos do versionamento.
 - [x] Interface padrão convertida para português do Brasil.
-- [x] Catálogo com 1.324 exercícios traduzido; mídia visual mantida fora do Git e tratada como conteúdo de licença separada.
+- [x] Catálogo com 1.324 exercícios traduzido e 2.648 mídias locais/privadas (1.324 JPGs e 1.324 GIFs), fora do Git e sob licença separada.
 - [x] Compose preparado para build local, volume persistente e variáveis obrigatórias.
 - [x] Armazenamento colaborativo JSON versionado, com escrita atômica e conflito de revisão.
 - [x] Papéis de aluno/personal, conexões com consentimento, grants explícitos, inbox e auditoria.
@@ -41,20 +41,23 @@
 - [x] Financeiro com cobranças por aluno, recebimentos, pendências e gráficos.
 - [x] Cadastro e edição de aluno, programa publicado e medidas corporais autorizadas.
 - [x] E2E versionado do painel em celular, tablet e desktop, incluindo revogação fail-closed.
+- [x] Programa publicado sincronizado como rotina executável do aluno, preservando planos manuais, treino em andamento e histórico.
+- [x] Web Push para eventos de vínculo e publicação/atualização de programa, com inbox persistida como fonte da verdade.
+- [x] Capacitor Android autenticado por passkey/Digital Asset Links, portal do personal online e fallback de treino offline.
 
 ### Entregue, parcial e futuro
 
 | Área | Situação em 1.3.0 | Limite atual |
 |---|---|---|
 | T1 — armazenamento e revisões | Entregue | O JSON exige uma única réplica da API. |
-| T2 — papéis, vínculo, grants e inbox | Entregue | Web Push continua opcional; a inbox persistida é a fonte da verdade. |
-| T3 — portais aluno/personal | Entregue | O portal colaborativo requer perfil web autenticado; o app móvel standalone continua local. |
-| T4 — programas do personal | Parcial | O personal cria e publica o programa, mas a sincronização automática com o treino local do aluno ainda não foi concluída. |
+| T2 — papéis, vínculo, grants e inbox | Entregue | Web Push depende de inscrição e conectividade; a inbox persistida é a fonte da verdade. |
+| T3 — portais aluno/personal | Entregue | Web/PWA e Capacitor usam perfil autenticado; sem rede, o Capacitor mantém somente o treino local. |
+| T4 — programas do personal | Entregue | A versão publicada vira rotina executável e substitui somente conteúdo gerenciado pelo personal. |
 | T5 — evolução | Parcial | Há visão operacional e endpoints autorizados; a integração ampliada com todo o histórico local de treinos permanece no roadmap. |
 | T6 — medidas corporais | Parcial | O personal registra e consulta medidas autorizadas; a evolução combinada de medidas e peso ainda será ampliada. |
 | T7 — novos starters, notas e anilhas | Planejado | Upper/lower, full-body, 5×5, notas por exercício e calculadora de anilhas ainda não foram implementados. |
 | T8 — percentage/training-max | Planejado | A programação 5/3/1-style sobre o motor de progressão ainda não foi implementada. |
-| T9 — tradução, segurança e release | Parcial | pt-BR, hardening e E2E do painel com API controlada estão cobertos; integração real com passkey e dados locais ainda é pendente. |
+| T9 — tradução, segurança e release | Parcial | pt-BR, hardening, E2E, build Docker/APK e passkey Android com DAL estão cobertos; smoke no deploy público e instalação física final permanecem operacionais. |
 
 Os checklists abaixo preservam o plano técnico original. A tabela acima é o registro factual da
 entrega; itens marcados como parciais ou planejados não devem ser interpretados como concluídos.
@@ -232,41 +235,32 @@ export const useCollaboration = create(() => ({
 - [ ] Escrever testes RED para rota protegida, alternador de contexto e aluno sem personal.
 - [ ] Executar o teste focado Vitest; deve falhar porque as rotas não existem.
 - [ ] Adicionar `/aluno/conexoes`, `/personal`, `/personal/alunos` e `/personal/alunos/:studentId` reutilizando componentes atuais.
-- [ ] Garantir que guest/mobile não inicializem `useCollaboration` e que proteção visual não substitua a autorização do servidor.
+- [ ] Garantir que guest não inicialize `useCollaboration`; no Capacitor, carregar colaboração somente para conta autenticada e manter fallback offline, sem substituir a autorização do servidor por proteção visual.
 - [ ] Validar 360×800, 768×1024 e desktop; foco, rótulos e estados vazios devem ser utilizáveis.
 - [ ] Commit: `feat: add student and trainer portals`.
 
-### Task 4: programas versionados, atribuição e recomendação de treino
+### Task 4: programas versionados, atribuição e recomendação de treino — entregue
 
 **Arquivos:**
 
-- Criar: `api/domain/programs.js`
-- Criar: `api/test/programs.test.js`
-- Criar: `frontend/src/lib/programs.js`
-- Criar: `frontend/src/lib/programs.test.js`
-- Criar: `frontend/src/views/personal/ProgramEdit.jsx`
-- Criar: `frontend/src/views/student/AssignedProgram.jsx`
-- Modificar: `api/app.js`
-- Modificar: `frontend/src/views/RoutineEdit.jsx`
-- Modificar: `frontend/src/sheets.jsx`
-- Modificar: `frontend/src/store/useStore.js`
-- Modificar: `frontend/src/lib/plan-share.js`
+- `api/personal.js` e `api/test/personal-security.test.js`
+- `frontend/src/lib/personal-forms.js` e `frontend/src/lib/personal-forms.test.js`
+- `frontend/src/store/useCollaboration.js` e `frontend/src/store/useStore.js`
+- `frontend/src/views/personal/StudentDetail.jsx` e `frontend/src/views/Plan.jsx`
 
 **Interfaces:**
 
 ```js
-export function publishProgram({ actorId, programId, draft, expectedRev, collaboration, now })
-export function assignProgram({ actorId, programVersionId, studentId, startsOn, collaboration, now })
-export function snapshotAssignment({ assignment, version, localState })
+export function saveProgram({ collaboration, actorId, clientId, data, now, randomId })
+export function mergePublishedPrograms(localState, publishedPrograms)
 ```
 
-- [ ] Escrever testes RED: publicar cria versão imutável; ajuste cria nova versão; treino ativo e histórico não mudam; revogação impede publicação.
-- [ ] Executar os testes focados de API e frontend; devem falhar por funções ausentes.
-- [ ] Implementar rascunho, preview, publicação, atribuição, aceite inicial e atualização automática somente de agenda futura.
-- [ ] Fotografar `assignmentId`, `programVersionId`, targets e nota no começo do treino.
-- [ ] Preservar criação própria, freestyle, cópia do programa e desvinculação pelo aluno.
-- [ ] Executar testes completos e um E2E personal publica → aluno inicia → personal atualiza → treino em andamento permanece igual.
-- [ ] Commit: `feat: add versioned trainer programs`.
+- [x] Cobrir publicação/atualização versionada, grant de plano, revogação e projeção somente para o aluno vinculado.
+- [x] Publicar programa normalizado com versão, rotinas, exercícios, séries, repetições, descanso, notas e agenda semanal.
+- [x] Sincronizar a versão publicada como rotina executável no estado do aluno autenticado.
+- [x] Substituir somente rotinas identificadas como gerenciadas pelo personal; preservar rotinas manuais, freestyle, treino ativo e histórico.
+- [x] Remover somente rotinas gerenciadas quando não houver mais programa publicado disponível para o vínculo.
+- [x] Verificar a integração nos testes de API e frontend da release.
 
 ### Task 5: acompanhamento de execução e progresso
 
@@ -401,7 +395,7 @@ export function prescribeTrainingMaxSession({ week, trainingMax, increment, plat
 4. personal registra medida autorizada e aluno vê autoria;
 5. aluno revoga vínculo e toda leitura/escrita cruzada retorna `403`;
 6. backup legado é restaurado e migrado sem perda;
-7. guest e mobile continuam locais.
+7. guest continua local; Capacitor autenticado sincroniza online e mantém fallback local offline.
 
 - [ ] Escrever E2E RED e completar o pacote pt-BR de nomes/instruções do catálogo com a mesma contagem de exercícios da base inglesa.
 - [ ] Executar Playwright em desktop e mobile; confirmar as falhas por fluxos ainda não conectados.
