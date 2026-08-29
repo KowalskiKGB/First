@@ -60,6 +60,7 @@ const boundedInteger = (value, min, max, fallback) => {
 const explicitGrants = grants => Object.fromEntries(
   Object.keys(DEFAULT_GRANTS).map(key => [key, grants?.[key] === true])
 );
+const projectConnection = connection => ({ ...connection, grants: explicitGrants(connection.grants) });
 const requireText = (value, name, max, required = false) => {
   if (typeof value !== 'string' || value.length > max || (required && !value.trim())) throw fail(`invalid ${name}`);
   return value.trim();
@@ -280,7 +281,7 @@ export function respondConnection({ collaboration, actorId, connectionId, accept
   )) throw fail('student already linked', 409);
   const merged = actorId === connection.studentId
     ? explicitGrants(grants)
-    : { ...connection.grants };
+    : explicitGrants(connection.grants);
   const status = accept ? 'active' : 'ended';
   let nextConnection = { ...connection, status, grants: merged, respondedAt: now, endedAt: accept ? null : now };
   let clients = collaboration.clients;
@@ -459,6 +460,7 @@ export function recordMeasurement({ collaboration, actorId, clientId, data, now,
   return { collaboration: next, measurement };
 }
 export function saveTrainingProfile({ collaboration, actorId, studentId, clientId, data, now, randomId }) {
+  if (typeof studentId !== 'string' || !studentId || studentId.length > 100) throw fail('client not found', 404);
   if (actorId !== studentId) {
     const client = requireTrainerAccess(collaboration, actorId, clientId, 'training-profile:write');
     if (client.studentUserId !== studentId) throw fail('client not found', 404);
@@ -486,6 +488,7 @@ export function saveTrainingProfile({ collaboration, actorId, studentId, clientI
   return { collaboration: next, profile };
 }
 export function saveGymProfile({ collaboration, actorId, studentId, clientId, data, now, randomId }) {
+  if (typeof studentId !== 'string' || !studentId || studentId.length > 100) throw fail('client not found', 404);
   if (actorId !== studentId) {
     const client = requireTrainerAccess(collaboration, actorId, clientId, 'training-profile:write');
     if (client.studentUserId !== studentId) throw fail('client not found', 404);
@@ -990,7 +993,9 @@ export function createPersonalRoutes({ dataDir, origin, readSession, readBody, j
       json(res, 200, {
         rev: collaboration.rev,
         profile,
-        connections: collaboration.connections.filter(item => item.studentId === user.id || item.trainerId === user.id),
+        connections: collaboration.connections
+          .filter(item => item.studentId === user.id || item.trainerId === user.id)
+          .map(projectConnection),
         notifications: collaboration.notifications.filter(item => item.userId === user.id).slice(-40).reverse(),
         programs: collaboration.programs.filter(item => item.status === 'published' && clientIds.has(item.clientId))
       });
@@ -1006,12 +1011,12 @@ export function createPersonalRoutes({ dataDir, origin, readSession, readBody, j
     'POST /api/connections/request': async (req, res) => withUser(req, res, async user => {
       const body = await readBody(req, COMMON_BODY);
       const result = writeAndPush(req, body, state => requestConnection({ collaboration: state, actorId: user.id, actorRole: body.actorRole, shareCode: body.shareCode, grants: body.grants || {}, now: now(), randomId }).collaboration);
-      json(res, 200, { rev: result.rev, connections: result.connections.filter(item => item.studentId === user.id || item.trainerId === user.id) });
+      json(res, 200, { rev: result.rev, connections: result.connections.filter(item => item.studentId === user.id || item.trainerId === user.id).map(projectConnection) });
     }),
     'POST /api/connections/respond': async (req, res) => withUser(req, res, async user => {
       const body = await readBody(req, COMMON_BODY);
       const result = writeAndPush(req, body, state => respondConnection({ collaboration: state, actorId: user.id, connectionId: body.connectionId, accept: !!body.accept, grants: body.grants || {}, now: now(), randomId }).collaboration);
-      json(res, 200, { rev: result.rev, connections: result.connections.filter(item => item.studentId === user.id || item.trainerId === user.id) });
+      json(res, 200, { rev: result.rev, connections: result.connections.filter(item => item.studentId === user.id || item.trainerId === user.id).map(projectConnection) });
     }),
     'POST /api/connections/end': async (req, res) => withUser(req, res, async user => {
       const body = await readBody(req, COMMON_BODY);
@@ -1026,7 +1031,7 @@ export function createPersonalRoutes({ dataDir, origin, readSession, readBody, j
       }).collaboration);
       json(res, 200, {
         rev: result.rev,
-        connection: result.connections.find(item => item.id === body.connectionId && item.studentId === user.id)
+        connection: projectConnection(result.connections.find(item => item.id === body.connectionId && item.studentId === user.id))
       });
     }),
     'POST /api/notifications/read': async (req, res) => withUser(req, res, async user => {
