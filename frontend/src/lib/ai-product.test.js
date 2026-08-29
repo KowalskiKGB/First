@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   contextFingerprint,
   draftFromAiContext,
+  generationSubmission,
   jobPresentation,
   validateWizardStep,
 } from './ai-product.js'
@@ -50,5 +51,17 @@ describe('AI product flow helpers', () => {
     expect(jobPresentation({ status: 'running', stage: 'validating' }).label).toBe('Validando plano')
     expect(jobPresentation({ status: 'applied' }).label).toBe('Aplicado')
     expect(jobPresentation({ status: 'failed' }).label).toBe('Falha na geração')
+  })
+
+  it('keeps one idempotency key stable until the submission is cleared', () => {
+    const values = new Map()
+    const storage = { getItem: key => values.get(key) || null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) }
+    const first = generationSubmission(storage, 'student-1', () => 'random-1')
+    const second = generationSubmission(storage, 'student-1', () => 'random-2')
+    expect(second.key).toBe(first.key)
+    first.rememberJob('job-1')
+    expect(generationSubmission(storage, 'student-1', () => 'random-3').jobId).toBe('job-1')
+    first.clear()
+    expect(generationSubmission(storage, 'student-1', () => 'random-4').key).toBe('random-4')
   })
 })

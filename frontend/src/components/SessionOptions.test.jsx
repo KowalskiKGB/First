@@ -18,10 +18,11 @@ describe('SessionOptions', () => {
     const markup = renderToStaticMarkup(<SessionOptions options={options} onSelect={() => {}} />)
 
     expect(markup.match(/<button/g)).toHaveLength(3)
-    expect(markup).toContain('Meu treino')
+    expect(markup.match(/>Meu treino<\/span>/g)).toHaveLength(2)
+    expect(markup).not.toContain('>Manual</span>')
     expect(markup).toContain('Treino A')
     expect(markup).toContain('Treino IA')
-    expect(markup).toContain('Manual')
+    expect(markup).toContain('Meu treino')
     expect(markup).toContain('Personal')
     expect(markup).toContain('IA')
     expect(markup).toContain('Preferido')

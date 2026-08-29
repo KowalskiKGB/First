@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { applyAiPlanToState, canonicalAiMissingFields, generateAiWorkout, persistCanonicalAiContext } from './ai-job-flow.js'
+import { applyAiPlanToState, canonicalAiMissingFields, generateAiWorkout, persistCanonicalAiContext, pollExistingAiJob } from './ai-job-flow.js'
 
 describe('AI job flow', () => {
   it('creates a job, polls to applied and refreshes canonical AI context', async () => {
@@ -69,6 +69,20 @@ describe('AI job flow', () => {
     expect(next.routines.map(routine => routine.id)).toEqual(['manual', 'personal-a', 'new-ai'])
     expect(next.sourceSchedules.personal).toEqual(state.sourceSchedules.personal)
     expect(next.sourceSchedules.ai[0]).toMatchObject({ planId: 'new-plan', version: 2, week: { 4: 'new-ai' } })
+    expect(next.aiPlanHistory.map(plan => plan.planId)).toEqual(['old-plan', 'new-plan'])
+  })
+
+  it('resumes an existing job without creating another submission and supports cancellation', async () => {
+    const request = vi.fn(async () => ({ job: { id: 'job-1', status: 'applied', planVersion: 2 } }))
+    const updates = []
+    const job = await pollExistingAiJob({ request, job: { id: 'job-1', status: 'running' }, wait: async () => {}, onUpdate: value => updates.push(value) })
+    expect(request).toHaveBeenCalledWith('/api/ai/job?id=job-1')
+    expect(request).not.toHaveBeenCalledWith('/api/ai/jobs', expect.anything())
+    expect(job.status).toBe('applied')
+    expect(updates.at(-1).status).toBe('applied')
+
+    const controller = new AbortController(); controller.abort()
+    await expect(pollExistingAiJob({ request, job: { id: 'job-2', status: 'running' }, wait: async () => {}, signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' })
   })
 
   it('keeps two distinct AI sessions scheduled on the same day', () => {

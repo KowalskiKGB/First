@@ -58,8 +58,10 @@ describe('schedule sheets with rest preference and managed availability', () => 
 
     const markup = openedMarkup()
     const routineStart = markup.indexOf('AI Monday')
-    const restStart = markup.indexOf('Rest / skip this day')
+    const restStart = markup.indexOf('Prefer rest for this day')
 
+    expect(restStart).toBeGreaterThan(routineStart)
+    expect(markup).not.toContain('Rest / skip this day')
     expect(markup.slice(routineStart, restStart)).toContain('data-icon="check"')
     expect(markup.slice(restStart)).not.toContain('data-icon="check"')
   })
