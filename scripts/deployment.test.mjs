@@ -25,8 +25,11 @@ test('the deployment template is complete and builds only this repository', () =
   assert.match(compose, /FIRST_BOOTSTRAP_MIDDLEWARE/)
   assert.match(compose, /PathPrefix\(`\/media\/`\)/)
   assert.match(compose, /first-media-\$\{COOLIFY_RESOURCE_UUID/)
+  assert.match(compose, /first-assetlinks-\$\{COOLIFY_RESOURCE_UUID/)
+  assert.match(compose, /Path\(`\/\.well-known\/assetlinks\.json`\)/)
   assert.match(compose, /priority=1000/)
   assert.match(compose, /priority=1100/)
+  assert.match(compose, /priority=1200/)
   assert.doesNotMatch(compose, /first-media-[^\n]+\.tls\.certresolver/)
   assert.doesNotMatch(compose, /first-secure-[^\n]+\.tls\.certresolver/)
 
@@ -51,6 +54,29 @@ test('the deployment template is complete and builds only this repository', () =
   const capacitor = JSON.parse(read('frontend/capacitor.config.json'))
   assert.equal(capacitor.appName, 'First')
   assert.equal(capacitor.appId, 'com.kowalskikgb.first')
+  assert.equal(capacitor.server.hostname, 'first.rocketxsistemas.com.br')
+  assert.equal(capacitor.server.androidScheme, 'https')
+
+  const androidActivity = read('frontend/android/app/src/main/java/com/kowalskikgb/first/MainActivity.java')
+  const androidGradle = read('frontend/android/app/build.gradle')
+  const androidManifest = read('frontend/android/app/src/main/AndroidManifest.xml')
+  const androidStrings = read('frontend/android/app/src/main/res/values/strings.xml')
+  assert.match(androidActivity, /WebSettingsCompat\.setWebAuthenticationSupport/)
+  assert.match(androidActivity, /WEB_AUTHENTICATION_SUPPORT_FOR_APP/)
+  assert.match(androidGradle, /androidx\.credentials:credentials:/)
+  assert.match(androidGradle, /androidx\.credentials:credentials-play-services-auth:/)
+  assert.match(androidGradle, /androidx\.webkit:webkit:/)
+  assert.match(androidManifest, /android:name="asset_statements"/)
+  assert.match(androidManifest, /android:autoVerify="true"/)
+  assert.match(androidStrings, /https:\/\/first\.rocketxsistemas\.com\.br\/\.well-known\/assetlinks\.json/)
+
+  const assetLinks = JSON.parse(read('frontend/public/.well-known/assetlinks.json'))
+  assert.equal(assetLinks[0].target.package_name, 'com.kowalskikgb.first')
+  assert.deepEqual(assetLinks[0].relation, [
+    'delegate_permission/common.handle_all_urls',
+    'delegate_permission/common.get_login_creds',
+  ])
+  assert.ok(assetLinks[0].target.sha256_cert_fingerprints.includes('68:53:78:BE:95:E1:77:88:94:92:2A:A3:9E:39:81:5B:F4:93:A4:1B:40:09:1B:C7:D9:CF:F9:85:E2:E6:93:21'))
 
   const manifest = JSON.parse(read('frontend/public/manifest.json'))
   assert.equal(manifest.name, 'First')
@@ -64,6 +90,10 @@ test('the deployment template is complete and builds only this repository', () =
   assert.match(nginx, /real_ip_header X-Real-IP;/)
   assert.match(nginx, /zone=auth_limit:10m rate=60r\/m;/)
   assert.match(nginx, /location \^~ \/media\/[\s\S]*Cache-Control "private, no-store"/)
+
+  const serviceWorker = read('frontend/public/sw.js')
+  assert.match(serviceWorker, /const CACHE = 'first-rt-v2'/)
+  assert.match(serviceWorker, /url\.pathname\.startsWith\('\/media\/'\)/)
 
   const iosProject = read('frontend/ios/App/App.xcodeproj/project.pbxproj')
   const iosInfo = read('frontend/ios/App/App/Info.plist')
