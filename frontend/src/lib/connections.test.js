@@ -75,6 +75,8 @@ describe('explicit grants', () => {
       progressRead: false,
       measurementsWrite: false,
       liveActivityRead: false,
+      trainingProfileWrite: false,
+      aiPlanRead: false,
     })
   })
 
@@ -85,6 +87,8 @@ describe('explicit grants', () => {
       progressRead: false,
       measurementsWrite: false,
       liveActivityRead: false,
+      trainingProfileWrite: false,
+      aiPlanRead: false,
     })
   })
 
@@ -106,6 +110,8 @@ describe('explicit grants', () => {
       progressRead: true,
       measurementsWrite: false,
       liveActivityRead: false,
+      trainingProfileWrite: false,
+      aiPlanRead: false,
     })
   })
 
@@ -114,8 +120,12 @@ describe('explicit grants', () => {
   })
 
   it('provides textual labels for every permission and for no permissions', () => {
-    expect(CONNECTION_GRANTS).toHaveLength(5)
+    expect(CONNECTION_GRANTS).toHaveLength(7)
     expect(grantLabels({ workoutsRead: true })).toEqual(['Read completed workouts'])
+    expect(grantLabels({ trainingProfileWrite: true, aiPlanRead: true })).toEqual([
+      'Edit training profile',
+      'Read AI plans',
+    ])
     expect(grantLabels({})).toEqual(['No permissions granted'])
   })
 
@@ -140,6 +150,8 @@ describe('explicit grants', () => {
         progressRead: false,
         measurementsWrite: false,
         liveActivityRead: false,
+        trainingProfileWrite: false,
+        aiPlanRead: false,
       },
     })
     expect(connectionResponsePayload(studentRequest, 'trainer-1', true, { measurementsWrite: true })).toEqual({
