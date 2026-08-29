@@ -44,6 +44,14 @@ const renderGuard = () => renderToStaticMarkup(
   <MemoryRouter><PersonalGuard><span>privileged</span></PersonalGuard></MemoryRouter>,
 );
 
+const protectedRoutes = [
+  '/personal',
+  '/personal/alunos',
+  '/personal/alunos/c1',
+  '/personal/agenda',
+  '/personal/financeiro',
+];
+
 describe('PersonalGuard', () => {
   it('renders for the current real trainer', () => {
     expect(renderGuard()).toContain('privileged');
@@ -58,9 +66,19 @@ describe('PersonalGuard', () => {
     expect(renderGuard()).not.toContain('privileged');
   });
 
-  it('renders the empty retry surface after an initial load error', () => {
-    access.profile = null;
+  it.each(protectedRoutes.flatMap(path => [
+    [path, null],
+    [path, { userId: 'u1', roles: ['student'] }],
+  ]))('fails closed on %s after an error without a trainer profile', (path, profile) => {
+    access.profile = profile;
     access.error = 'network failed';
-    expect(renderGuard()).toContain('privileged');
+    const markup = renderToStaticMarkup(
+      <MemoryRouter initialEntries={[path]}>
+        <PersonalGuard><span>privileged</span></PersonalGuard>
+      </MemoryRouter>,
+    );
+
+    expect(markup).not.toContain('privileged');
+    expect(markup).toContain('role="alert"');
   });
 });

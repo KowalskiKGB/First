@@ -150,6 +150,40 @@ describe('collaboration mutation recovery', () => {
     expect(store.getState().message).toBe('Dados atualizados; repita a ação');
   });
 
+  it.each([
+    [403, 'Permissão revogada'],
+    [401, null],
+  ])('preserves fail-closed state when 409 recovery returns %s', async (status, message) => {
+    localStorage.setItem('gym_user', JSON.stringify({ id: 'u1' }));
+    localStorage.setItem('first_context', 'trainer');
+    const store = await collaborationStore();
+    store.setState({
+      ownerId: 'u1',
+      rev: 3,
+      profile: { userId: 'u1', roles: ['trainer'] },
+      workspace: { clients: [{ id: 'private' }] },
+      selected: 'c1',
+      detail: { client: { id: 'private' } },
+      context: 'trainer',
+    });
+    apiMock
+      .mockRejectedValueOnce(Object.assign(new Error('stale'), { status: 409 }))
+      .mockRejectedValueOnce(Object.assign(new Error('access lost'), { status }));
+
+    await expect(store.getState().mutate('/api/personal/client', { clientId: 'c1' }, 'PUT'))
+      .rejects.toMatchObject({ status: 409 });
+
+    expect(store.getState()).toMatchObject({
+      profile: null,
+      workspace: null,
+      detail: null,
+      context: 'student',
+      error: 'access lost',
+      message,
+    });
+    expect(localStorage.getItem('first_context')).toBeNull();
+  });
+
   it('clears privileged detail immediately after 403', async () => {
     const store = await collaborationStore();
     store.setState({ ownerId: 'u1', rev: 3, profile: { userId: 'u1', roles: ['trainer'] }, workspace: { clients: [{ id: 'secret' }] }, detail: { client: { id: 'secret' } } });
