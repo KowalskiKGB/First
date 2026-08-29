@@ -22,14 +22,19 @@ export function normalizeExplicitGrants(grants) {
   return Object.fromEntries(CONNECTION_GRANTS.map(({ key }) => [key, grants?.[key] === true]))
 }
 
-export const requestGrants = (actorRole, grants) =>
-  actorRole === 'student' ? normalizeExplicitGrants(grants) : {}
+function validActorRole(actorRole) {
+  if (actorRole !== 'student' && actorRole !== 'trainer') throw new TypeError('Invalid connection actor role')
+  return actorRole
+}
 
-export const connectionRequestPayload = (actorRole, shareCode, grants) => ({
-  actorRole: actorRole === 'trainer' ? 'trainer' : 'student',
-  shareCode: sanitizeShareCode(shareCode),
-  grants: requestGrants(actorRole, grants),
-})
+export function requestGrants(actorRole, grants) {
+  return validActorRole(actorRole) === 'student' ? normalizeExplicitGrants(grants) : {}
+}
+
+export function connectionRequestPayload(actorRole, shareCode, grants) {
+  const role = validActorRole(actorRole)
+  return { actorRole: role, shareCode: sanitizeShareCode(shareCode), grants: requestGrants(role, grants) }
+}
 
 export function responseGrants(connection, actorId, grants) {
   const studentAcceptsTrainerRequest = actorId === connection?.studentId
