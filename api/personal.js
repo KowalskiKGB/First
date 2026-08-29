@@ -645,14 +645,15 @@ export function buildClientDetail({ collaboration, trainerId, clientId, now, rea
     program: collaboration.programs.find(item => item.clientId === clientId && item.status === 'published') || null
   };
 }
-
 export function createPersonalRoutes({ dataDir, origin, readSession, readBody, json, readState, sendPush }) {
   const randomId = () => crypto.randomBytes(16).toString('base64url');
   const randomShareCode = () => crypto.randomBytes(16).toString('hex').toUpperCase();
   const store = createJsonStore({ file: path.join(dataDir, 'collaboration.json'), initial: INITIAL_COLLABORATION, migrate: migrateCollaboration });
   const now = () => new Date().toISOString();
   const write = (req, body, reducer) => {
-    if (process.env.NODE_ENV === 'production' && req.headers?.origin !== origin) throw fail('invalid origin', 403);
+    const mobileClient = req.headers?.['x-first-client'] === 'capacitor';
+    const trustedOrigin = req.headers?.origin === origin;
+    if (process.env.NODE_ENV === 'production' && !trustedOrigin && !(mobileClient && !req.headers?.origin)) throw fail('invalid origin', 403);
     if (!Number.isInteger(body.rev)) throw fail('rev required');
     return store.update(body.rev, reducer);
   };
@@ -701,7 +702,6 @@ export function createPersonalRoutes({ dataDir, origin, readSession, readBody, j
     requireTrainer(user);
     return readBody(req, max);
   };
-
   return {
     'GET /api/collaboration': (req, res) => withUser(req, res, user => {
       const collaboration = ensure(user);

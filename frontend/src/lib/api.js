@@ -15,7 +15,7 @@ export const webauthnOK = () => !!(window.PublicKeyCredential && navigator.crede
 
 export async function api(path, opts) {
   const headers = { 'Content-Type': 'application/json', ...(opts?.headers || {}) }
-  if (MOBILE_API) headers.Origin = API_ROOT
+  if (MOBILE_API) headers['X-First-Client'] = 'capacitor'
   const r = await fetch(API_ROOT + path, { credentials: 'include', ...opts, headers })
   const data = await r.json().catch(() => ({}))
   if (!r.ok) { const e = new Error(data.error || ('HTTP ' + r.status)); e.status = r.status; throw e }

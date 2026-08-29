@@ -58,12 +58,12 @@ function routeFixture(t, state, options = {}) {
   };
 }
 
-async function invoke(fixture, key, { user, body, origin, url } = {}) {
+async function invoke(fixture, key, { user, body, origin, url, headers = {} } = {}) {
   const handler = fixture.routes[key];
   assert.equal(typeof handler, 'function', `missing route ${key}`);
   const req = {
     url: url || key.slice(key.indexOf(' ') + 1),
-    headers: origin === undefined ? {} : { origin },
+    headers: origin === undefined ? headers : { ...headers, origin },
     user,
     body
   };
@@ -104,6 +104,27 @@ test('production writes accept only the exact configured Origin', async t => {
       body: { rev: 0, name: 'Aluno' }
     });
     assert.equal(res.status, 200);
+  });
+
+  await t.test('Capacitor native client without browser Origin', async t2 => {
+    const fixture = routeFixture(t2, collaboration({ profiles: [profile('trainer-a', ['student', 'trainer'])] }));
+    const res = await invoke(fixture, 'POST /api/personal/clients', {
+      user: { id: 'trainer-a' },
+      headers: { 'x-first-client': 'capacitor' },
+      body: { rev: 0, name: 'Aluno' }
+    });
+    assert.equal(res.status, 200);
+  });
+
+  await t.test('Capacitor marker never overrides a conflicting browser Origin', async t2 => {
+    const fixture = routeFixture(t2, collaboration({ profiles: [profile('trainer-a', ['student', 'trainer'])] }));
+    const res = await invoke(fixture, 'POST /api/personal/clients', {
+      user: { id: 'trainer-a' },
+      origin: 'https://evil.example',
+      headers: { 'x-first-client': 'capacitor' },
+      body: { rev: 0, name: 'Aluno' }
+    });
+    assert.equal(res.status, 403);
   });
 
   for (const [label, origin] of [['wrong Origin', 'https://evil.example'], ['missing Origin', undefined]]) {
