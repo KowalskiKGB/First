@@ -13,5 +13,6 @@ export default defineConfig({
       '/media': { target: media, changeOrigin: true }
     }
   },
+  test: { include: ['src/**/*.test.{js,jsx}'] },
   build: { chunkSizeWarningLimit: 1500 }
 })

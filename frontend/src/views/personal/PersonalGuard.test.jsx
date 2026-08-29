@@ -9,6 +9,7 @@ const access = vi.hoisted(() => ({
   profile: { userId: 'u1', roles: ['trainer'] },
   ownerId: 'u1',
   error: null,
+  message: null,
 }));
 
 vi.mock('../../store/useStore.js', () => ({
@@ -19,6 +20,7 @@ vi.mock('../../store/useCollaboration.js', () => ({
     profile: access.profile,
     ownerId: access.ownerId,
     error: access.error,
+    message: access.message,
     setContext: vi.fn(),
   }),
 }));
@@ -37,6 +39,7 @@ beforeEach(() => {
     profile: { userId: 'u1', roles: ['trainer'] },
     ownerId: 'u1',
     error: null,
+    message: null,
   });
 });
 
@@ -80,5 +83,19 @@ describe('PersonalGuard', () => {
 
     expect(markup).not.toContain('privileged');
     expect(markup).toContain('role="alert"');
+  });
+
+  it('redirects away from the personal area after explicit permission revocation', () => {
+    access.profile = null;
+    access.error = 'forbidden';
+    access.message = 'PermissÃ£o revogada';
+    const markup = renderToStaticMarkup(
+      <MemoryRouter initialEntries={['/personal/alunos/c1/medidas']}>
+        <PersonalGuard><span>privileged</span></PersonalGuard>
+      </MemoryRouter>,
+    );
+
+    expect(markup).not.toContain('privileged');
+    expect(markup).not.toContain('role="alert"');
   });
 });

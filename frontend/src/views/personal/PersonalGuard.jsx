@@ -15,16 +15,23 @@ export default function PersonalGuard({ children }) {
   const ownerId = useCollaboration(state => state.ownerId);
   const loading = useCollaboration(state => state.loading);
   const error = useCollaboration(state => state.error);
+  const message = useCollaboration(state => state.message);
   const context = useCollaboration(state => state.context);
   const setContext = useCollaboration(state => state.setContext);
   const load = useCollaboration(state => state.load);
   const allowed = canEnterPersonal({ user, isGuest, mobile: MOBILE, profile, ownerId });
+  const permissionRevoked = message === 'Permission revoked'
+    || message === t('Permission revoked')
+    || /revogada/i.test(String(message || ''));
 
   useEffect(() => {
     if (allowed && context !== 'trainer') setContext('trainer', user);
   }, [allowed, context, setContext, user]);
 
   if (allowed) return children;
+  if (user?.id && !isGuest && !MOBILE && ownerId === user.id && permissionRevoked) {
+    return <Navigate to="/home" replace />;
+  }
   if (user?.id && !isGuest && !MOBILE && ownerId === user.id && error) {
     return (
       <div className="empty" role="alert">

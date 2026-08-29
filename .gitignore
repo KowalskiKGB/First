@@ -13,6 +13,9 @@ node_modules/
 dist/
 build/
 coverage/
+test-results/
+playwright-report/
+blob-report/
 .gradle/
 frontend/android/app/build/
 

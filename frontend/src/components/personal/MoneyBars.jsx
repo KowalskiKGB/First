@@ -10,8 +10,9 @@ const monthName = period => {
 const cents = value => Number.isSafeInteger(value) && value >= 0 ? value : 0
 
 export default function MoneyBars({ months = [] }) {
-  const rows = months.slice(-6).map(month => ({
-    period: month.period,
+  const rows = months.slice(-6).map((month, index) => ({
+    id: `${month.period || month.month || 'month'}-${index}`,
+    period: month.period || month.month,
     expectedCents: cents(month.expectedCents),
     receivedCents: cents(month.receivedCents),
   }))
@@ -25,7 +26,7 @@ export default function MoneyBars({ months = [] }) {
       {rows.length ? (
         <div className="money-bars-chart" aria-hidden="true">
           {rows.map(row => (
-            <div className="money-bars-month" key={row.period}>
+            <div className="money-bars-month" key={row.id}>
               <span className="money-bars-label">{monthName(row.period)}</span>
               <div className="money-bars-line expected">
                 <span className="money-bars-fill" style={{ width: widthOf(row.expectedCents) }} />
@@ -49,7 +50,7 @@ export default function MoneyBars({ months = [] }) {
           </thead>
           <tbody>
             {rows.map(row => (
-              <tr key={row.period}>
+              <tr key={row.id}>
                 <th scope="row">{monthName(row.period)}</th>
                 <td>{formatBRL(row.expectedCents)}</td>
                 <td>{formatBRL(row.receivedCents)}</td>
