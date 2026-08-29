@@ -59,6 +59,22 @@ describe('program helpers', () => {
     expect(searchExerciseCatalog(catalogue, 'supino', localizedName)).toEqual([])
   })
 
+  it('preserves and bounds canonical repetition ranges without changing integers', () => {
+    const normalized = normalizeProgram({
+      routines: [{
+        id: 'routine-1',
+        ex: [
+          { id: 'range', reps: '8-12' },
+          { id: 'bounded-range', reps: ' 008 - 1200 ' },
+          { id: 'integer', reps: 12 },
+          { id: 'reversed', reps: '12-8' },
+        ],
+      }],
+    })
+
+    expect(normalized.routines[0].ex.map(exercise => exercise.reps)).toEqual(['8-12', '8-999', 12, 10])
+  })
+
   it('reorders without mutating the original array', () => {
     const original = Object.freeze(['a', 'b', 'c'])
 
@@ -153,5 +169,12 @@ describe('controlled form markup', () => {
     }))
 
     expect(markup).toMatch(/name="paidOn"[^>]*value="2026-08-29"/)
+  })
+
+  it('starts a new receivable with a blank amount and disabled save', () => {
+    const markup = renderToStaticMarkup(React.createElement(ReceivableForm, { clients, onSubmit: vi.fn() }))
+
+    expect(markup).toMatch(/name="receivableAmount"[^>]*value=""/)
+    expect(markup).toMatch(/<button[^>]*disabled[^>]*><span>Salvar cobrança<\/span><\/button>/)
   })
 })
