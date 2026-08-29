@@ -1,0 +1,33 @@
+# Runtime configuration and secrets
+.env
+.env.*
+!.env.example
+data/
+
+# Downloaded third-party exercise media
+media/
+
+# Dependencies and generated output
+node_modules/
+dist/
+build/
+coverage/
+.gradle/
+frontend/android/app/build/
+
+# Local tooling
+graphify-out/
+.codex/
+
+# Signing material
+*.jks
+*.keystore
+*.p12
+*.pem
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
