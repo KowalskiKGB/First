@@ -217,6 +217,13 @@ test('student request captures only explicit boolean grants and trainer cannot w
   });
   assert.equal(accepted.status, 200);
   assert.deepEqual(accepted.body.connections[0].grants, requested.body.connections[0].grants);
+
+  const ended = await invoke(fixture, 'POST /api/connections/end', {
+    user: { id: 'trainer-a' },
+    body: { rev: 2, connectionId: requested.body.connections[0].id }
+  });
+  assert.deepEqual({ status: ended.status, body: ended.body }, { status: 200, body: { rev: 3 } });
+  assert.equal(fixture.read().connections[0].status, 'ended');
 });
 
 test('trainer request receives only grants explicitly consented by the student on accept', async t => {

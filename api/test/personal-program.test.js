@@ -79,4 +79,3 @@ test('program history keeps only the latest twenty bounded versions', () => {
   assert.equal(program.versions.length, 20);
   assert.deepEqual(program.versions.map(item => item.version), Array.from({ length: 20 }, (_, index) => index + 6));
 });
-

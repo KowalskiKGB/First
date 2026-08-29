@@ -124,6 +124,27 @@ test('receivable calendar values must be real dates and months', () => {
   }), /invalid receivable/);
 });
 
+test('a trainer cannot create duplicate receivables for the same client period', () => {
+  const { collaboration, client, randomId } = managedFixture();
+  const first = saveReceivable({
+    collaboration,
+    actorId: 'trainer-a',
+    clientId: client.id,
+    data: { period: '2026-08', dueOn: '2026-08-31', amountCents: 1000 },
+    now: NOW,
+    randomId
+  });
+
+  assert.throws(() => saveReceivable({
+    collaboration: first.collaboration,
+    actorId: 'trainer-a',
+    clientId: client.id,
+    data: { period: '2026-08', dueOn: '2026-08-30', amountCents: 2000 },
+    now: NOW,
+    randomId
+  }), /receivable already exists/);
+});
+
 test('custom availability derives slots in the trainer timezone', () => {
   const collaboration = state({
     profiles: [profile('trainer-a', 'Europe/Lisbon')],
@@ -144,6 +165,25 @@ test('custom availability derives slots in the trainer timezone', () => {
     startsAt: '2026-08-31T07:00:00.000Z',
     endsAt: '2026-08-31T07:30:00.000Z'
   });
+});
+
+test('invalid trainer timezone falls back to the application timezone', () => {
+  const collaboration = state({ profiles: [profile('trainer-a', 'Mars/Olympus')] });
+
+  const workspace = buildWorkspace({
+    collaboration,
+    trainerId: 'trainer-a',
+    now: NOW,
+    readState: () => null
+  });
+  const expected = buildWorkspace({
+    collaboration: state({ profiles: [profile('trainer-a', 'America/Fortaleza')] }),
+    trainerId: 'trainer-a',
+    now: NOW,
+    readState: () => null
+  });
+
+  assert.deepEqual(workspace.agenda.openSlots, expected.agenda.openSlots);
 });
 
 test('active relationship authorizes trainer-owned operations independently from plansWrite', () => {
@@ -222,6 +262,12 @@ test('availability route validates intervals and replaces only the actor schedul
     availability: [{ trainerId: 'trainer-b', weekday: 2, start: '09:00', end: '12:00', slotMinutes: 60 }]
   });
   const fixture = routeFixture(t, initial);
+
+  const malformed = await invoke(fixture, 'PUT /api/personal/availability', {
+    rev: 0,
+    availability: [{ weekday: 7, start: '08:00', end: '10:00', slotMinutes: 30 }]
+  });
+  assert.equal(malformed.status, 400);
 
   const invalid = await invoke(fixture, 'PUT /api/personal/availability', {
     rev: 0,

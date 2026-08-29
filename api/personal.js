@@ -5,9 +5,9 @@ import { createJsonStore, RevisionConflictError } from './lib/json-store.js';
 import { INITIAL_COLLABORATION, migrateCollaboration } from './domain/schema.js';
 
 const DEFAULT_GRANTS = {
-  plansWrite: true,
-  workoutsRead: true,
-  progressRead: true,
+  plansWrite: false,
+  workoutsRead: false,
+  progressRead: false,
   measurementsWrite: false,
   liveActivityRead: false
 };
@@ -56,6 +56,9 @@ const boundedInteger = (value, min, max, fallback) => {
   const number = Number(value);
   return Number.isInteger(number) ? Math.max(min, Math.min(max, number)) : fallback;
 };
+const explicitGrants = grants => Object.fromEntries(
+  Object.keys(DEFAULT_GRANTS).map(key => [key, grants?.[key] === true])
+);
 
 function appendAudit(collaboration, entry) {
   return {
@@ -133,7 +136,7 @@ function requireTrainerAccess(collaboration, actorId, clientId, action = RELATIO
   return client;
 }
 
-export function requestConnection({ collaboration, actorId, shareCode, now, randomId }) {
+export function requestConnection({ collaboration, actorId, shareCode, grants = {}, now, randomId }) {
   const code = text(shareCode, 80).toUpperCase();
   const target = collaboration.profiles.find(profile =>
     /^[A-F0-9]{32}$/.test(profile.shareCode || '') &&
@@ -153,7 +156,7 @@ export function requestConnection({ collaboration, actorId, shareCode, now, rand
     trainerId,
     requestedBy: actorId,
     status: 'pending',
-    grants: { ...DEFAULT_GRANTS },
+    grants: explicitGrants(actorIsTrainer ? {} : grants),
     createdAt: now,
     respondedAt: null,
     endedAt: null
@@ -167,8 +170,11 @@ export function respondConnection({ collaboration, actorId, connectionId, accept
   const connection = collaboration.connections.find(item => item.id === connectionId && item.status === 'pending');
   if (!connection) throw fail('connection not found', 404);
   if (connection.requestedBy === actorId || ![connection.studentId, connection.trainerId].includes(actorId)) throw fail('forbidden', 403);
+  if (accept && collaboration.connections.some(item =>
+    item.id !== connection.id && item.studentId === connection.studentId && item.status === 'active'
+  )) throw fail('student already linked', 409);
   const merged = actorId === connection.studentId
-    ? { ...connection.grants, ...Object.fromEntries(Object.keys(DEFAULT_GRANTS).map(key => [key, grants[key] === undefined ? connection.grants[key] : !!grants[key]])) }
+    ? explicitGrants(grants)
     : { ...connection.grants };
   const status = accept ? 'active' : 'ended';
   let nextConnection = { ...connection, status, grants: merged, respondedAt: now, endedAt: accept ? null : now };
@@ -700,7 +706,9 @@ export function createPersonalRoutes({ dataDir, origin, readSession, readBody, j
     'GET /api/collaboration': (req, res) => withUser(req, res, user => {
       const collaboration = ensure(user);
       const profile = collaboration.profiles.find(item => item.userId === user.id);
-      const clientIds = new Set(collaboration.clients.filter(item => item.studentUserId === user.id).map(item => item.id));
+      const clientIds = new Set(collaboration.clients
+        .filter(item => item.studentUserId === user.id && activeConnection(collaboration, item))
+        .map(item => item.id));
       json(res, 200, {
         rev: collaboration.rev,
         profile,
@@ -719,7 +727,7 @@ export function createPersonalRoutes({ dataDir, origin, readSession, readBody, j
     }),
     'POST /api/connections/request': async (req, res) => withUser(req, res, async user => {
       const body = await readBody(req, COMMON_BODY);
-      const result = write(req, body, state => requestConnection({ collaboration: state, actorId: user.id, shareCode: body.shareCode, now: now(), randomId }).collaboration);
+      const result = write(req, body, state => requestConnection({ collaboration: state, actorId: user.id, shareCode: body.shareCode, grants: body.grants || {}, now: now(), randomId }).collaboration);
       json(res, 200, { rev: result.rev, connections: result.connections.filter(item => item.studentId === user.id || item.trainerId === user.id) });
     }),
     'POST /api/connections/respond': async (req, res) => withUser(req, res, async user => {
