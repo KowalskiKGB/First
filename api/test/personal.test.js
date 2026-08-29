@@ -125,7 +125,7 @@ test('workspace flags missing and stale body measurements for attention', () => 
     status: 'active',
     grants: { progressRead: true }
   }));
-  const workouts = Array.from({ length: 12 }, () => ({ d: '2026-08-28', vol: 1000 }));
+  const workouts = Array.from({ length: 12 }, (_, index) => ({ d: `2026-08-${String(17 + index).padStart(2, '0')}`, vol: 1000 }));
   const collaboration = {
     ...structuredClone(INITIAL_COLLABORATION),
     clients,

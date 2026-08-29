@@ -20,6 +20,18 @@ import {
 } from './personal-forms.js'
 
 describe('program helpers', () => {
+  it('copies AI-managed routines as independent manual routines without managed metadata', () => {
+    const source = {
+      id: 'ai-routine', name: 'Treino IA', _aiGenerated: true, _aiPlanId: 'plan-1', _aiVersion: 3,
+      ex: [{ id: '0043', _aiExerciseId: 'generated-1', sets: 3, reps: 10 }],
+    }
+
+    const copy = timeZoneForms.copyPersonalRoutine(source, 'manual-copy')
+
+    expect(copy).toEqual({ id: 'manual-copy', name: 'Treino IA', ex: [{ id: '0043', sets: 3, reps: 10 }] })
+    expect(source).toHaveProperty('_aiGenerated', true)
+  })
+
   it('normalizes a program into a bounded payload without catalogue data', () => {
     const source = {
       id: 'program-1',
