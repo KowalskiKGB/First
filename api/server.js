@@ -489,20 +489,21 @@ const routes = {
     const prompt = buildWorkoutPrompt({ state: mergedState, profile, candidates, generatedAt });
     const startedAt = Date.now();
     let generated;
+    let normalized;
     try {
       generated = await runStructuredOutput(provider, { masterKey: AI_MASTER_KEY, prompt, schema: WORKOUT_SCHEMA });
+      normalized = normalizeAiWorkout(generated.value, candidates, { existingIds: (state.routines || []).map(routine => routine.id) });
       db.aiUsage = recordAiUsage(db.aiUsage, generated.usage, {
         status: 'success', latencyMs: Date.now() - startedAt, timestamp: generatedAt
       });
       saveDb();
-    } catch (error) {
+    } catch {
       db.aiUsage = recordAiUsage(db.aiUsage, {
         provider: provider.provider, model: provider.selectedModel, inputTokens: 0, outputTokens: 0, totalTokens: 0
       }, { status: 'failed', latencyMs: Date.now() - startedAt, timestamp: generatedAt });
       saveDb();
-      throw requestError(error.message, 502);
+      throw requestError('AI provider request failed', 502);
     }
-    const normalized = normalizeAiWorkout(generated.value, candidates, { existingIds: (state.routines || []).map(routine => routine.id) });
     const nextState = applyAiWorkout(mergedState, normalized, generatedAt);
     atomicWrite(stateFile(user.id), JSON.stringify(nextState));
     json(res, 200, {
@@ -586,6 +587,7 @@ const routes = {
   'PUT /api/dev/ai/active': async (req, res) => {
     if (!requireDev(req, res)) return;
     if (!requireTrustedWrite(req, res)) return;
+    if (!aiConfigurationEnabled()) return json(res, 503, { error: 'AI configuration disabled' });
     const body = await readBody(req);
     try {
       const activated = activateProvider(db.aiProviders, body.provider);

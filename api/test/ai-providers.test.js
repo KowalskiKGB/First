@@ -107,7 +107,7 @@ test('failed structured slot test is persisted as failed and cannot become activ
     fetchImpl: async () => new Response(JSON.stringify({ content: [{ type: 'text', text: '{"ok":false}' }] }), { status: 200 })
   });
   assert.equal(tested.provider.testStatus, 'failed');
-  assert.match(tested.error, /validation/);
+  assert.equal(tested.error, 'AI provider test failed');
   assert.throws(() => activateProvider(tested.records, 'anthropic'), /successful test/);
 });
 

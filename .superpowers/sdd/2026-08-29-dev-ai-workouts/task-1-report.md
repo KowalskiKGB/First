@@ -145,3 +145,35 @@ O baseline `2658eb5` introduziu `initialPassword`, fallback para qualquer provid
 3. A suíte frontend completa mantém duas falhas ligadas ao WIP não commitado, embora o build requerido passe.
 4. O aviso de bundle grande do Vite permanece fora do escopo desta tarefa.
 5. Nenhum deploy, push, chamada paga ou alteração de credencial externa foi executado.
+
+## Fix round 1/5 — findings Important
+
+Base revisada: `97ae279`.
+
+### Escopo corrigido
+
+1. Saídas malformadas de providers não propagam mais conteúdo bruto por `SyntaxError`, DTO de teste, resposta de geração ou log 5xx. O parse converte falhas para `AI provider returned invalid structured output`; o teste de slot retorna apenas `AI provider test failed`; a geração captura também erros semânticos de `normalizeAiWorkout` e expõe somente `AI provider request failed`.
+2. `PUT /api/dev/ai/active` agora verifica `aiConfigurationEnabled()` antes de ler/mutar o body e retorna `503` quando `AI_CONFIG_MASTER_KEY` está ausente ou inválida.
+
+### RED sentinel
+
+Comando:
+
+```text
+npm test -- --test-name-pattern="malformed provider output|activation fails closed|generation never forwards"
+```
+
+Resultado: 3 falhas esperadas. O erro de parse continha `SENTINEL_PROVIDER_SECRET_PROMPT_RESPONSE`; a rota de ativação não possuía o guard; a geração encaminhava `error.message`.
+
+Checkpoint RED: `ddb525f` (`test: reproduce Dev AI error disclosure`).
+
+### GREEN e regressão
+
+- Teste focado: 12/12 PASS.
+- `cd api && npm test`: 100/100 PASS.
+- `cd api && npm run test:coverage`: 100/100 PASS; global 99,93% linhas / 81,54% branches / 92,90% funções.
+- `ai-providers.js`: 100% linhas / 80,61% branches / 94% funções.
+
+### Limites
+
+Somente os dois findings Important desta rodada foram tratados. Findings Minor permaneceram intocados conforme instrução.

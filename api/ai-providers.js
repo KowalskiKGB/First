@@ -5,6 +5,8 @@ const MASTER_KEY_PATTERN = /^[0-9a-fA-F]{64}$/;
 const TEST_SCHEMA = Object.freeze({
   type: 'object', additionalProperties: false, required: ['ok'], properties: { ok: { type: 'boolean' } }
 });
+const INVALID_STRUCTURED_OUTPUT = 'AI provider returned invalid structured output';
+const PROVIDER_TEST_FAILED = 'AI provider test failed';
 
 function masterKey(value) {
   if (!MASTER_KEY_PATTERN.test(String(value || ''))) {
@@ -166,7 +168,8 @@ function parseStructured(value) {
   if (value && typeof value === 'object') return value;
   const source = String(value || '').trim();
   const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(source);
-  return JSON.parse((fenced ? fenced[1] : source).trim());
+  try { return JSON.parse((fenced ? fenced[1] : source).trim()); }
+  catch { throw new Error(INVALID_STRUCTURED_OUTPUT); }
 }
 
 function normalizedUsage(provider, model, data) {
@@ -215,10 +218,10 @@ export async function testProvider(records, providerValue, options) {
     const next = { ...slot, testedAt, testStatus: 'success', active: false };
     const nextRecords = records.map(record => record.provider === provider ? next : record);
     return { records: nextRecords, provider: publicSlot(next, []), usage: result.usage };
-  } catch (error) {
+  } catch {
     const next = { ...slot, testedAt, testStatus: 'failed', active: false };
     const nextRecords = records.map(record => record.provider === provider ? next : record);
-    return { records: nextRecords, provider: publicSlot(next, []), error: error.message };
+    return { records: nextRecords, provider: publicSlot(next, []), error: PROVIDER_TEST_FAILED };
   }
 }
 

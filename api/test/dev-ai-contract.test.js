@@ -43,5 +43,8 @@ test('activation fails closed when the AI master key is unavailable', () => {
 });
 
 test('generation never forwards raw provider error messages to DTOs or 5xx logs', () => {
-  assert.doesNotMatch(routeBody('POST /api/ai/workout/generate'), /requestError\(error\.message/);
+  const body = routeBody('POST /api/ai/workout/generate');
+  assert.doesNotMatch(body, /requestError\(error\.message/);
+  assert.ok(body.indexOf('normalized = normalizeAiWorkout') > body.indexOf('try {'));
+  assert.ok(body.indexOf('normalized = normalizeAiWorkout') < body.indexOf('} catch'));
 });
