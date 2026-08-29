@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { normalizeScheduleState, scheduledRoutineOptions } from './schedule.js'
+import { activeSourceMetadata, normalizeScheduleState, scheduledRoutineOptions } from './schedule.js'
 
 const routines = [
   { id: 'manual', name: 'Manual', ex: [] },
@@ -51,6 +51,15 @@ describe('scheduledRoutineOptions', () => {
 
     expect(options).toHaveLength(3)
     expect(options.filter(option => option.routineId === 'personal-a')).toHaveLength(1)
+  })
+})
+
+describe('activeSourceMetadata', () => {
+  it('carries origin metadata into active and completed workouts', () => {
+    expect(activeSourceMetadata({ routineId: 'ai-a', sourceType: 'ai', planId: 'ai-plan', version: 3 })).toEqual({
+      sourceType: 'ai', planId: 'ai-plan', version: 3,
+    })
+    expect(activeSourceMetadata('manual')).toEqual({ sourceType: 'manual', planId: null, version: null })
   })
 })
 

@@ -65,7 +65,8 @@ describe('account collaboration cleanup', () => {
     expect(store.getState().S.routines).toEqual([
       expect.objectContaining({ id: 'personal-p1-a', name: 'Treino A', _personalProgramId: 'p1' }),
     ]);
-    expect(store.getState().S.week[2]).toBe('personal-p1-a');
+    expect(store.getState().S.week[2]).toBeUndefined();
+    expect(store.getState().S.sourceSchedules.personal[0]).toMatchObject({ planId: 'p1', week: { 2: 'personal-p1-a' } });
   });
 
   it('keeps offline mobile training available while attempting an authenticated session when online', async () => {
