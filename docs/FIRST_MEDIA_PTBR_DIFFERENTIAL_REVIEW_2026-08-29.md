@@ -16,7 +16,7 @@ Scope reviewed: exercise media delivery, pt-BR catalogue/instructions, translate
 
 ## What changed
 
-Commit range reviewed: `a721d08..working-tree`.
+Commit range reviewed: `a721d08..working-tree` plus the follow-up hardening commit.
 
 Main production surfaces:
 
@@ -24,6 +24,7 @@ Main production surfaces:
 |---|---|---|
 | Runtime media delivery | `docker-compose.yml`, `Dockerfile`, `web/nginx.conf` | Medium |
 | Mobile media packaging | `frontend/.env.mobile`, `frontend/package.json`, `frontend/scripts/copy-exercise-media.mjs` | Medium |
+| Build dependencies | `frontend/package.json`, `frontend/package-lock.json` | Medium |
 | Catalogue/i18n/search | `frontend/src/lib/i18n.js`, `frontend/src/lib/exercises.js`, `frontend/src/lib/import-csv.js`, `frontend/src/exercise-names/`, `frontend/src/instr/pt.js` | Low |
 | UI rendering | `frontend/src/components/Media.jsx`, `frontend/src/views/*`, `frontend/src/sheets.jsx`, `frontend/src/index.css` | Low |
 | Tests/docs | `*.test.*`, `README.md`, `NOTICE.md`, `docs/*` | Low |
@@ -39,9 +40,11 @@ Reviewed controls:
 - Production media download is pinned to upstream commit `7455efae41b330c265e7cd4b78dfa848e7ce5ebd`: `docker-compose.yml:13`.
 - The media initializer verifies both counts and the sorted media path-list hash before reuse/install: `docker-compose.yml:14`, `docker-compose.yml:21`, `docker-compose.yml:35`.
 - Mobile media copy refuses paths outside `frontend/dist` and child media directories: `frontend/scripts/copy-exercise-media.mjs:13`, `frontend/scripts/copy-exercise-media.mjs:21`.
+- `@capacitor/assets` was removed because it was unused in the build/test scripts and pulled vulnerable dev tooling (`sharp`/`tar`); `npm audit --audit-level=high` is now clean.
 - Public Git tracking excludes media binaries; `git ls-files media frontend/dist frontend/android/app/src/main/assets/public/media frontend/ios/App/App/public/media` returned no files.
 - Media is served same-origin, so no CSP relaxation or third-party hotlinking was introduced.
 - UI shows visible attribution for exercise visuals: `frontend/src/components/Media.jsx:29`.
+- The animation frame is a real button with an accessible label, image dimensions, and reduced-motion users start from the still frame: `frontend/src/components/Media.jsx`.
 
 ## Residual risk
 
@@ -65,7 +68,8 @@ Manual/interactive checks:
 - Android debug APK built, installed, launched, and inspected on `SM_S936B`.
 - Android screenshot confirmed PT-BR UI and exercise media rendering.
 - Local preview confirmed `media/img/...` and `media/gif/...` requests returning HTTP 200.
-- Chrome console had no warnings/errors after the final accessibility fix.
+- Local preview confirmed `supino barra` resolves to `Supino reto com barra` with no console errors.
+- `npm audit --audit-level=high` in `frontend/` and `npm audit --omit=dev --audit-level=high` in `api/` both passed after removing unused vulnerable dev tooling.
 
 ## Methodology
 
