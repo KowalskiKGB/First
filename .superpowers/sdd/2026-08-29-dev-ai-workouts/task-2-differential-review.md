@@ -110,3 +110,26 @@ The baseline authorization flow (`activeConnection` -> `authorize` -> `requireTr
 **Techniques:** Baseline/current diff, git history of authorization and grant helpers, call-site count, Graphify structural mapping, fail-open/default scan, attacker modeling, negative HTTP/pure tests, coverage review and dependency audit.
 
 **Limitations:** No deployment, external provider call or browser E2E was run; Task 2 changes no UI surface beyond grant metadata. Confidence is high for the reviewed local scope.
+
+## Fix Round 1 Differential Review
+
+**Reviewed range:** `42e158d..bcaa842`
+
+**Risk:** High (persisted authorization data and cross-user projections)
+
+**Recommendation:** Approve; no open Critical, High, Medium or Low finding in this fix range.
+
+### Security analysis
+
+- `migrateCollaboration` is the store-wide migration boundary. It now converts every known grant to an exact boolean and discards unknown grant keys, so persisted strings, numbers, arrays and objects cannot become permissions.
+- `authorize` has two production call sites and now requires `=== true`; `buildWorkspace` has eight production call sites beyond its definition and uses the same strict boundary for every affected projection.
+- The concrete attacker case is an authenticated Personal linked through a malformed persisted active connection. Values such as `trainingProfileWrite: "yes"` and `aiPlanRead: "yes"` previously enabled a profile write or private plan projection; the focused negative test now proves the write is forbidden, no state read occurs, and all protected projections remain absent.
+- AI-plan retention is store-wide but does not widen access. Normalized plans are ordered by numeric version, then canonical timestamp and ID, before the newest ten per student are retained. The unsorted/tied regression proves deterministic, idempotent selection.
+- History review found that the permissive grant check originated in `11f05a8` and physical-order retention in `b7237b6`; neither was a reintroduction of a prior security removal. This range removes no role, ownership, active-link, Origin or revision check and adds no dependency or external call.
+
+### Verification and limits
+
+- Focused regressions: 5/5 passed.
+- Full API coverage: 117/117 passed; 99.76% lines, 81.09% branches and 93.10% functions overall.
+- Dependency audit: 0 vulnerabilities.
+- Review covered all three changed code/test files plus the Task 2 report. No deployment, provider call or browser E2E was required for this backend-only correction. Confidence is high for the reviewed scope.
