@@ -114,17 +114,22 @@ describe('program helpers', () => {
           id: 'personal-program-1-routine-a',
           name: 'Treino A',
           _personalProgramId: 'program-1',
+          _personalProgramName: 'Hipertrofia',
           _personalVersion: 2,
-          ex: [{ id: '0043', sets: 4, reps: 8, weight: 0, rest: 90, note: 'Amplitude controlada' }],
+          ex: [{
+            id: '0043', sets: 4, reps: 12, repsMin: 8, repsMax: 12,
+            prog: 'double', prescribedRepsLabel: '8-12', weight: 0,
+            rest: 90, note: 'Amplitude controlada',
+          }],
         },
       ],
       week: { 0: 'manual', 1: 'personal-program-1-routine-a' },
     })
     expect(buildSets(merged, merged.routines[1].ex[0])).toEqual([
-      { w: 0, r: 8, done: false },
-      { w: 0, r: 8, done: false },
-      { w: 0, r: 8, done: false },
-      { w: 0, r: 8, done: false },
+      { w: 0, r: 12, done: false },
+      { w: 0, r: 12, done: false },
+      { w: 0, r: 12, done: false },
+      { w: 0, r: 12, done: false },
     ])
     expect(source).toEqual({ routines: [{ id: 'manual', name: 'Meu treino', ex: [] }], week: { 0: 'manual' }, workouts: [], exWeights: {} })
   })

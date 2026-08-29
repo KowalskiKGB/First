@@ -319,6 +319,11 @@ describe('setLabel — bodyweight', () => {
 })
 
 describe('exLine', () => {
+  it('shows the complete repetition range prescribed by a Personal', () => {
+    expect(exLine({ id: LIFT, sets: 4, reps: 12, repsMin: 8, repsMax: 12, prescribedRepsLabel: '8-12' }, 'kg'))
+      .toBe('4 × 8-12')
+  })
+
   it('shows the split where there is room for it, next to the total you log', () => {
     expect(exLine({ id: LIFT, sets: 3, reps: 16, side: true }, 'kg')).toBe('3 × 16 · 8/side')
   })
