@@ -15,6 +15,15 @@ describe('AI plan helpers', () => {
     expect(latestBodyWeight({ bodyweight: [{ d: '2026-08-28', w: 81 }, { d: '2026-08-29', w: 82 }] }).w).toBe(82)
   })
 
+  it('accepts a complete profile and safely handles fallback values', () => {
+    expect(latestBodyWeight({})).toBeNull()
+    expect(equipmentLabel('custom rack')).toBe('custom rack')
+    expect(aiMissingFields({
+      bodyweight: [{ d: '2026-08-29', w: 82 }],
+      aiProfile: { heightCm: 180, goal: 'Força', gymName: 'First', equipment: ['barbell'] },
+    })).toEqual([])
+  })
+
   it('labels exercise equipment in pt-BR', () => {
     expect(equipmentLabel('leverage machine')).toBe('Máquinas articuladas')
   })
