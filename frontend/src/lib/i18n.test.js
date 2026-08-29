@@ -30,6 +30,15 @@ describe('Brazilian Portuguese defaults', () => {
     expect(pt['Log body weight']).toBe('Registrar peso corporal')
   })
 
+  it('covers every equipment label used by the catalogue', () => {
+    const equipment = [...new Set(EXDB.map(ex => ex.eq).filter(Boolean))]
+
+    expect(equipment).toHaveLength(28)
+    expect(equipment.every(label => typeof pt[label] === 'string' && pt[label].trim())).toBe(true)
+    expect(pt['leverage machine']).toBe('máquina articulada')
+    expect(pt['stationary bike']).toBe('bicicleta ergométrica')
+  })
+
   it('loads pt-BR strings and formats placeholders', async () => {
     await setLang('pt')
 

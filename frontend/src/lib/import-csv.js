@@ -20,6 +20,7 @@
 
 import { EXDB, EXIDX } from './exercises.js'
 import { uid } from './format.js'
+import { exerciseName, ptExerciseName } from './i18n.js'
 
 /* ----------------------------------------------------------------- CSV ---- */
 
@@ -123,6 +124,8 @@ function wordsOf(name) {
   // Parentheses are unwrapped rather than dropped: "Bench Press (Barbell)" carries its
   // equipment in there, and the dataset writes that as "barbell bench press".
   let k = String(name || '').toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/[()[\]]/g, ' ')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
@@ -136,9 +139,12 @@ function buildIndex() {
   if (INDEX) return INDEX
   INDEX = { exact: new Map(), all: [] }
   EXDB.forEach(e => {
-    const w = wordsOf(e.n)
-    const k = w.slice().sort().join(' ')
-    if (!INDEX.exact.has(k)) INDEX.exact.set(k, e.id)
+    const variants = [...new Set([e.n, ptExerciseName(e), exerciseName(e)])]
+    variants.forEach(name => {
+      const k = keyOf(name)
+      if (!INDEX.exact.has(k)) INDEX.exact.set(k, e.id)
+    })
+    const w = [...new Set(variants.flatMap(wordsOf))]
     INDEX.all.push({ id: e.id, set: new Set(w), n: w.length })
   })
   return INDEX

@@ -10,6 +10,7 @@ import { wakeLockSupported } from '../lib/wakelock.js'
 import { DEFAULT_LANG, t, LANGS, INSTR_LANGS } from '../lib/i18n.js'
 import { APP_NAME, DEMO, REPO } from '../lib/demo.js'
 import { MOBILE, shareExport, syncReminder } from '../lib/mobile.js'
+import { mediaEnabled } from '../lib/exercises.js'
 import { loadStarterPlan, confirmSheet, importFromApp } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { Section, Row, SelectRow, Switch, Segmented, Button, TextField } from '../components/ui.jsx'
@@ -196,7 +197,8 @@ export default function Settings() {
 
     <div className="dim small" style={{ textAlign: 'center', marginTop: 4, lineHeight: 1.6 }}>
       {APP_NAME} · {t('free & open source (AGPL v3)')}<br />
-      <a href={REPO} target="_blank" rel="noopener">código-fonte</a> · dados de exercícios: hasaneyldrm/exercises-dataset (MIT; mídia não incluída)
+      <a href={REPO} target="_blank" rel="noopener">código-fonte</a> · dados de exercícios: hasaneyldrm/exercises-dataset (MIT)
+      {mediaEnabled && <><br />mídia visual: <a href="https://gymvisual.com/" target="_blank" rel="noopener noreferrer">© Gym visual</a></>}
     </div>
   </div>
 }

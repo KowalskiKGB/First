@@ -29,6 +29,8 @@ The current application includes:
 - Guest mode or passkey profiles synchronized through the self-hosted API.
 - Optional administration, invite-only registration, and Web Push reminders.
 - An installable PWA plus source for local Capacitor Android/iOS builds.
+- A catalogue of 1,324 exercises with pt-BR names and instructions, bilingual search, and visual
+  demonstrations when the separately licensed media is available.
 
 The student/trainer portal, body measurements, new starter plans, exercise notes, plate calculator,
 and percentage/training-max programming described in [PLANEJAMENTO.md](PLANEJAMENTO.md) are future
@@ -83,17 +85,17 @@ browser / PWA
 external TLS proxy
       │ HTTP on the Docker network
       ▼
-web (nginx: static React app + /api proxy)
-      │
-      ▼
-api (Node + WebAuthn) ── first-data volume (/data)
+web (nginx: static React app + /api proxy) ── first-media volume (read-only)
+      │                                      ▲
+      ▼                                      │
+api (Node + WebAuthn) ── first-data volume   media initializer (one-shot)
 ```
 
 - `frontend/` — React 19, Vite, React Router, and Zustand.
 - `api/` — Node HTTP API, passkeys, per-user JSON state, and Web Push.
 - `Dockerfile` — multi-stage frontend build and nginx runtime image.
 - `web/nginx.conf` — static app, same-origin API proxy, headers, and basic request limits.
-- `docker-compose.yml` — production services and persistent volume.
+- `docker-compose.yml` — production services plus application-data and exercise-media volumes.
 - `docker-compose.local.yml` — loopback port binding used only for local preview.
 
 ## Configuration
@@ -118,19 +120,25 @@ domain before creating production profiles.
 
 Exercise metadata and instructional text derived from
 [`hasaneyldrm/exercises-dataset`](https://github.com/hasaneyldrm/exercises-dataset) are distributed
-under that project's MIT license.
+under that project's MIT license. First includes pt-BR names and instruction sets for all 1,324
+catalogue entries. The pt-BR instructions originate from the
+[`tutods` contribution at commit `93475e2`](https://github.com/tutods/exercises-dataset/commit/93475e2982117339d2cbf88eb900ad2ceb8d97d6).
 
-Exercise images and GIFs require a separate license from their copyright holder. They are not
-included, downloaded, served, or enabled by First's default build or Compose deployment. A party
-that enables or redistributes media must obtain the necessary rights independently. See
-[NOTICE.md](NOTICE.md).
+Exercise images and GIFs require separate rights from their copyright holder and are not committed
+to this public Git repository. The production Compose deployment downloads the 1,324 JPG files and
+1,324 GIF files from the upstream dataset commit
+[`7455efa`](https://github.com/hasaneyldrm/exercises-dataset/commit/7455efae41b330c265e7cd4b78dfa848e7ce5ebd)
+into the private Docker volume `first-media`, which nginx serves on the same origin. The interface
+shows the visible attribution **© Gym visual**. Running or redistributing the media remains the
+operator's responsibility; the dataset's MIT license and First's AGPL do not grant rights to those
+visual files. See [NOTICE.md](NOTICE.md).
 
 ## Mobile builds
 
 The repository retains Capacitor projects for local Android and iOS builds, but First does not
 publish a signed APK or an iOS package. Build and signing instructions are in
-[docs/MOBILE.md](docs/MOBILE.md). The standard mobile build also leaves exercise images and GIFs
-disabled and absent.
+[docs/MOBILE.md](docs/MOBILE.md). A local Android build copies the untracked `media/` directory into
+the APK so all demonstrations remain available offline; the media binaries stay outside Git.
 
 ## Contributing and security
 

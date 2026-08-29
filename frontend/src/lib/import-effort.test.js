@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { parseWorkoutCSV } from './import-csv.js'
+import { detectSource, matchExercise, mergeImport, parseBodyweight, parseCSV, parseImport, parseWorkoutCSV } from './import-csv.js'
 import { setLabel, effortOf } from './history.js'
+import { setLang } from './i18n.js'
 
 // Headers as the real exports write them, trimmed to the columns that matter here.
 const HEVY = 'title,start_time,end_time,exercise_title,set_index,set_type,weight_kg,reps,rpe'
@@ -12,6 +13,28 @@ const rows = (head, ...lines) => parseWorkoutCSV([head, ...lines].join('\n'), { 
 const setsOf = p => p.workouts.flatMap(w => w.entries.flatMap(e => e.sets))
 
 describe('importing effort from another app', () => {
+  it('parses quoted CSV fields and recognises common exporters', () => {
+    expect(parseCSV('Date,Exercise,Notes\n2026-01-12,"Bench Press, Close Grip","a ""quoted"" note"')).toEqual([
+      ['Date', 'Exercise', 'Notes'],
+      ['2026-01-12', 'Bench Press, Close Grip', 'a "quoted" note'],
+    ])
+    expect(detectSource(HEVY.split(','))).toBe('Hevy')
+    expect(detectSource(STRONG.split(','))).toBe('Strong')
+    expect(detectSource(FITNOTES.split(','))).toBe('FitNotes')
+  })
+
+  it('reports empty and unrecognised workout exports without throwing', () => {
+    expect(parseWorkoutCSV('Date,Only Date', { unit: 'kg' })).toEqual({ error: 'empty' })
+    expect(parseWorkoutCSV('Date,Only Date\n2026-01-12,x', { unit: 'kg' })).toEqual({ error: 'unrecognised' })
+  })
+
+  it('matches Brazilian Portuguese exercise names even when the UI is in English', async () => {
+    await setLang('en')
+
+    expect(matchExercise('Supino reto com barra')).toBe('0025')
+    expect(matchExercise('Rosca bíceps com halteres')).toBe('0294')
+  })
+
   it('reads the RPE Hevy writes per set', () => {
     const p = rows(HEVY,
       'Push,"12 Jan 2026, 18:00","12 Jan 2026, 19:00",Bench Press (Barbell),0,normal,60,10,8',
@@ -144,5 +167,50 @@ describe('effort in a backup', () => {
     // the old flag survives the round trip and still decides the column
     expect(effortOf(roundTrip({ showRir: true, workouts: [], routines: [] }))).toBe('rir')
     expect(effortOf(roundTrip({ workouts: [], routines: [] }))).toBe('none')
+  })
+})
+
+describe('body-weight import and merge', () => {
+  it('imports Apple Health body-mass XML and converts lb to kg', () => {
+    const parsed = parseBodyweight(`
+      <HealthData>
+        <Record type="HKQuantityTypeIdentifierBodyMass" value="180" unit="lb" startDate="2026-01-12 07:30:00 -0300" />
+      </HealthData>
+    `, { unit: 'kg' })
+
+    expect(parsed.error).toBeUndefined()
+    expect(parsed.kind).toBe('bodyweight')
+    expect(parsed.converted).toBe(true)
+    expect(parsed.bodyweight).toEqual([{ d: '2026-01-12', w: 81.6, t: expect.any(Number) }])
+  })
+
+  it('falls back from workout CSV to body-weight CSV in parseImport', () => {
+    const parsed = parseImport('Date,Weight (kg)\n2026-01-12,82.4', { unit: 'kg' })
+
+    expect(parsed.kind).toBe('bodyweight')
+    expect(parsed.bodyweight[0]).toMatchObject({ d: '2026-01-12', w: 82.4 })
+  })
+
+  it('merges new imported days without duplicating existing state', () => {
+    const S = {
+      unit: 'kg',
+      bodyweight: [{ d: '2026-01-12', w: 80, t: 1 }],
+      workouts: [],
+      customEx: [],
+      exWeights: {},
+    }
+    const result = mergeImport(S, {
+      kind: 'bodyweight',
+      bodyweight: [
+        { d: '2026-01-12', w: 81, t: 2 },
+        { d: '2026-01-13', w: 81.5, t: 3 },
+      ],
+    })
+
+    expect(result).toEqual({ added: 1, skipped: 1 })
+    expect(S.bodyweight).toEqual([
+      { d: '2026-01-12', w: 80, t: 1 },
+      { d: '2026-01-13', w: 81.5, t: 3 },
+    ])
   })
 })

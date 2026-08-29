@@ -2,6 +2,7 @@
 // Regenerates the per-language exercise instruction packs in frontend/src/instr/
 // from the upstream dataset (hasaneyldrm/exercises-dataset). English stays inline
 // in exercises-data.js; every other language ships as its own lazy-loaded pack.
+// The pinned contribution below adds complete pt-BR steps under the `ptBR` key.
 //
 //   node scripts/build-instructions.mjs [path-to-exercises.json]
 //
@@ -11,8 +12,11 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const UPSTREAM = 'https://raw.githubusercontent.com/hasaneyldrm/exercises-dataset/main/data/exercises.json'
-const LANGS = ['es', 'fr', 'it', 'tr', 'ru', 'zh', 'hi', 'pl', 'ko']
+const UPSTREAM = 'https://raw.githubusercontent.com/tutods/exercises-dataset/93475e2982117339d2cbf88eb900ad2ceb8d97d6/data/exercises.json'
+const LANGS = {
+  es: 'es', fr: 'fr', it: 'it', tr: 'tr', ru: 'ru', zh: 'zh', hi: 'hi', pl: 'pl', ko: 'ko',
+  pt: 'ptBR',
+}
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = join(root, 'frontend', 'src', 'instr')
@@ -29,10 +33,10 @@ if (process.argv[2]) {
 const data = JSON.parse(raw)
 
 mkdirSync(outDir, { recursive: true })
-for (const lang of LANGS) {
+for (const [lang, sourceLang] of Object.entries(LANGS)) {
   const pack = {}
   for (const ex of data) {
-    const steps = ex.instruction_steps && ex.instruction_steps[lang]
+    const steps = ex.instruction_steps && ex.instruction_steps[sourceLang]
     if (steps && steps.length) pack[ex.id] = steps
   }
   const file = join(outDir, lang + '.js')

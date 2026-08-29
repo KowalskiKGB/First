@@ -1,6 +1,49 @@
 name: first
 
 services:
+  media:
+    image: alpine:3.22
+    restart: "no"
+    volumes:
+      - first-media:/out
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        MEDIA_SHA=7455efae41b330c265e7cd4b78dfa848e7ce5ebd
+        MEDIA_NAMES_SHA=73c038588404c71dd441535ce7a955d4d087575634d87712dbdbbe0f569ff000
+        MEDIA_CONTENT_SHA=84a9a354242923378e9e7dfca3026277a01a1a9fb8de57f7d2a5021d55fc215b
+        jpg_count=0
+        gif_count=0
+        names_sha=
+        content_sha=
+        if [ -d /out/img ]; then jpg_count=$$(find /out/img -maxdepth 1 -type f -name '*.jpg' | wc -l | tr -d ' '); fi
+        if [ -d /out/gif ]; then gif_count=$$(find /out/gif -maxdepth 1 -type f -name '*.gif' | wc -l | tr -d ' '); fi
+        if [ -d /out/img ] && [ -d /out/gif ]; then names_sha=$$(cd /out && find img gif -type f | sort | sha256sum | awk '{print $$1}'); fi
+        if [ "$$names_sha" = "$$MEDIA_NAMES_SHA" ]; then content_sha=$$(cd /out && find img gif -type f | sort | while IFS= read -r f; do sha256sum "$$f"; done | sha256sum | awk '{print $$1}'); fi
+        if [ "$$(cat /out/.source-commit 2>/dev/null || true)" = "$$MEDIA_SHA" ] && [ "$$jpg_count" = 1324 ] && [ "$$gif_count" = 1324 ] && [ "$$names_sha" = "$$MEDIA_NAMES_SHA" ] && [ "$$content_sha" = "$$MEDIA_CONTENT_SHA" ]; then
+          echo "Exercise media already matches $$MEDIA_SHA"
+          exit 0
+        fi
+        work=/tmp/first-exercise-media
+        stage=/out/.staging-media
+        rm -rf "$$work" "$$stage"
+        mkdir -p "$$work" "$$stage/img" "$$stage/gif"
+        wget -qO "$$work/source.tar.gz" "https://github.com/hasaneyldrm/exercises-dataset/archive/$$MEDIA_SHA.tar.gz"
+        tar -xzf "$$work/source.tar.gz" -C "$$work"
+        cp "$$work/exercises-dataset-$$MEDIA_SHA/images/"*.jpg "$$stage/img/"
+        cp "$$work/exercises-dataset-$$MEDIA_SHA/videos/"*.gif "$$stage/gif/"
+        test "$$(find "$$stage/img" -maxdepth 1 -type f -name '*.jpg' | wc -l | tr -d ' ')" = 1324
+        test "$$(find "$$stage/gif" -maxdepth 1 -type f -name '*.gif' | wc -l | tr -d ' ')" = 1324
+        test "$$(cd "$$stage" && find img gif -type f | sort | sha256sum | awk '{print $$1}')" = "$$MEDIA_NAMES_SHA"
+        test "$$(cd "$$stage" && find img gif -type f | sort | while IFS= read -r f; do sha256sum "$$f"; done | sha256sum | awk '{print $$1}')" = "$$MEDIA_CONTENT_SHA"
+        rm -rf /out/img /out/gif
+        mv "$$stage/img" /out/img
+        mv "$$stage/gif" /out/gif
+        printf '%s' "$$MEDIA_SHA" > /out/.source-commit
+        rm -rf "$$work" "$$stage"
+        echo "Installed 1,324 images and 1,324 GIFs from $$MEDIA_SHA"
+
   api:
     build: ./api
     restart: unless-stopped
@@ -28,12 +71,20 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        VITE_EXERCISE_MEDIA: "1"
+        VITE_IMG_BASE: media/img/
+        VITE_GIF_BASE: media/gif/
     restart: unless-stopped
     depends_on:
       api:
         condition: service_healthy
+      media:
+        condition: service_completed_successfully
     expose:
       - "80"
+    volumes:
+      - first-media:/usr/share/nginx/html/media:ro
     # Coolify bootstrap guard. It is inert by default; production temporarily sets
     # FIRST_BASIC_AUTH_USERS and FIRST_BOOTSTRAP_MIDDLEWARE=,first-bootstrap-auth.
     # The high-priority router prevents the generated unguarded router from winning.
@@ -52,3 +103,4 @@ services:
 
 volumes:
   first-data:
+  first-media:

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:mobile": "vite build --mode mobile && cap sync",
+    "build:mobile": "vite build --mode mobile && node scripts/copy-exercise-media.mjs && cap sync",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"

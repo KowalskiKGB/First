@@ -1,5 +1,5 @@
 import { EXDB } from './exercises-data.js'
-import { t } from './i18n.js'
+import { exerciseName, t } from './i18n.js'
 
 export { EXDB }
 export const EXIDX = {}
@@ -26,11 +26,36 @@ export function registerCustom(list) {
 // Full searchable catalogue — customs first so your own exercises are easy to find.
 export const allExercises = st => [...(st.customEx || []), ...EXDB]
 
+// Search remains bilingual: people can use either the canonical dataset term or the
+// localized gym vocabulary, plus translated body-part/equipment/muscle labels.
+export const searchKey = value => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLocaleLowerCase()
+
+export const exerciseSearchText = ex => searchKey([
+  ex?.n,
+  exerciseName(ex),
+  ex?.bp && t(ex.bp),
+  ex?.eq && t(ex.eq),
+  ex?.tg && t(ex.tg),
+  ...(Array.isArray(ex?.mg) ? ex.mg : ex?.mg ? [ex.mg] : []).map(t),
+  ...(ex?.sm || []).map(t),
+  ex?.desc,
+].filter(Boolean).join(' '))
+
+export const exerciseMatchesQuery = (ex, query) => {
+  const terms = searchKey(query).trim().split(/\s+/).filter(Boolean)
+  if (!terms.length) return true
+  const haystack = exerciseSearchText(ex)
+  return terms.every(term => haystack.includes(term))
+}
+
 // Exercise media is not covered by the dataset's MIT license. It stays off unless a deployer
 // explicitly enables media they are licensed to use and supplies the matching files or URLs.
 export const mediaEnabled = import.meta.env.VITE_EXERCISE_MEDIA === '1'
-const IMG_BASE = import.meta.env.VITE_IMG_BASE || 'img/'
-const GIF_BASE = import.meta.env.VITE_GIF_BASE || 'gif/'
+const IMG_BASE = import.meta.env.VITE_IMG_BASE || 'media/img/'
+const GIF_BASE = import.meta.env.VITE_GIF_BASE || 'media/gif/'
 export const imgSrc = ex => mediaEnabled && ex?.img ? IMG_BASE + ex.img : null
 export const gifSrc = ex => mediaEnabled && ex?.gif ? GIF_BASE + ex.gif : null
 

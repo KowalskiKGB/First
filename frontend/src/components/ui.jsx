@@ -61,10 +61,11 @@ export function TextArea({ className = '', ...rest }) {
 }
 
 export function SearchField({ value, onChange, onClear, ...rest }) {
+  const label = rest['aria-label'] || rest.placeholder || 'Search'
   return (
     <div className="searchf">
       <Icon name="magnifier" className="lead" />
-      <input className="field" value={value} onChange={onChange} {...rest} />
+      <input className="field" value={value} onChange={onChange} aria-label={label} name={rest.name || label} {...rest} />
       {!!value && (
         <button className="clear" onClick={onClear} aria-label="Clear">
           <Icon name="xmark" />
@@ -121,7 +122,7 @@ export function Stepper({ value, step = 1, onChange, decimal = true, className =
     <div className={'stp ' + className}>
       <button onClick={() => set((+value || 0) - step)} aria-label="Decrease"><Icon name="minus" /></button>
       <span className="val">
-        <NumberField value={value} decimal={decimal} onChange={onChange} />
+        <NumberField value={value} decimal={decimal} onChange={onChange} aria-label={label || 'Value'} name={label || 'value'} />
         {unit && <i>{unit}</i>}
       </span>
       <button onClick={() => set((+value || 0) + step)} aria-label="Increase"><Icon name="plus" /></button>

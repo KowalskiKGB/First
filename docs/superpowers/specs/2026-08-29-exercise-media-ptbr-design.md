@@ -21,7 +21,7 @@ Entregar no First os 1.324 exercícios com nomes, aparelhos e instruções em po
 
 ## Tradução
 
-Um pack `exercise-names/pt.js`, indexado por ID, contém exatamente 1.324 nomes. Um pack `instr/pt.js` contém exatamente 1.324 arrays e 7.710 etapas. `i18n.js` carrega locale, nomes e instruções em paralelo; `exerciseName(ex)` usa o nome traduzido e cai para `ex.n` quando não houver tradução.
+Um pack `exercise-names/pt.js`, indexado por ID, contém exatamente 1.324 nomes. Ele fica no bundle principal porque pt-BR é o idioma padrão e a busca/importação precisam desses nomes de forma síncrona. Um pack `instr/pt.js` contém exatamente 1.324 arrays e 7.710 etapas e continua lazy-loaded como os demais packs de instrução. `exerciseName(ex)` usa o nome traduzido em pt-BR e cai para `ex.n` quando não houver tradução.
 
 A busca combina nome pt-BR, nome inglês, descrição personalizada e taxonomia nos dois idiomas. Equipamentos, regiões e músculos continuam usando as chaves estáveis em inglês com tradução por `t()`; isso evita alterar filtros, importações e históricos.
 
@@ -44,4 +44,3 @@ O layout existente é preservado. A mídia volta aos cards, detalhes e treino. O
 - Teste de deploy: build args, volume privado, init fixado e montagem somente leitura.
 - E2E: biblioteca e detalhe em pt-BR com thumbnail/GIF, desktop e viewport móvel, sem erros de console.
 - Android: build Gradle, instalação via ADB, abertura no Galaxy conectado, screenshot e logcat sem crash.
-

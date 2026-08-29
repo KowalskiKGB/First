@@ -3,7 +3,9 @@ import { setLang } from './i18n.js'
 import {
   allExercises,
   equipmentOf,
+  exerciseMatchesQuery,
   exerciseSearchText,
+  searchKey,
   exOr,
   EXIDX,
   gifSrc,
@@ -68,5 +70,15 @@ describe('exercise catalogue helpers', () => {
     expect(haystack).toContain(exercise.n.toLowerCase())
     expect(haystack).toContain('supino')
     expect(haystack).toContain('barra')
+    expect(exerciseMatchesQuery(exercise, 'supino barra')).toBe(true)
+  })
+
+  it('normalizes accents for Brazilian Portuguese search terms', async () => {
+    await setLang('pt')
+    const stabilityBall = Object.values(EXIDX).find(ex => ex.eq === 'stability ball')
+
+    expect(searchKey('Flexão de tríceps na bola suíça')).toBe('flexao de triceps na bola suica')
+    expect(exerciseSearchText(EXIDX['0002'])).toContain('flexao')
+    expect(exerciseSearchText(stabilityBall)).toContain('bola suica')
   })
 })

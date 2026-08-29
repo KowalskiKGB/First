@@ -13,6 +13,7 @@ test('the deployment template is complete and builds only this repository', () =
   assert.doesNotMatch(compose, /ghcr\.io\/duartesantos8/i)
   assert.match(compose, /hasaneyldrm\/exercises-dataset/i)
   assert.match(compose, /7455efae41b330c265e7cd4b78dfa848e7ce5ebd/)
+  assert.match(compose, /73c038588404c71dd441535ce7a955d4d087575634d87712dbdbbe0f569ff000/)
   assert.match(compose, /first-media:/)
   assert.match(compose, /VITE_EXERCISE_MEDIA:\s*["']?1/)
   assert.match(compose, /media\/img\//)

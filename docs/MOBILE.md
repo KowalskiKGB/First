@@ -4,9 +4,21 @@ First includes Capacitor Android and iOS projects. This short guide covers a loc
 build; after `npm run build:mobile`, use Xcode on macOS for an iOS development build.
 
 The mobile build is standalone: no passkey login, no server sync, no telemetry. Data is
-stored on the device. First does not publish a signed APK; build artifacts are local.
+stored on the device. First does not publish a signed APK; build artifacts are local. The exercise
+catalogue contains 1,324 pt-BR names and matching pt-BR instruction sets.
 
 ## Android Debug Build
+
+Before building, provide the separately licensed media in these untracked local directories:
+
+```text
+media/img/   # 1,324 .jpg files
+media/gif/   # 1,324 .gif files
+```
+
+The filenames must match the exercise ids. `npm run build:mobile` validates the collection and
+copies it to `frontend/dist/media/` before Capacitor synchronizes the web bundle. The resulting APK
+therefore includes all 1,324 JPG previews and 1,324 animated GIF demonstrations for offline use.
 
 ```bash
 cd frontend
@@ -34,8 +46,14 @@ adb shell monkey -p com.kowalskikgb.first 1
 ## Media
 
 Exercise metadata and instructional text derived from `hasaneyldrm/exercises-dataset` remain
-under its MIT license. Images and GIFs require a separate license from their copyright holder
-and are not included, fetched, or enabled by the standard mobile build.
+under its MIT license. The pt-BR instructions come from the `tutods` contribution at commit
+[`93475e2982117339d2cbf88eb900ad2ceb8d97d6`](https://github.com/tutods/exercises-dataset/commit/93475e2982117339d2cbf88eb900ad2ceb8d97d6).
+
+Images and GIFs require separate rights from their copyright holder. They remain in the local
+ignored `media/` directory and are never added to the public Git repository. The app displays the
+visible attribution **© Gym visual**. Supplying, building, or distributing an APK containing those
+files is the builder's responsibility; neither the dataset's MIT license nor First's AGPL licenses
+the media.
 
 ## License
 

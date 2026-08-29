@@ -1,12 +1,14 @@
 # Self-hosting First
 
-First runs as two containers:
+First runs as three Compose services:
 
 - `web`: nginx serving the built React app and proxying `/api`.
 - `api`: Node server for passkeys, sessions, per-user state, admin tools, and push.
+- `media`: one-shot initializer that verifies or populates the persistent exercise-media volume.
 
 The source of this independent version is <https://github.com/KowalskiKGB/First>. The standard
-deployment builds both images from the checkout; no prebuilt container image is required.
+deployment builds the `web` and `api` images from the checkout and pulls the small initializer
+image; no prebuilt First container image is required.
 
 ## Production Deployment
 
@@ -73,7 +75,11 @@ Persist data with the named Docker volume:
 ```yaml
 volumes:
   first-data:
+  first-media:
 ```
+
+`first-data` contains application state. `first-media` contains exercise visuals and is mounted
+read-only by the `web` container.
 
 ## First Owner Account
 
@@ -101,8 +107,21 @@ Existing accounts continue working after invite-only mode is enabled.
 ## Exercise Media
 
 Exercise metadata and instructional text derived from `hasaneyldrm/exercises-dataset` remain
-under its MIT license. Images and GIFs require a separate license from their copyright holder.
-They are not included, downloaded, served, or enabled by First's default build. See
+under its MIT license. First has pt-BR names and instructions for all 1,324 exercises. The pt-BR
+instruction set comes from the `tutods` contribution at commit
+[`93475e2982117339d2cbf88eb900ad2ceb8d97d6`](https://github.com/tutods/exercises-dataset/commit/93475e2982117339d2cbf88eb900ad2ceb8d97d6).
+
+The production Compose file enables visual demonstrations. Its one-shot `media` service downloads
+exactly 1,324 JPG files and 1,324 GIF files from upstream commit
+[`7455efae41b330c265e7cd4b78dfa848e7ce5ebd`](https://github.com/hasaneyldrm/exercises-dataset/commit/7455efae41b330c265e7cd4b78dfa848e7ce5ebd),
+checks both counts, and writes them to the private named volume `first-media`. Subsequent starts
+also verify the hash of the sorted media path list before reusing the volume. The `web` service
+mounts the volume read-only and serves the files from the same origin.
+
+The media binaries are intentionally excluded from the public Git repository. Images and GIFs
+require separate rights from their copyright holder, and the application shows the visible
+attribution **© Gym visual**. Operating or redistributing the files is the deployer's
+responsibility; neither the dataset's MIT license nor First's AGPL grants media rights. See
 [NOTICE.md](../NOTICE.md).
 
 ## License

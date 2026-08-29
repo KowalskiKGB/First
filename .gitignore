@@ -20,6 +20,9 @@ frontend/android/app/build/
 graphify-out/
 .codex/
 tmp-playwright/
+tmp-device/
+tmp-*.png
+tmp-*.xml
 
 # Signing material
 *.jks

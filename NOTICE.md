@@ -4,9 +4,9 @@ openGym — Copyright (C) 2026 Duarte Santos.
 openGym's own code is licensed under the **GNU AGPL v3.0** (see [LICENSE](LICENSE)).
 
 This independent version, **First**, has been modified since 29 August 2026. Its corresponding
-source is available at <https://github.com/KowalskiKGB/First>. Exercise images and animations
-are not included, fetched, or enabled by default because they require separate permission from
-their copyright holder.
+source is available at <https://github.com/KowalskiKGB/First>. Exercise images and animations are
+not committed to that public repository because they require separate rights from their copyright
+holder. Self-hosted and locally built copies may obtain them separately as described below.
 
 ## App store exception
 
@@ -51,12 +51,22 @@ SOFTWARE.
 
 ## Exercise data & media
 
-The exercise names and instructions (English in `frontend/src/lib/exercises-data.js`, other
-languages in `frontend/src/instr/`, regenerated via `scripts/build-instructions.mjs`) are derived
-from [**hasaneyldrm/exercises-dataset**](https://github.com/hasaneyldrm/exercises-dataset)
-and are provided under that dataset's MIT license; they are not covered by openGym's AGPL
-license. The dataset's visual media is separate and is not covered by that MIT grant.
+The exercise catalogue contains 1,324 localized pt-BR names and instruction sets. Exercise data
+and instructions (English in `frontend/src/lib/exercises-data.js`, translations in
+`frontend/src/instr/`, regenerated via `scripts/build-instructions.mjs`) are derived from
+[**hasaneyldrm/exercises-dataset**](https://github.com/hasaneyldrm/exercises-dataset) and are
+provided under that dataset's MIT license; they are not covered by openGym's AGPL license. The
+pt-BR instructions originate from the [`tutods` contribution at commit
+`93475e2982117339d2cbf88eb900ad2ceb8d97d6`](https://github.com/tutods/exercises-dataset/commit/93475e2982117339d2cbf88eb900ad2ceb8d97d6).
 
-Exercise images and animations are not distributed in this repository, are not fetched on first
-run, and are not enabled by the default Docker or mobile build. If you enable or redistribute
-exercise media, review the upstream terms and obtain any needed permission first.
+The dataset's visual media is separate and is not covered by that MIT grant. First's public Git
+repository does not distribute the media binaries. Its production Compose service downloads 1,324
+JPG files and 1,324 GIF files from the fixed upstream commit
+[`7455efae41b330c265e7cd4b78dfa848e7ce5ebd`](https://github.com/hasaneyldrm/exercises-dataset/commit/7455efae41b330c265e7cd4b78dfa848e7ce5ebd)
+into the private `first-media` Docker volume. Local Android builds instead copy an operator-supplied,
+Git-ignored `media/` directory into the APK for offline access. The user interface displays
+**© Gym visual** alongside the visual demonstrations.
+
+These implementation and attribution details do not grant a media license. Anyone who downloads,
+uses, builds with, or redistributes the visual files must review the upstream terms and obtain any
+permission required from the relevant copyright holder.
