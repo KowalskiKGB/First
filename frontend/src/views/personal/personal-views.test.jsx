@@ -136,7 +136,7 @@ describe('professional Personal views SSR', () => {
         client: {
           ...client,
           trainingProfile: { ageBand: 'adult', heightCm: 170, goal: 'Força', experience: 'intermediario', availableDays: [1, 3, 5], minutesPerSession: 50, focusAreas: ['back'], favoriteExerciseIds: [], avoidedExerciseIds: [], limitations: '', acuteRisk: false, medicalRestriction: false, consent: true, guardianConsent: null },
-          gymProfile: { name: 'Academia sigilosa', genericEquipment: ['dumbbell'], specificMachines: [] },
+          gymProfile: { name: 'Academia sigilosa', genericEquipment: ['dumbbell'], specificMachines: [{ name: 'Leg press 45', category: 'Pernas', exerciseIds: ['0003'] }] },
           aiPlan: { id: 'plan-1', version: 3, provider: 'openai', model: 'gpt-5', contextHash: 'abc', justification: 'Justificativa sigilosa', appliedAt: '2026-08-29T12:00:00Z' },
         },
       },
@@ -146,6 +146,9 @@ describe('professional Personal views SSR', () => {
       ['/personal/alunos/client-1/ia'],
     )
     expect(markup).toContain('Academia sigilosa')
+    expect(markup).toContain('Add machine')
+    expect(markup).toContain('Machine name')
+    expect(markup).toContain('Leg press 45')
     expect(markup).toContain('Justificativa sigilosa')
     expect(markup).toContain('Version 3')
   })
