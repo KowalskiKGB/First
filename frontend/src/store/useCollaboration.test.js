@@ -156,6 +156,31 @@ describe('collaboration loading boundaries', () => {
 });
 
 describe('collaboration mutation recovery', () => {
+  it('refreshes the workspace after a detail mutation so summaries and KPIs stay current', async () => {
+    localStorage.setItem('gym_user', JSON.stringify({ id: 'u1' }));
+    const store = await collaborationStore();
+    store.setState({
+      ownerId: 'u1',
+      rev: 3,
+      profile: { userId: 'u1', roles: ['trainer'] },
+      workspace: { rev: 3, kpis: { priorities: { urgent: 0 } }, clients: [{ id: 'c1', priority: 'ok' }] },
+      selected: 'c1',
+      detail: { rev: 3, client: { id: 'c1', priority: 'ok' } },
+    });
+    apiMock
+      .mockResolvedValueOnce({ rev: 4, client: { id: 'c1', priority: 'urgent' } })
+      .mockResolvedValueOnce({ rev: 4, kpis: { priorities: { urgent: 1 } }, clients: [{ id: 'c1', priority: 'urgent' }] });
+
+    await store.getState().mutate('/api/personal/client', { clientId: 'c1' }, 'PUT');
+
+    expect(apiMock.mock.calls.map(([path]) => path)).toEqual([
+      '/api/personal/client',
+      '/api/personal/workspace',
+    ]);
+    expect(store.getState().detail.client.priority).toBe('urgent');
+    expect(store.getState().workspace.kpis.priorities.urgent).toBe(1);
+  });
+
   it('reloads a safe projection and exposes the retry message after 409', async () => {
     localStorage.setItem('gym_user', JSON.stringify({ id: 'u1' }));
     const store = await collaborationStore();

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import pt from '../locales/pt.js'
 import {
   buildDayTimeline,
   clientFinanceStatus,
@@ -82,6 +83,10 @@ describe('personal workspace view derivations', () => {
   it('provides an explicit explanation when professional permission is revoked', () => {
     expect(mutationErrorMessage(Object.assign(new Error('forbidden'), { status: 403 }))).toBe('Permission revoked')
     expect(mutationErrorMessage(Object.assign(new Error('conflict'), { status: 409 }))).toContain('keep this form open')
+    expect(mutationErrorMessage(new Error('schedule conflict'))).toBe('This time overlaps another class. Choose another time.')
+    expect(mutationErrorMessage(new Error('outside availability'))).toBe('This time is outside your availability. Change the time or update your weekly availability.')
+    expect(pt['This time overlaps another class. Choose another time.']).toBe('Este horário conflita com outra aula. Escolha outro horário.')
+    expect(pt['This time is outside your availability. Change the time or update your weekly availability.']).toBe('Este horário está fora da sua disponibilidade. Altere o horário ou atualize sua disponibilidade semanal.')
     expect(mutationErrorMessage(new Error('offline'))).toBe('offline')
   })
 

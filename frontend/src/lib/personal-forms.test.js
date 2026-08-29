@@ -7,6 +7,7 @@ import MeasurementForm from '../components/personal/MeasurementForm.jsx'
 import MoneyBars from '../components/personal/MoneyBars.jsx'
 import ProgramEditor from '../components/personal/ProgramEditor.jsx'
 import ReceivableForm from '../components/personal/ReceivableForm.jsx'
+import * as timeZoneForms from './personal-forms.js'
 import {
   formatBRL,
   fortalezaInterval,
@@ -113,6 +114,26 @@ describe('finance and Fortaleza helpers', () => {
   it('rejects impossible local dates and times', () => {
     expect(() => fortalezaInterval('2026-02-30', '08:00', 60)).toThrow('Data ou hora inválida')
     expect(() => fortalezaInterval('2026-08-29', '24:00', 60)).toThrow('Data ou hora inválida')
+  })
+
+  it('builds and displays appointments in the trainer profile timezone', () => {
+    expect(timeZoneForms.timeZoneInterval('2026-08-29', '08:15', 60, 'America/New_York')).toEqual({
+      startsAt: '2026-08-29T12:15:00.000Z',
+      endsAt: '2026-08-29T13:15:00.000Z',
+    })
+
+    const markup = renderToStaticMarkup(React.createElement(AppointmentForm, {
+      clients: [{ id: 'client-1', name: 'Ana' }],
+      appointment: {
+        id: 'appointment-1', clientId: 'client-1',
+        startsAt: '2026-08-29T12:15:00.000Z', endsAt: '2026-08-29T13:15:00.000Z',
+      },
+      timeZone: 'America/New_York',
+      onSubmit: vi.fn(),
+    }))
+
+    expect(markup).toMatch(/name="appointmentTime"[^>]*value="08:15"/)
+    expect(markup).toContain('America/New_York')
   })
 })
 
