@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import path from 'node:path';
 
 const clone = (value) => structuredClone(value);
 
