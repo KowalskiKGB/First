@@ -16,7 +16,7 @@ media/img/   # 1,324 .jpg files
 media/gif/   # 1,324 .gif files
 ```
 
-The filenames must match the exercise ids. `npm run build:mobile` validates the collection and
+The filenames must match the catalogue exactly. `npm run build:mobile` validates the collection and
 copies it to `frontend/dist/media/` before Capacitor synchronizes the web bundle. The resulting APK
 therefore includes all 1,324 JPG previews and 1,324 animated GIF demonstrations for offline use.
 

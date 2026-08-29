@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.5 — 2026-08-29
+
+- Catálogo completo com 1.324 nomes e instruções de exercícios em português do Brasil.
+- Busca bilíngue e sem distinção de acentos para exercícios, aparelhos e grupos musculares.
+- 1.324 imagens e 1.324 demonstrações animadas disponíveis no Android offline e no servidor
+  privado, com fallback, controle de reprodução, preferência de movimento reduzido e atribuição.
+- Pacote Android atualizado para a versão 1.2.5 (código 6).
+
 ## v1.2.4 — 2026-08-01
 
 The effort ratings you have been recording since v1.2.3 now answer questions, and bodyweight

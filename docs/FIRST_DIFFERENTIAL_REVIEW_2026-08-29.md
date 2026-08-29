@@ -22,7 +22,7 @@ Escopo: isolamento Git, identidade, tradução, frontend, WebAuthn/API, Docker/N
 
 ## Riscos residuais e limites conhecidos
 
-- Bootstrap: `INVITE_ONLY=0` é temporário e só pode ficar público com `FIRST_BASIC_AUTH_USERS` e `FIRST_BOOTSTRAP_MIDDLEWARE=,first-bootstrap-auth`. O fechamento exige `ADMIN_UIDS`, `INVITE_ONLY=1` e limpar ambas as variáveis após criar o proprietário.
+- Bootstrap: `INVITE_ONLY=0` é temporário e só pode ficar público com `FIRST_BASIC_AUTH_USERS` e `FIRST_BOOTSTRAP_MIDDLEWARE=,first-bootstrap-auth`. O fechamento exige `ADMIN_UIDS`, `INVITE_ONLY=1` e limpar apenas `FIRST_BOOTSTRAP_MIDDLEWARE`; a credencial permanece para proteger `/media/`.
 - Persistência: a API atual usa JSON atômico em um único volume e processo. É adequada a esta fase, não a múltiplas réplicas; a migração está planejada em `PLANEJAMENTO.md`.
 - Cobertura herdada: linhas atingem 81,79%, mas statements/branches/funções ainda estão abaixo de 80%. Nenhum módulo do personal deve ser aceito futuramente sem 80% em todas as métricas do código novo.
 - A base contém elementos clicáveis herdados implementados como `div`; os fluxos alterados nesta entrega receberam nomes de campo, autocomplete, foco visível e toast com live region, mas a conversão integral para controles semânticos fica como débito de acessibilidade.

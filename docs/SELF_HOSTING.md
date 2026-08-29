@@ -92,17 +92,20 @@ FIRST_BASIC_AUTH_USERS=first-bootstrap:{SHA}<generated-hash>
 FIRST_BOOTSTRAP_MIDDLEWARE=,first-bootstrap-auth
 ```
 
-The two `FIRST_*` values activate the temporary high-priority Basic Auth router in Coolify;
-leave them empty on ordinary local deployments. After creating your first profile, read its `id`
+The two values activate the temporary high-priority whole-host Basic Auth router in Coolify.
+`FIRST_BASIC_AUTH_USERS` is also permanently required for the separately licensed `/media/` paths.
+After creating your first profile, read its `id`
 from the persisted `db.json`, set it in `ADMIN_UIDS`, and switch:
 
 ```bash
 INVITE_ONLY=1
-FIRST_BASIC_AUTH_USERS=
+FIRST_BASIC_AUTH_USERS=first-bootstrap:{SHA}<keep-the-existing-hash>
 FIRST_BOOTSTRAP_MIDDLEWARE=
 ```
 
-Existing accounts continue working after invite-only mode is enabled.
+Existing accounts continue working after invite-only mode is enabled. Clearing only
+`FIRST_BOOTSTRAP_MIDDLEWARE` removes the extra prompt from the application while keeping
+`/media/` private; do not clear `FIRST_BASIC_AUTH_USERS` while server media is enabled.
 
 ## Exercise Media
 
@@ -114,9 +117,13 @@ instruction set comes from the `tutods` contribution at commit
 The production Compose file enables visual demonstrations. Its one-shot `media` service downloads
 exactly 1,324 JPG files and 1,324 GIF files from upstream commit
 [`7455efae41b330c265e7cd4b78dfa848e7ce5ebd`](https://github.com/hasaneyldrm/exercises-dataset/commit/7455efae41b330c265e7cd4b78dfa848e7ce5ebd),
-checks both counts, and writes them to the private named volume `first-media`. Subsequent starts
-also verify the hash of the sorted media path list before reusing the volume. The `web` service
-mounts the volume read-only and serves the files from the same origin.
+checks both counts, the exact sorted path list, and every file's content before writing them to the
+private named volume `first-media`. Subsequent starts repeat those checks before reusing the volume.
+The `web` service mounts the volume read-only and serves the files from the same origin.
+
+The dedicated high-priority Traefik router keeps `/media/` behind Basic Auth even after the
+whole-host bootstrap guard is removed. The static paths intentionally do not use the application's
+passkey session, so keep `FIRST_BASIC_AUTH_USERS` configured while server media is enabled.
 
 The media binaries are intentionally excluded from the public Git repository. Images and GIFs
 require separate rights from their copyright holder, and the application shows the visible

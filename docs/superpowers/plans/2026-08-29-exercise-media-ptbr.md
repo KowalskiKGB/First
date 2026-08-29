@@ -116,4 +116,3 @@
 - [ ] Commitar GREEN, enviar `main` e aguardar o deploy Coolify saudável.
 - [ ] Instalar o APK com `adb install -r`, abrir `MainActivity`, verificar mídia/nome pt-BR, screenshot e logcat.
 - [ ] Registrar comandos/resultados reais no relatório TDD e atualizar o Graphify.
-

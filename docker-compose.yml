@@ -85,13 +85,19 @@ services:
       - "80"
     volumes:
       - first-media:/usr/share/nginx/html/media:ro
-    # Coolify bootstrap guard. It is inert by default; production temporarily sets
-    # FIRST_BASIC_AUTH_USERS and FIRST_BOOTSTRAP_MIDDLEWARE=,first-bootstrap-auth.
-    # The high-priority router prevents the generated unguarded router from winning.
+    # The media router always requires Basic Auth because the visual files are licensed
+    # separately. The same credential can temporarily guard the whole host during bootstrap.
     labels:
       - "traefik.enable=true"
       - "traefik.http.middlewares.gzip.compress=true"
-      - "traefik.http.middlewares.first-bootstrap-auth.basicauth.users=${FIRST_BASIC_AUTH_USERS:-}"
+      - "traefik.http.middlewares.first-bootstrap-auth.basicauth.users=${FIRST_BASIC_AUTH_USERS:?FIRST_BASIC_AUTH_USERS is required to protect exercise media}"
+      - "traefik.http.routers.first-media-${COOLIFY_RESOURCE_UUID:-first}.entrypoints=https"
+      - "traefik.http.routers.first-media-${COOLIFY_RESOURCE_UUID:-first}.rule=Host(`first.rocketxsistemas.com.br`) && PathPrefix(`/media/`)"
+      - "traefik.http.routers.first-media-${COOLIFY_RESOURCE_UUID:-first}.priority=1100"
+      - "traefik.http.routers.first-media-${COOLIFY_RESOURCE_UUID:-first}.middlewares=gzip,first-bootstrap-auth"
+      - "traefik.http.routers.first-media-${COOLIFY_RESOURCE_UUID:-first}.tls=true"
+      - "traefik.http.routers.first-media-${COOLIFY_RESOURCE_UUID:-first}.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.first-media-${COOLIFY_RESOURCE_UUID:-first}.service=first-secure-${COOLIFY_RESOURCE_UUID:-first}"
       - "traefik.http.routers.first-secure-${COOLIFY_RESOURCE_UUID:-first}.entrypoints=https"
       - "traefik.http.routers.first-secure-${COOLIFY_RESOURCE_UUID:-first}.rule=Host(`first.rocketxsistemas.com.br`)"
       - "traefik.http.routers.first-secure-${COOLIFY_RESOURCE_UUID:-first}.priority=1000"

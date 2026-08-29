@@ -14,6 +14,7 @@ test('the deployment template is complete and builds only this repository', () =
   assert.match(compose, /hasaneyldrm\/exercises-dataset/i)
   assert.match(compose, /7455efae41b330c265e7cd4b78dfa848e7ce5ebd/)
   assert.match(compose, /73c038588404c71dd441535ce7a955d4d087575634d87712dbdbbe0f569ff000/)
+  assert.match(compose, /84a9a354242923378e9e7dfca3026277a01a1a9fb8de57f7d2a5021d55fc215b/)
   assert.match(compose, /first-media:/)
   assert.match(compose, /VITE_EXERCISE_MEDIA:\s*["']?1/)
   assert.match(compose, /media\/img\//)
@@ -22,7 +23,10 @@ test('the deployment template is complete and builds only this repository', () =
   assert.match(compose, /dockerfile:\s*Dockerfile/)
   assert.match(compose, /FIRST_BASIC_AUTH_USERS/)
   assert.match(compose, /FIRST_BOOTSTRAP_MIDDLEWARE/)
+  assert.match(compose, /PathPrefix\(`\/media\/`\)/)
+  assert.match(compose, /first-media-\$\{COOLIFY_RESOURCE_UUID/)
   assert.match(compose, /priority=1000/)
+  assert.match(compose, /priority=1100/)
 
   const webDockerfile = read('Dockerfile')
   const apiDockerfile = read('api/Dockerfile')
@@ -74,7 +78,11 @@ test('docker compose accepts the documented production-safe environment', () => 
   const result = spawnSync(
     'docker',
     ['compose', '--env-file', '.env.example', 'config'],
-    { cwd: new URL('.', root), encoding: 'utf8' },
+    {
+      cwd: new URL('.', root),
+      encoding: 'utf8',
+      env: { ...process.env, FIRST_BASIC_AUTH_USERS: 'first-test:{SHA}not-a-production-credential' },
+    },
   )
 
   assert.equal(result.status, 0, result.stderr || result.stdout)

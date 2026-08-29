@@ -54,7 +54,7 @@ Nenhum achado crítico ou alto ficou aberto neste diff.
 
 ## Riscos operacionais aceitos para o primeiro acesso
 
-- `INVITE_ONLY=0` em `.env.example` é intencional para permitir criar o primeiro perfil. O deploy inicial deve permanecer atrás do middleware Basic Auth temporário do Traefik (`FIRST_BASIC_AUTH_USERS` + `FIRST_BOOTSTRAP_MIDDLEWARE`); depois do primeiro perfil, preencher `ADMIN_UIDS`, mudar para `INVITE_ONLY=1` e limpar as duas variáveis de bootstrap.
+- `INVITE_ONLY=0` em `.env.example` é intencional para permitir criar o primeiro perfil. O deploy inicial deve permanecer atrás do middleware Basic Auth temporário do Traefik (`FIRST_BASIC_AUTH_USERS` + `FIRST_BOOTSTRAP_MIDDLEWARE`); depois do primeiro perfil, preencher `ADMIN_UIDS`, mudar para `INVITE_ONLY=1` e limpar apenas `FIRST_BOOTSTRAP_MIDDLEWARE`. `FIRST_BASIC_AUTH_USERS` continua protegendo `/media/`.
 - O backend ainda usa armazenamento JSON em volume. Serve para este primeiro deploy, mas o plano de expansão move os dados relacionais/roles para um banco transacional.
 - Não há CORS liberado; o app depende de mesma origem via proxy Nginx/Coolify. Esse é o comportamento esperado para passkeys.
 
