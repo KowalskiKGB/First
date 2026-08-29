@@ -560,17 +560,19 @@ function summarizeFinance(receivables, now) {
   };
 }
 
-function priorityFor({ client, progress, receivables, appointments, program, now }) {
+function priorityFor({ client, progress, receivables, appointments, program, latestMeasurement, now }) {
   const reasons = [];
   if (receivables.some(item => item.status === 'open' && item.dueOn < isoDate(now))) reasons.push('Pagamento vencido');
   const next24 = new Date(new Date(now).getTime() + 86400000);
   if (!program && appointments.some(item => ACTIVE_APPOINTMENT.has(item.status) && new Date(item.startsAt) <= next24)) reasons.push('Aula nas proximas 24h sem treino publicado');
-  if (progress.lastActivity) {
+  if (progress?.lastActivity) {
     const days = (new Date(isoDate(now)) - new Date(progress.lastActivity)) / 86400000;
     if (days > (client.inactiveAfterDays || 7)) reasons.push('Aluno inativo');
   }
   if (reasons.length) return { priority: 'urgent', reasons };
-  if (progress.adherence < 70) reasons.push('Aderencia abaixo de 70%');
+  if (progress?.adherence < 70) reasons.push('Aderencia abaixo de 70%');
+  if (!latestMeasurement) reasons.push('Medidas ainda não registradas');
+  else if ((new Date(isoDate(now)) - new Date(isoDate(latestMeasurement.observedAt))) / 86400000 > 30) reasons.push('Medidas sem atualização há mais de 30 dias');
   if (receivables.some(item => item.status === 'open' && item.dueOn <= isoDate(new Date(new Date(now).getTime() + 3 * 86400000).toISOString()))) reasons.push('Cobranca a vencer');
   return reasons.length ? { priority: 'attention', reasons } : { priority: 'ok', reasons: ['Em dia'] };
 }
@@ -621,7 +623,7 @@ export function buildWorkspace({ collaboration, trainerId, now, readState }) {
       program,
       nextAppointment: clientAppointments.filter(item => ACTIVE_APPOINTMENT.has(item.status) && item.startsAt >= now).sort((a, b) => a.startsAt.localeCompare(b.startsAt))[0] || null,
       finance: summarizeFinance(clientReceivables, now),
-      ...priorityFor({ client, progress: progressRead ? fullProgress : summarizeProgress(client, null, now), receivables: clientReceivables, appointments: clientAppointments, program, now })
+      ...priorityFor({ client, progress: progressRead ? fullProgress : null, receivables: clientReceivables, appointments: clientAppointments, program, latestMeasurement, now })
     };
   }).sort((a, b) => ({ urgent: 0, attention: 1, ok: 2 }[a.priority] - { urgent: 0, attention: 1, ok: 2 }[b.priority] || a.name.localeCompare(b.name)));
 
