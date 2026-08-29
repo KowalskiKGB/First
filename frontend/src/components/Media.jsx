@@ -4,7 +4,6 @@ import { useStore } from '../store/useStore.js'
 import { exerciseName, t } from '../lib/i18n.js'
 import Icon from './Icon.jsx'
 
-const MEDIA_CREDIT = 'https://gymvisual.com/'
 const autoplayMedia = () =>
   typeof window === 'undefined' || !window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
@@ -28,7 +27,7 @@ export default function Media({ ex, id, compact, minimizable }) {
       <button type="button" className="media-frame" aria-label={playing ? t('tap to pause') : t('tap to play')} onClick={togglePlayback}>
         <img width="640" height="320" decoding="async" src={playing ? gifSrc(ex) : imgSrc(ex)} alt={exerciseName(ex)} onError={fail} />
       </button>
-      {!mini && <a className="media-credit" href={MEDIA_CREDIT} target="_blank" rel="noopener noreferrer" translate="no" onClick={e => e.stopPropagation()}>© Gym visual</a>}
+      {!mini && <span className="media-credit" translate="no">© Gym visual</span>}
       {minimizable && (
         <button type="button" className="giftoggle" onClick={toggleSize}>
           <Icon name={mini ? 'expand' : 'minimize'} />{mini ? t('Expand') : t('Minimize')}

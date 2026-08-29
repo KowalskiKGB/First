@@ -188,7 +188,7 @@ body.resting #app{padding-bottom:calc(250px + var(--sab))}
 .iconbtn:active{background:var(--surface-2);transform:scale(.92)}
 .iconbtn.on-ss{background:var(--acc-soft);color:var(--acc)}
 
-h4.sec{
+.sec{
   font-size:13px;font-weight:400;letter-spacing:-.004em;color:var(--label-2);
   text-transform:none;margin:22px 0 8px;padding:0 4px;
 }
@@ -548,7 +548,7 @@ h4.sec{
 .exmedia .gifhint .icn,.exmedia .giftoggle .icn{font-size:13px}
 .exmedia .media-credit{
   position:absolute;top:8px;right:9px;padding:4px 7px;border-radius:7px;
-  background:rgba(0,0,0,.48);color:#fff;font-size:10px;line-height:1;text-decoration:none;
+  background:rgba(0,0,0,.48);color:#fff;font-size:10px;line-height:1;
 }
 /* superset: both exercises are on screen together, so the animations have to give way —
    at 180px you had to scroll a full screen between two exercises done back-to-back */
@@ -667,7 +667,7 @@ h4.sec{
 :root[data-theme="light"] .sheet{background:var(--bg)}
 @keyframes sheetup{from{transform:translateY(100%)}to{transform:none}}
 .sheet .grab{width:36px;height:5px;border-radius:99px;background:var(--label-4);margin:6px auto 14px}
-.sheet h3{font-size:20px;font-weight:600;letter-spacing:-.021em;margin-bottom:14px}
+.sheet h2,.sheet h3:not(.sec){font-size:20px;font-weight:600;letter-spacing:-.021em;margin-bottom:14px}
 .center{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   width:min(84vw,300px);background:var(--bg-el);border-radius:var(--r-lg);padding:20px;

@@ -27,6 +27,8 @@ test('the deployment template is complete and builds only this repository', () =
   assert.match(compose, /first-media-\$\{COOLIFY_RESOURCE_UUID/)
   assert.match(compose, /priority=1000/)
   assert.match(compose, /priority=1100/)
+  assert.doesNotMatch(compose, /first-media-[^\n]+\.tls\.certresolver/)
+  assert.doesNotMatch(compose, /first-secure-[^\n]+\.tls\.certresolver/)
 
   const webDockerfile = read('Dockerfile')
   const apiDockerfile = read('api/Dockerfile')
@@ -61,6 +63,7 @@ test('the deployment template is complete and builds only this repository', () =
   const nginx = read('web/nginx.conf')
   assert.match(nginx, /real_ip_header X-Real-IP;/)
   assert.match(nginx, /zone=auth_limit:10m rate=60r\/m;/)
+  assert.match(nginx, /location \^~ \/media\/[\s\S]*Cache-Control "private, no-store"/)
 
   const iosProject = read('frontend/ios/App/App.xcodeproj/project.pbxproj')
   const iosInfo = read('frontend/ios/App/App/Info.plist')
