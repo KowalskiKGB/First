@@ -4,6 +4,7 @@ import { Navigate } from 'react-router-dom';
 import { MOBILE } from '../../lib/mobile.js';
 import { canEnterPersonal } from '../../lib/personal.js';
 import { t } from '../../lib/i18n.js';
+import { Button } from '../../components/ui.jsx';
 import { useCollaboration } from '../../store/useCollaboration.js';
 import { useStore } from '../../store/useStore.js';
 
@@ -16,6 +17,7 @@ export default function PersonalGuard({ children }) {
   const error = useCollaboration(state => state.error);
   const context = useCollaboration(state => state.context);
   const setContext = useCollaboration(state => state.setContext);
+  const load = useCollaboration(state => state.load);
   const allowed = canEnterPersonal({ user, isGuest, mobile: MOBILE, profile, ownerId });
 
   useEffect(() => {
@@ -23,7 +25,14 @@ export default function PersonalGuard({ children }) {
   }, [allowed, context, setContext, user]);
 
   if (allowed) return children;
-  if (user?.id && !isGuest && !MOBILE && ownerId === user.id && error) return children;
+  if (user?.id && !isGuest && !MOBILE && ownerId === user.id && error) {
+    return (
+      <div className="empty" role="alert">
+        <p>{t('Could not load Personal')}</p>
+        <Button variant="primary" onClick={() => load(user)}>{t('Try again')}</Button>
+      </div>
+    );
+  }
   if (user?.id && !isGuest && !MOBILE && (!ownerId || (ownerId === user.id && loading))) {
     return <div className="empty" role="status">{t('Loading Personal…')}</div>;
   }

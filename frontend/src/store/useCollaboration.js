@@ -21,9 +21,15 @@ const initial = {
 
 const clean = () => ({ ...initial, connections: [], notifications: [] });
 
-const revoked = ownerId => {
+const revoked = (ownerId, error) => {
   localStorage.removeItem('first_context');
-  return { ...clean(), ownerId, context: 'student', message: t('Permission revoked') };
+  return {
+    ...clean(),
+    ownerId,
+    context: 'student',
+    error: error?.message || null,
+    message: error?.status === 401 ? null : t('Permission revoked'),
+  };
 };
 
 function storedUser() {
@@ -65,10 +71,12 @@ export const useCollaboration = create((set, get) => ({
       const base = await api('/api/collaboration');
       if (get().ownerId !== user.id) return;
       const profile = base.profile?.userId === user.id ? base.profile : null;
-      const workspace = profile?.roles?.includes('trainer')
+      const trainer = profile?.roles?.includes('trainer');
+      const workspace = trainer
         ? await api('/api/personal/workspace')
         : null;
       if (get().ownerId !== user.id) return;
+      if (!trainer) localStorage.removeItem('first_context');
       set({
         ownerId: user.id,
         rev: workspace?.rev ?? base.rev ?? 0,
@@ -78,11 +86,12 @@ export const useCollaboration = create((set, get) => ({
         workspace,
         loading: false,
         error: null,
+        ...(trainer ? {} : { selected: null, detail: null, context: 'student' }),
       });
     } catch (error) {
       if (get().ownerId !== user.id) return;
       if (error.status === 401 || error.status === 403) {
-        set({ ...revoked(user.id), message: error.status === 403 ? t('Permission revoked') : null, error: error.message });
+        set(revoked(user.id, error));
         return;
       }
       set({ loading: false, error: error.message || t('Could not load Personal') });
@@ -97,7 +106,9 @@ export const useCollaboration = create((set, get) => ({
       if (get().ownerId === ownerId) set({ workspace, rev: workspace.rev ?? get().rev });
       return workspace;
     } catch (error) {
-      if (error.status === 403 && get().ownerId === ownerId) set(revoked(ownerId));
+      if ((error.status === 401 || error.status === 403) && get().ownerId === ownerId) {
+        set(revoked(ownerId, error));
+      }
       throw error;
     }
   },
@@ -113,8 +124,8 @@ export const useCollaboration = create((set, get) => ({
       return detail;
     } catch (error) {
       if (get().ownerId === ownerId) {
-        set(error.status === 403
-          ? { workspace: null, detail: null, selected: null, loading: false, message: t('Permission revoked') }
+        set(error.status === 401 || error.status === 403
+          ? revoked(ownerId, error)
           : { loading: false, error: error.message || t('Could not load student') });
       }
       throw error;
@@ -144,12 +155,19 @@ export const useCollaboration = create((set, get) => ({
         const user = storedUser();
         const selected = get().selected;
         if (user?.id === get().ownerId) await get().load(user);
-        if (get().ownerId === ownerId && selected && get().profile?.roles?.includes('trainer')) {
-          try { await get().loadClient(selected); } catch { /* loadClient already revoked unsafe detail */ }
+        let recovered = get().ownerId === ownerId
+          && get().profile?.roles?.includes('trainer')
+          && !!get().workspace
+          && !get().error;
+        if (recovered && selected) {
+          try { await get().loadClient(selected); }
+          catch { recovered = false; }
         }
-        set({ message: t('Data updated; repeat the action') });
-      } else if (error.status === 403) {
-        set({ workspace: null, detail: null, selected: null, message: t('Permission revoked') });
+        if (recovered && get().ownerId === ownerId) {
+          set({ message: t('Data updated; repeat the action') });
+        }
+      } else if (error.status === 401 || error.status === 403) {
+        set(revoked(ownerId, error));
       }
       throw error;
     }
