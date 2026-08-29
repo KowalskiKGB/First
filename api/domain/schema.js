@@ -1,6 +1,11 @@
 const AGE_BANDS = new Set(['under14', '14to17', 'adult']);
 const EXPERIENCES = new Set(['iniciante', 'intermediario', 'avancado']);
-const JOB_STATUSES = new Set(['queued', 'running', 'completed', 'failed', 'cancelled']);
+export const AI_PLAN_SOURCES = Object.freeze(['ai', 'personal']);
+export const AI_PLAN_STATUSES = Object.freeze(['applied', 'superseded']);
+export const AI_JOB_STATUSES = Object.freeze(['queued', 'running', 'applied', 'failed']);
+const PLAN_SOURCES = new Set(AI_PLAN_SOURCES);
+const PLAN_STATUSES = new Set(AI_PLAN_STATUSES);
+const JOB_STATUSES = new Set(AI_JOB_STATUSES);
 const USAGE_STATUSES = new Set(['success', 'failed']);
 const CONNECTION_GRANTS = [
   'plansWrite', 'workoutsRead', 'progressRead', 'measurementsWrite',
@@ -67,20 +72,42 @@ function normalizeGymProfile(value) {
 function normalizeRoutine(value, index) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const id = text(value.id || `routine-${index + 1}`, 100);
+  const legacyExercises = (Array.isArray(value.ex) ? value.ex : []).slice(0, 30).flatMap(exercise => {
+    const exerciseId = text(exercise?.id, 100);
+    if (!exerciseId) return [];
+    return [{
+      id: exerciseId,
+      sets: Number.isInteger(exercise.sets) ? Math.max(1, Math.min(20, exercise.sets)) : 3,
+      reps: text(exercise.reps, 30),
+      rest: Number.isInteger(exercise.rest) ? Math.max(0, Math.min(1800, exercise.rest)) : 60,
+      note: text(exercise.note, 240)
+    }];
+  });
+  const exercises = (Array.isArray(value.exercises) ? value.exercises : []).slice(0, 30).flatMap((exercise, exerciseIndex) => {
+    const exerciseId = text(exercise?.exerciseId, 100);
+    if (!exerciseId || !['reps', 'time', 'cardio'].includes(exercise.mode)) return [];
+    return [{
+      id: text(exercise.id || `${id}-exercise-${exerciseIndex + 1}`, 100),
+      exerciseId,
+      mode: exercise.mode,
+      sets: Number.isInteger(exercise.sets) ? exercise.sets : 1,
+      repMin: Number.isInteger(exercise.repMin) ? exercise.repMin : null,
+      repMax: Number.isInteger(exercise.repMax) ? exercise.repMax : null,
+      seconds: Number.isInteger(exercise.seconds) ? exercise.seconds : null,
+      restSeconds: Number.isInteger(exercise.restSeconds) ? exercise.restSeconds : 60,
+      progression: text(exercise.progression, 500),
+      note: text(exercise.note, 300)
+    }];
+  });
   return {
     id,
     name: text(value.name, 100),
-    ex: (Array.isArray(value.ex) ? value.ex : []).slice(0, 30).flatMap(exercise => {
-      const exerciseId = text(exercise?.id, 100);
-      if (!exerciseId) return [];
-      return [{
-        id: exerciseId,
-        sets: Number.isInteger(exercise.sets) ? Math.max(1, Math.min(20, exercise.sets)) : 3,
-        reps: text(exercise.reps, 30),
-        rest: Number.isInteger(exercise.rest) ? Math.max(0, Math.min(1800, exercise.rest)) : 60,
-        note: text(exercise.note, 240)
-      }];
-    })
+    ...(exercises.length ? { exercises } : { ex: legacyExercises }),
+    ...(value._aiGenerated === true ? { _aiGenerated: true } : {}),
+    ...(value.sourceType === 'ai' ? { sourceType: 'ai' } : {}),
+    ...(text(value.planId, 100) ? { planId: text(value.planId, 100) } : {}),
+    ...(Number.isInteger(value.version) && value.version > 0 ? { version: value.version } : {}),
+    ...(value.readOnly === true ? { readOnly: true } : {})
   };
 }
 
@@ -100,6 +127,12 @@ function normalizeAiPlan(value) {
   const id = text(value?.id, 100);
   const studentId = text(value?.studentId, 100);
   if (!id || !studentId || !Number.isInteger(value.version) || value.version < 1) return null;
+  const legacySource = value.source === 'generated' ? 'ai' : value.source;
+  const source = PLAN_SOURCES.has(legacySource) ? legacySource : 'ai';
+  const legacyStatus = ['completed', 'active'].includes(value.status) ? 'applied'
+    : ['draft', 'inactive', 'archived'].includes(value.status) ? 'superseded'
+      : value.status;
+  const status = PLAN_STATUSES.has(legacyStatus) ? legacyStatus : 'superseded';
   return {
     id,
     studentId,
@@ -111,8 +144,8 @@ function normalizeAiPlan(value) {
     routines: (Array.isArray(value.routines) ? value.routines : []).slice(0, 14)
       .map(normalizeRoutine).filter(Boolean),
     schedule: normalizeSchedule(value.schedule),
-    source: text(value.source, 40),
-    status: text(value.status, 40),
+    source,
+    status,
     createdAt: timestamp(value.createdAt),
     updatedAt: timestamp(value.updatedAt),
     appliedAt: timestamp(value.appliedAt)
@@ -123,12 +156,13 @@ function normalizeAiJob(value) {
   const id = text(value?.id, 100);
   const studentId = text(value?.studentId, 100);
   const idempotencyKey = text(value?.idempotencyKey, 160);
-  if (!id || !studentId || !idempotencyKey || !JOB_STATUSES.has(value.status)) return null;
+  const legacyStatus = value?.status === 'completed' ? 'applied' : value?.status === 'cancelled' ? 'failed' : value?.status;
+  if (!id || !studentId || !idempotencyKey || !JOB_STATUSES.has(legacyStatus)) return null;
   return {
     id,
     idempotencyKey,
     studentId,
-    status: value.status,
+    status: legacyStatus,
     stage: text(value.stage, 80),
     publicError: text(value.publicError, 240) || null,
     contextHash: text(value.contextHash, 128),

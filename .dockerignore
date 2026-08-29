@@ -11,7 +11,8 @@ frontend/dist
 frontend/coverage
 frontend/android
 frontend/ios
-api
+api/node_modules
+api/coverage
 website
 docs
 assets

@@ -263,6 +263,7 @@ export function recordAiUsage(entries = [], usage, details) {
     outputTokens: usage.outputTokens || 0,
     totalTokens: usage.totalTokens || 0,
     latencyMs: Math.max(0, Math.round(details.latencyMs || 0)),
+    ...(details.studentId ? { studentId: String(details.studentId).slice(0, 100) } : {}),
     timestamp: details.timestamp
   };
   return [...entries, entry].slice(-10_000);

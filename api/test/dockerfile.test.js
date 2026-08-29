@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import test from 'node:test';
 
 const dockerfile = fs.readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
+const dockerignore = fs.readFileSync(new URL('../../.dockerignore', import.meta.url), 'utf8');
 
 test('production image includes every local module imported by the API', () => {
   assert.match(dockerfile, /COPY [^\n]*\bpersonal\.js\b[^\n]* \.\//);
@@ -12,4 +13,10 @@ test('production image includes every local module imported by the API', () => {
   assert.match(dockerfile, /\bdev-auth\.js\b/);
   assert.match(dockerfile, /COPY api\/domain \.\/domain/);
   assert.match(dockerfile, /COPY api\/lib \.\/lib/);
+});
+
+test('root Docker build context includes API sources while excluding API artifacts', () => {
+  assert.doesNotMatch(dockerignore, /^api\s*$/m);
+  assert.match(dockerignore, /^api\/node_modules\s*$/m);
+  assert.match(dockerignore, /^api\/coverage\s*$/m);
 });

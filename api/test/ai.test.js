@@ -39,8 +39,8 @@ test('candidateExercises limits the catalogue to selected equipment', () => {
 test('buildWorkoutPrompt produces a compact markdown request with allowed exercise ids', () => {
   const candidates = candidateExercises(baseState.aiProfile, AI_EXERCISES);
   const prompt = buildWorkoutPrompt({ state: baseState, profile: baseState.aiProfile, candidates, generatedAt: '2026-08-29T12:00:00.000Z' });
-  assert.match(prompt, /# Pedido de treino semanal/);
-  assert.match(prompt, /exerciciosPermitidos/);
+  assert.match(prompt, /# FIRST_AI_CONTEXT_V1/);
+  assert.match(prompt, /Candidatos permitidos/);
   assert.match(prompt, new RegExp(candidates[0].id));
 });
 
@@ -53,7 +53,7 @@ test('normalizeAiWorkout rejects exercises outside the allowed catalogue', () =>
   }, candidateExercises(baseState.aiProfile, AI_EXERCISES)), /not allowed/);
 });
 
-test('applyAiWorkout replaces old AI routines and preserves manual routines', () => {
+test('applyAiWorkout replaces old AI routines, preserves manual routines and isolates the AI schedule', () => {
   const candidates = candidateExercises(baseState.aiProfile, AI_EXERCISES);
   const normalized = normalizeAiWorkout({
     name: 'Semana IA',
@@ -64,13 +64,13 @@ test('applyAiWorkout replaces old AI routines and preserves manual routines', ()
   const next = applyAiWorkout(baseState, normalized, '2026-08-29T12:00:00.000Z');
   assert.ok(next.routines.some(routine => routine.id === 'manual'));
   assert.ok(!next.routines.some(routine => routine.id === 'old-ai'));
-  assert.equal(next.week[1], 'manual');
+  assert.deepEqual(next.week, baseState.week);
   const generated = next.routines.find(routine => routine._aiSourceRoutineId === 'new-ai');
-  assert.equal(next.week[2], generated.id);
+  assert.deepEqual(next.aiSchedule, [{ day: 2, routineId: generated.id }]);
   assert.equal(generated._aiGenerated, true);
 });
 
-test('applyAiWorkout never overwrites manual or Personal schedule assignments', () => {
+test('applyAiWorkout never writes AI assignments into S.week', () => {
   const state = {
     ...baseState,
     routines: [
@@ -91,9 +91,12 @@ test('applyAiWorkout never overwrites manual or Personal schedule assignments', 
 
   const next = applyAiWorkout(state, normalized, '2026-08-29T12:00:00.000Z');
 
-  assert.equal(next.week[1], 'manual');
-  assert.equal(next.week[2], 'ai-b');
-  assert.equal(next.week[3], 'personal');
+  assert.deepEqual(next.week, state.week);
+  assert.deepEqual(next.aiSchedule, [
+    { day: 1, routineId: 'ai-a' },
+    { day: 2, routineId: 'ai-b' },
+    { day: 3, routineId: 'ai-c' }
+  ]);
 });
 
 test('normalizeAiWorkout always replaces model routine ids with collision-free server ids', () => {

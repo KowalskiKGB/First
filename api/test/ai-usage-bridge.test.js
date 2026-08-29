@@ -36,3 +36,17 @@ test('db.aiUsage operational reads/writes canonical collaboration.aiUsage and mi
   assert.equal(JSON.stringify(persisted).includes('prompt'), false);
   assert.equal(JSON.stringify(persisted).includes('response'), false);
 });
+
+test('usage bridge supports an empty legacy db without duplicating canonical rows', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'first-ai-usage-empty-'));
+  const store = createJsonStore({
+    file: path.join(dir, 'collaboration.json'),
+    initial: { ...structuredClone(INITIAL_COLLABORATION), aiUsage: [usage()] },
+    migrate: migrateCollaboration
+  });
+  const db = { aiProviders: [], aiUsage: [] };
+  bridgeAiUsageProperty({ db, store });
+  assert.deepEqual(db.aiUsage, [usage()]);
+  db.aiUsage = null;
+  assert.deepEqual(db.aiUsage, []);
+});

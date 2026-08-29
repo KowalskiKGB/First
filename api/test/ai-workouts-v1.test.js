@@ -100,7 +100,8 @@ test('shortlist is deterministic, capped, ranked and excludes unavailable or avo
 
   assert.deepEqual(first, second);
   assert.ok(first.length <= 120);
-  assert.deepEqual(first.slice(0, 4).map(item => item.id), ['favorite', 'recent', 'focus', 'foundation']);
+  assert.deepEqual(first.slice(0, 4).map(item => item.id), ['favorite', 'recent', 'focus', 'machine-ok']);
+  assert.ok(first.some(item => item.id === 'foundation'));
   assert.ok(first.some(item => item.id === 'machine-ok'));
   assert.ok(!first.some(item => ['blocked', 'machine-other', 'unknown-equipment'].includes(item.id)));
 });
@@ -114,11 +115,24 @@ test('one specific machine never unlocks its whole equipment category', () => {
   assert.deepEqual(rows.map(item => item.id), ['machine-ok']);
 });
 
+test('experience compatibility participates in deterministic ranking after focus/history priorities', () => {
+  const catalogue = [
+    { id: 'barbell-row', name: 'Remada com barra', bp: 'back', tg: 'lats', eq: 'barbell' },
+    { id: 'body-row', name: 'Remada invertida', bp: 'back', tg: 'lats', eq: 'body weight' }
+  ];
+  const gym = { name: 'Gym', genericEquipment: ['barbell', 'body weight'], specificMachines: [] };
+  assert.deepEqual(shortlistExercises({ profile: { ...PROFILE, experience: 'iniciante', focusAreas: [], favoriteExerciseIds: [] }, gym, catalogue }).map(item => item.id), ['body-row', 'barbell-row']);
+  assert.deepEqual(shortlistExercises({ profile: { ...PROFILE, experience: 'avancado', focusAreas: [], favoriteExerciseIds: [] }, gym, catalogue }).map(item => item.id), ['barbell-row', 'body-row']);
+});
+
 test('generation eligibility blocks risk, medical restrictions, minors without consent and incomplete data before provider use', () => {
   assert.throws(() => assertGenerationEligible(safeContext({ profile: { ...PROFILE, acuteRisk: true } })), /não pode ser gerado agora/i);
   assert.throws(() => assertGenerationEligible(safeContext({ profile: { ...PROFILE, medicalRestriction: true } })), /não pode ser gerado agora/i);
   assert.throws(() => assertGenerationEligible(safeContext({ profile: { ...PROFILE, ageBand: '14to17', guardianConsent: false } })), /consentimento/i);
   assert.throws(() => assertGenerationEligible(safeContext({ gym: { ...GYM, name: '' } })), /dados obrigatórios/i);
+  assert.throws(() => assertGenerationEligible(safeContext({ measurements: { current: {} } })), /dados obrigatórios/i);
+  assert.throws(() => assertGenerationEligible(safeContext({ measurements: { current: { weightKg: null } } })), /dados obrigatórios/i);
+  assert.throws(() => assertGenerationEligible(safeContext({ measurements: { current: { weightKg: 0 } } })), /dados obrigatórios/i);
   assert.doesNotThrow(() => assertGenerationEligible(safeContext({ profile: { ...PROFILE, ageBand: 'under14', guardianConsent: true } })));
 });
 
@@ -229,4 +243,25 @@ test('under14 conservative ranges reject adult-sized prescriptions', () => {
     studentId: profile.studentId, version: 1, contextHash: 'c'.repeat(64), profile, gym: GYM,
     candidates, provider: 'anthropic', model: 'test', now: NOW
   }), /faixa etária/i);
+});
+
+test('validator accepts closed time/cardio modes and rejects rest, progression and note violations', () => {
+  const candidates = shortlistExercises({ profile: PROFILE, gym: GYM, recentExerciseIds: [], catalogue: CATALOGUE });
+  const options = { studentId: PROFILE.studentId, version: 2, contextHash: 'd'.repeat(64), profile: PROFILE, gym: GYM, candidates, provider: 'openai', model: 'test', now: NOW };
+  const timed = validResponse();
+  Object.assign(timed.routines[0].exercises[0], { mode: 'time', repMin: null, repMax: null, seconds: 45 });
+  assert.doesNotThrow(() => validateAiWorkoutPlan(timed, options));
+  const cardio = structuredClone(timed);
+  Object.assign(cardio.routines[0].exercises[0], { mode: 'cardio', seconds: 1200 });
+  assert.doesNotThrow(() => validateAiWorkoutPlan(cardio, options));
+
+  for (const [patch, expected] of [
+    [{ restSeconds: 5 }, /descanso/i],
+    [{ progression: '' }, /progressão/i],
+    [{ note: 42 }, /nota/i]
+  ]) {
+    const invalid = validResponse();
+    Object.assign(invalid.routines[0].exercises[0], patch);
+    assert.throws(() => validateAiWorkoutPlan(invalid, options), expected);
+  }
 });

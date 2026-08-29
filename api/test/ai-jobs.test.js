@@ -31,7 +31,7 @@ function response() {
   };
 }
 
-function fixture(extra = {}) {
+function fixture(extra = {}, options = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'first-ai-jobs-'));
   const initial = {
     ...structuredClone(INITIAL_COLLABORATION),
@@ -49,11 +49,11 @@ function fixture(extra = {}) {
       week: { 1: 'manual-routine' }, routines: [{ id: 'manual-routine', name: 'Manual' }],
       workouts: [{ d: '2026-08-20', vol: 1200, ex: [{ id: '0001' }] }]
     }),
-    getActiveProvider: () => ({ provider: 'openai', selectedModel: 'gpt-test' }),
-    runStructured: async () => {
+    getActiveProvider: options.getActiveProvider || (() => ({ provider: 'openai', selectedModel: 'gpt-test' })),
+    runStructured: options.runStructured || (async () => {
       providerCalls += 1;
       return { value: response(), usage: { provider: 'openai', model: 'gpt-test', inputTokens: 10, outputTokens: 20, totalTokens: 30 } };
-    },
+    }),
     appendUsage: (entry, details) => usage.push({ entry, details }),
     now: () => NOW,
     randomId: () => `server-${++ids}`,
@@ -71,6 +71,16 @@ test('enqueue is idempotent and permits only one active job per student', () => 
   assert.deepEqual(otherKey, first);
   assert.equal(first.status, 'queued');
   assert.equal(first.stage, 'organizing');
+});
+
+test('enqueue preserves the six-per-hour generation limit after idempotency checks', () => {
+  const aiJobs = Array.from({ length: 6 }, (_, index) => ({
+    id: `recent-${index}`, idempotencyKey: `key-${index}`, studentId: 'student-a', status: 'failed', stage: 'generating',
+    publicError: 'safe', contextHash: '', planVersion: null, createdAt: NOW, updatedAt: NOW
+  }));
+  const fx = fixture({ aiJobs });
+  assert.deepEqual(fx.service.enqueue({ studentId: 'student-a', idempotencyKey: 'key-0' }).id, 'recent-0');
+  assert.throws(() => fx.service.enqueue({ studentId: 'student-a', idempotencyKey: 'seventh' }), error => error.status === 429);
 });
 
 test('job transitions through persistent stages, calls provider once, records canonical usage and applies a versioned plan', async () => {
@@ -102,13 +112,14 @@ test('provider failure is recorded once without retry/fallback and preserves the
     id: 'current', studentId: 'student-a', version: 4, provider: 'openai', model: 'old', contextHash: 'old',
     justification: 'vigente', routines: [], schedule: [], source: 'ai', status: 'applied', createdAt: NOW, updatedAt: NOW, appliedAt: NOW
   };
-  const fx = fixture({ aiPlans: [current] });
   let calls = 0;
-  fx.service.setRunStructuredForTests(async () => {
-    calls += 1;
-    const error = new Error('SENTINEL_PROVIDER_PRIVATE_ERROR');
-    error.usage = { provider: 'openai', model: 'gpt-test', inputTokens: 5, outputTokens: 0, totalTokens: 5 };
-    throw error;
+  const fx = fixture({ aiPlans: [current] }, {
+    runStructured: async () => {
+      calls += 1;
+      const error = new Error('SENTINEL_PROVIDER_PRIVATE_ERROR');
+      error.usage = { provider: 'openai', model: 'gpt-test', inputTokens: 5, outputTokens: 0, totalTokens: 5 };
+      throw error;
+    }
   });
   const job = fx.service.enqueue({ studentId: 'student-a', idempotencyKey: 'job-fail' });
   await fx.service.drain();
@@ -134,6 +145,23 @@ test('startup recovery fails stale running jobs without repeating provider calls
   assert.equal(fx.providerCalls(), 0);
 });
 
+test('organizing failures block before tokens for risk, unavailable candidates and missing provider', async () => {
+  const cases = [
+    fixture({ trainingProfiles: [{ ...profile, acuteRisk: true }] }),
+    fixture({ gymProfiles: [{ ...gym, genericEquipment: ['unknown-equipment'] }] }),
+    fixture({}, { getActiveProvider: () => null })
+  ];
+  for (const [index, fx] of cases.entries()) {
+    const job = fx.service.enqueue({ studentId: 'student-a', idempotencyKey: `blocked-${index}` });
+    await fx.service.drain();
+    const failed = fx.store.read().aiJobs.find(item => item.id === job.id);
+    assert.equal(failed.status, 'failed');
+    assert.equal(fx.providerCalls(), 0);
+    assert.equal(fx.usage.length, 0);
+    assert.equal(JSON.stringify(failed).includes('prompt'), false);
+  }
+});
+
 test('rollback activates the previous version and preserves Personal/manual data and all retained history', () => {
   const plans = [1, 2].map(version => ({
     id: `plan-${version}`, studentId: 'student-a', version, provider: 'openai', model: 'test', contextHash: `hash-${version}`,
@@ -149,6 +177,26 @@ test('rollback activates the previous version and preserves Personal/manual data
   assert.equal(state.aiPlans.find(item => item.id === 'plan-2').status, 'superseded');
   assert.equal(state.aiPlans.length, 2);
   assert.deepEqual(state.programs, [{ id: 'personal-plan', studentId: 'student-a', status: 'published' }]);
+});
+
+test('AI application and rollback never supersede or activate a source:personal plan', async () => {
+  const plans = [
+    {
+      id: 'ai-old', studentId: 'student-a', version: 1, provider: 'openai', model: 'test', contextHash: 'ai-old',
+      justification: 'IA anterior', routines: [], schedule: [], source: 'ai', status: 'applied', createdAt: NOW, updatedAt: NOW, appliedAt: NOW
+    },
+    {
+      id: 'personal-source', studentId: 'student-a', version: 2, provider: 'personal', model: 'trainer', contextHash: 'personal',
+      justification: 'Prescrição Personal', routines: [], schedule: [], source: 'personal', status: 'applied', createdAt: NOW, updatedAt: NOW, appliedAt: NOW
+    }
+  ];
+  const fx = fixture({ aiPlans: plans });
+  fx.service.enqueue({ studentId: 'student-a', idempotencyKey: 'preserve-personal' });
+  await fx.service.drain();
+  assert.equal(fx.store.read().aiPlans.find(item => item.id === 'personal-source').status, 'applied');
+  assert.equal(fx.store.read().aiPlans.find(item => item.id === 'ai-old').status, 'superseded');
+  assert.throws(() => fx.service.rollback({ studentId: 'student-a', planId: 'personal-source' }), /não encontrado/i);
+  assert.equal(fx.store.read().aiPlans.find(item => item.id === 'personal-source').status, 'applied');
 });
 
 test('HTTP job routes enforce ownership and return the idempotent job quickly', async () => {
@@ -172,4 +220,45 @@ test('HTTP job routes enforce ownership and return the idempotent job quickly', 
   const strangerRes = {};
   await routes['GET /api/ai/job']({ user: { id: 'student-b' }, url: `/api/ai/job?id=${createRes.body.job.id}` }, strangerRes);
   assert.equal(strangerRes.status, 404);
+});
+
+test('HTTP rollback route switches only an owned retained plan', async () => {
+  const plans = [1, 2].map(version => ({
+    id: `http-plan-${version}`, studentId: 'student-a', version, provider: 'openai', model: 'test', contextHash: `hash-${version}`,
+    justification: `v${version}`, routines: [], schedule: [], source: 'ai', status: version === 2 ? 'applied' : 'superseded',
+    createdAt: NOW, updatedAt: NOW, appliedAt: version === 2 ? NOW : null
+  }));
+  const fx = fixture({ aiPlans: plans });
+  const routes = createAiJobRoutes({
+    service: fx.service,
+    readSession: req => req.user || null,
+    readBody: async req => req.body || {},
+    requireTrustedWrite: () => true,
+    json: (res, status, body) => Object.assign(res, { status, body })
+  });
+  const res = {};
+  await routes['POST /api/ai/plan/rollback']({ user: { id: 'student-a' }, body: { planId: 'http-plan-1' } }, res);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.plan.id, 'http-plan-1');
+  assert.equal(fx.store.read().aiPlans.find(item => item.id === 'http-plan-1').status, 'applied');
+});
+
+test('HTTP job routes fail closed for anonymous, untrusted and missing-idempotency requests', async () => {
+  const fx = fixture();
+  const json = (res, status, body) => Object.assign(res, { status, body });
+  const anonymousRoutes = createAiJobRoutes({ service: fx.service, readSession: () => null, readBody: async () => ({}), json, requireTrustedWrite: () => true });
+  const anonymous = {};
+  await anonymousRoutes['POST /api/ai/jobs']({ headers: {} }, anonymous);
+  assert.equal(anonymous.status, 401);
+
+  const untrustedRoutes = createAiJobRoutes({ service: fx.service, readSession: () => ({ id: 'student-a' }), readBody: async () => ({}), json, requireTrustedWrite: (req, res) => { json(res, 403, { error: 'invalid origin' }); return false; } });
+  const untrusted = {};
+  await untrustedRoutes['POST /api/ai/jobs']({ headers: {} }, untrusted);
+  assert.equal(untrusted.status, 403);
+
+  const missingRoutes = createAiJobRoutes({ service: fx.service, readSession: () => ({ id: 'student-a' }), readBody: async () => ({}), json, requireTrustedWrite: () => true });
+  const missing = {};
+  await missingRoutes['POST /api/ai/jobs']({ headers: {} }, missing);
+  assert.equal(missing.status, 400);
+  assert.match(missing.body.error, /idempotency/i);
 });

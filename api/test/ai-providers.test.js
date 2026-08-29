@@ -125,11 +125,11 @@ test('structured generation normalizes token usage without retaining prompt or r
     usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 3, totalTokenCount: 8 }
   }), { status: 200 });
   const result = await runStructuredOutput(records[0], { masterKey, fetchImpl, prompt: 'private prompt', schema });
-  const entry = recordAiUsage([], result.usage, { status: 'success', latencyMs: 12, timestamp: '2026-08-29T12:00:00.000Z' });
+  const entry = recordAiUsage([], result.usage, { status: 'success', studentId: 'student-a', latencyMs: 12, timestamp: '2026-08-29T12:00:00.000Z' });
   assert.deepEqual(result.value, { ok: true });
   assert.deepEqual(entry[0], {
     provider: 'gemini', model: 'gemini-test', status: 'success', inputTokens: 5,
-    outputTokens: 3, totalTokens: 8, latencyMs: 12, timestamp: '2026-08-29T12:00:00.000Z'
+    outputTokens: 3, totalTokens: 8, latencyMs: 12, studentId: 'student-a', timestamp: '2026-08-29T12:00:00.000Z'
   });
   assert.doesNotMatch(JSON.stringify(entry), /private prompt|\{\\"ok\\":true\}/);
   assert.equal(summarizeAiUsage(entry, '7d', new Date('2026-08-30T00:00:00.000Z')).totalTokens, 8);

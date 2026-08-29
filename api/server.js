@@ -11,18 +11,14 @@ import {
 import webpush from 'web-push';
 import {
   AI_EQUIPMENT,
-  WORKOUT_SCHEMA,
-  applyAiWorkout,
-  buildWorkoutPrompt,
-  candidateExercises,
-  missingAiFields,
-  normalizeAiWorkout
+  missingAiFields
 } from './ai.js';
+import { createAiJobRoutes, createAiJobService } from './ai-jobs.js';
+import { bridgeAiUsageProperty } from './ai-usage.js';
 import { createDevAuth, isTrustedMutation } from './dev-auth.js';
 import {
   activateProvider,
   activeProvider,
-  failedGenerationUsage,
   listProviderModels,
   providerSlotsDto,
   recordAiUsage,
@@ -31,7 +27,7 @@ import {
   testProvider,
   upsertProvider
 } from './ai-providers.js';
-import { createPersonalRoutes } from './personal.js';
+import { createCollaborationStore, createPersonalRoutes, notifyAiPlanApplied } from './personal.js';
 
 const PORT = +(process.env.PORT || 3000);
 const DATA = process.env.DATA_DIR || '/data';
@@ -81,6 +77,8 @@ const stateFile = uid => path.join(DATA, 'state-' + uid.replace(/[^a-zA-Z0-9_-]/
 function readState(uid) {
   try { return JSON.parse(fs.readFileSync(stateFile(uid), 'utf8')); } catch { return null; }
 }
+const collaborationStore = createCollaborationStore(DATA);
+bridgeAiUsageProperty({ db, store: collaborationStore, saveDb });
 
 /* ---------- push notifications (Web Push / VAPID) ---------- */
 const vapidFile = path.join(DATA, 'vapid.json');
@@ -116,7 +114,6 @@ async function sendPush(userId, payload) {
 // this only fires when the tab was backgrounded/suspended and never got to cancel it itself.
 const restTimers = new Map(); // userId -> Timeout
 const devLoginAttempts = new Map();
-const aiGenerateAttempts = new Map();
 function withinLimit(store, key, limit, windowMs) {
   const now = Date.now();
   const entry = store.get(key);
@@ -128,7 +125,6 @@ function withinLimit(store, key, limit, windowMs) {
 setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of devLoginAttempts) if (entry.resetAt <= now) devLoginAttempts.delete(key);
-  for (const [key, entry] of aiGenerateAttempts) if (entry.resetAt <= now) aiGenerateAttempts.delete(key);
 }, 60000).unref();
 function scheduleRestTimer(userId, sec) {
   const t = restTimers.get(userId);
@@ -472,48 +468,6 @@ const routes = {
     });
   },
 
-  'POST /api/ai/workout/generate': async (req, res) => {
-    const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
-    if (!requireTrustedWrite(req, res)) return;
-    if (!withinLimit(aiGenerateAttempts, user.id, 6, 3600000)) return json(res, 429, { error: 'AI generation limit reached; try again later' });
-    const body = await readBody(req);
-    const state = readState(user.id) || {};
-    const profile = { ...(state.aiProfile || {}), ...(body.profile || {}) };
-    const mergedState = { ...state, aiProfile: profile };
-    const missing = missingAiFields(mergedState);
-    if (missing.length) return json(res, 400, { error: 'missing profile fields', missing });
-    const provider = activeProvider(db.aiProviders);
-    if (!provider || !aiConfigurationEnabled()) return json(res, 503, { error: 'tested active AI provider unavailable' });
-    const generatedAt = new Date().toISOString();
-    const candidates = candidateExercises(profile);
-    const prompt = buildWorkoutPrompt({ state: mergedState, profile, candidates, generatedAt });
-    const startedAt = Date.now();
-    let generated;
-    let normalized;
-    try {
-      generated = await runStructuredOutput(provider, { masterKey: AI_MASTER_KEY, prompt, schema: WORKOUT_SCHEMA });
-      normalized = normalizeAiWorkout(generated.value, candidates, { existingIds: (state.routines || []).map(routine => routine.id) });
-      db.aiUsage = recordAiUsage(db.aiUsage, generated.usage, {
-        status: 'success', latencyMs: Date.now() - startedAt, timestamp: generatedAt
-      });
-      saveDb();
-    } catch {
-      db.aiUsage = recordAiUsage(db.aiUsage, failedGenerationUsage(generated, provider), {
-        status: 'failed', latencyMs: Date.now() - startedAt, timestamp: generatedAt
-      });
-      saveDb();
-      throw requestError('AI provider request failed', 502);
-    }
-    const nextState = applyAiWorkout(mergedState, normalized, generatedAt);
-    atomicWrite(stateFile(user.id), JSON.stringify(nextState));
-    json(res, 200, {
-      state: nextState,
-      plan: normalized,
-      provider: { provider: provider.provider, selectedModel: provider.selectedModel }
-    });
-  },
-
   'GET /api/dev/session': async (req, res) => {
     const user = requireAdmin(req, res);
     if (!user) return;
@@ -775,6 +729,25 @@ const routes = {
   }
 };
 
+const aiJobs = createAiJobService({
+  store: collaborationStore,
+  readState,
+  getActiveProvider: () => aiConfigurationEnabled() ? activeProvider(db.aiProviders) : null,
+  runStructured: (provider, input) => runStructuredOutput(provider, { ...input, masterKey: AI_MASTER_KEY }),
+  appendUsage: (usage, details) => {
+    db.aiUsage = recordAiUsage(db.aiUsage, usage, details);
+  },
+  notifyApplied: (collaboration, { studentId, planId, now }) => notifyAiPlanApplied({
+    collaboration,
+    studentId,
+    planId,
+    now,
+    randomId: () => crypto.randomBytes(16).toString('base64url')
+  })
+});
+aiJobs.recoverInterrupted();
+aiJobs.drain().catch(() => console.error('AI job queue startup failed'));
+
 Object.assign(routes, createPersonalRoutes({
   dataDir: DATA,
   origin: ORIGIN,
@@ -782,7 +755,14 @@ Object.assign(routes, createPersonalRoutes({
   readBody,
   json,
   readState,
-  sendPush
+  sendPush,
+  store: collaborationStore
+}), createAiJobRoutes({
+  service: aiJobs,
+  readSession,
+  readBody,
+  json,
+  requireTrustedWrite
 }));
 
 http.createServer(async (req, res) => {

@@ -184,6 +184,13 @@ function notify(collaboration, randomId, userId, title, body, resourceId, now) {
   };
 }
 export { INITIAL_COLLABORATION };
+export function createCollaborationStore(dataDir) {
+  return createJsonStore({
+    file: path.join(dataDir, 'collaboration.json'),
+    initial: INITIAL_COLLABORATION,
+    migrate: migrateCollaboration
+  });
+}
 export function ensureProfile({ collaboration, userId, roles = [], name, now, randomId, randomShareCode = randomId }) {
   const existing = collaboration.profiles.find(profile => profile.userId === userId);
   const nextRoles = [...new Set(['student', ...(existing?.roles || []), ...roles])].filter(role => role === 'student' || role === 'trainer');
@@ -926,10 +933,10 @@ export function buildClientDetail({ collaboration, trainerId, clientId, now, rea
     program: collaboration.programs.find(item => item.clientId === clientId && item.status === 'published') || null
   };
 }
-export function createPersonalRoutes({ dataDir, origin, readSession, readBody, json, readState, sendPush }) {
+export function createPersonalRoutes({ dataDir, origin, readSession, readBody, json, readState, sendPush, store: providedStore }) {
   const randomId = () => crypto.randomBytes(16).toString('base64url');
   const randomShareCode = () => crypto.randomBytes(16).toString('hex').toUpperCase();
-  const store = createJsonStore({ file: path.join(dataDir, 'collaboration.json'), initial: INITIAL_COLLABORATION, migrate: migrateCollaboration });
+  const store = providedStore || createCollaborationStore(dataDir);
   const now = () => new Date().toISOString();
   const write = (req, body, reducer) => {
     const mobileClient = req.headers?.['x-first-client'] === 'capacitor';
