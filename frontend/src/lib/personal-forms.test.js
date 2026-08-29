@@ -83,6 +83,15 @@ describe('program helpers', () => {
     expect(original).toEqual(['a', 'b', 'c'])
     expect(reorderItem(original, -1, 1)).toBe(original)
   })
+  it('renders financial months returned by the workspace API', () => {
+    const markup = renderToStaticMarkup(React.createElement(MoneyBars, {
+      months: [{ month: '2026-08', expectedCents: 30000, receivedCents: 12000 }],
+    }))
+
+    expect(markup).toContain('ago de 26')
+    expect(markup).toMatch(/R\$\s*300,00/)
+    expect(markup).toMatch(/R\$\s*120,00/)
+  })
 })
 
 describe('finance and Fortaleza helpers', () => {
@@ -134,6 +143,16 @@ describe('finance and Fortaleza helpers', () => {
 
     expect(markup).toMatch(/name="appointmentTime"[^>]*value="08:15"/)
     expect(markup).toContain('America/New_York')
+  })
+
+  it('derives today and local fields from Date and numeric timestamps', () => {
+    const now = new Date('2026-08-30T01:00:00.000Z')
+
+    expect(timeZoneForms.todayInTimeZone(now, 'America/Fortaleza')).toBe('2026-08-29')
+    expect(timeZoneForms.timeZoneFields(now.getTime(), 'America/Fortaleza')).toEqual({
+      date: '2026-08-29',
+      time: '22:00',
+    })
   })
 })
 
