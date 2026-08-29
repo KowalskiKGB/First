@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
-import { effectiveRoutine, effectiveRoutineId, streakWeeks, lastBW, setsDoneActive } from '../lib/history.js'
+import { effectiveRoutineId, streakWeeks, lastBW, setsDoneActive, trainedDates } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, isoOf, weekKey, DAYS } from '../lib/format.js'
 import { t, dateLocale } from '../lib/i18n.js'
 import { bwSheet, goalSheet, dayOverrideSheet, calendarSheet, startFlow, loadStarterPlan, bwDeltaColor } from '../sheets.jsx'
@@ -21,14 +21,14 @@ export default function Home() {
 
   const today = new Date()
   const todayOptions = scheduledRoutineOptions(S, todayISO())
-  const routine = effectiveRoutine(S, todayISO())
+  const routine = todayOptions[0]?.routine || null
   const todayOvr = S.dayPlan[todayISO()] !== undefined
   const bw = lastBW(S)
   const prevBW = S.bodyweight.length > 1 ? S.bodyweight[S.bodyweight.length - 2] : null
   const delta = bw && prevBW ? bw.w - prevBW.w : null
 
   const monday = new Date(today); monday.setDate(today.getDate() - ((today.getDay() + 6) % 7) + weekOffset * 7)
-  const doneDays = new Set(S.workouts.map(w => w.d))
+  const doneDays = trainedDates(S.workouts)
   const strip = []
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday); d.setDate(monday.getDate() + i)
@@ -41,7 +41,7 @@ export default function Home() {
   const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6)
   const wkLabel = weekOffset === 0 ? t('This week') : `${monday.getDate()} ${monday.toLocaleDateString(dateLocale(), { month: 'short' })} – ${sunday.getDate()} ${sunday.toLocaleDateString(dateLocale(), { month: 'short' })}`
 
-  const wThisWeek = S.workouts.filter(w => weekKey(w.d) === weekKey(todayISO())).length
+  const wThisWeek = [...doneDays].filter(date => weekKey(date) === weekKey(todayISO())).length
   const plannedPerWeek = Array.from({ length: 7 }, (_, day) => scheduledRoutineOptionsForWeekday(S, day).length > 0).filter(Boolean).length
   const bwPoints = S.bodyweight.slice(-30).map(b => ({ t: b.t || new Date(b.d).getTime(), y: b.w, d: b.d }))
 
