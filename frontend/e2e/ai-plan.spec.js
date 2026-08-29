@@ -33,6 +33,8 @@ function aiFixtures({ plan = null, job = null } = {}) {
   let measurements = { weight: { value: 70, unit: 'kg', observedAt: '2026-08-29' } }
   let currentPlan = plan
   let currentJob = job
+  let dataState = initialState()
+  if (currentPlan) dataState.aiLastGeneration = { planId: currentPlan.id, version: currentPlan.version, summary: currentPlan.justification, generatedAt: currentPlan.appliedAt }
   const calls = []
   const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
   const context = () => ({
@@ -51,11 +53,12 @@ function aiFixtures({ plan = null, job = null } = {}) {
 
       if (pathname === '/api/me') return json(route, { user: { id: 'student-a', name: 'Aluno' } })
       if (pathname === '/api/data' && method === 'GET') {
-        const state = initialState()
-        if (currentPlan) state.aiLastGeneration = { planId: currentPlan.id, version: currentPlan.version, summary: currentPlan.justification, generatedAt: currentPlan.appliedAt }
-        return json(route, { state })
+        return json(route, { state: dataState })
       }
-      if (pathname === '/api/data' && method === 'PUT') return json(route, { ok: true })
+      if (pathname === '/api/data' && method === 'PUT') {
+        dataState = structuredClone(body.state)
+        return json(route, { ok: true })
+      }
       if (pathname === '/api/collaboration') return json(route, { rev, profile: { userId: 'student-a', roles: ['student'] }, connections: [], notifications: [], programs: [] })
       if (pathname === '/api/ai/status') return json(route, { configured: true, eligible: true, missing: [], blockers: [], provider: { provider: 'openai', selectedModel: 'gpt-5-mini' } })
       if (pathname === '/api/ai/context') return json(route, context())
@@ -154,6 +157,35 @@ test('an active job resumes after remount without creating a second job', async 
   await expect(page.getByText('Versão 1')).toBeVisible()
   expect(fixtures.calls.filter(call => call.pathname === '/api/ai/jobs')).toHaveLength(0)
   await page.screenshot({ path: testInfo.outputPath('ai-plan-tablet-resumed.png'), fullPage: true })
+  expect(errors).toEqual([])
+})
+
+test('a job applied while closed is reconciled into local schedules exactly once', async ({ page }, testInfo) => {
+  const fixtures = aiFixtures({
+    plan: generatedPlan(),
+    job: { id: 'job-closed', status: 'applied', planVersion: 1, contextHash: 'ctx-1' },
+  })
+  const errors = watchBrowser(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.route('**/api/**', route => fixtures.handle(route))
+
+  await page.goto('/#/plan')
+  await expect(page.getByText('Força IA 1', { exact: true })).toBeVisible()
+  await expect.poll(() => fixtures.calls.filter(call => call.pathname === '/api/data').length).toBe(1)
+  const persisted = fixtures.calls.find(call => call.pathname === '/api/data').body.state
+  expect(persisted.week).toEqual({ 1: 'manual' })
+  expect(persisted.routines.map(routine => routine.id)).toEqual(['manual', 'routine-1'])
+  expect(persisted.sourceSchedules.ai[0]).toMatchObject({ planId: 'plan-1', version: 1, week: { 1: 'routine-1' } })
+  expect(fixtures.calls.filter(call => call.pathname === '/api/ai/jobs')).toHaveLength(0)
+
+  await page.reload()
+  await expect(page.getByText('Força IA 1', { exact: true })).toBeVisible()
+  await page.waitForTimeout(250)
+  expect(fixtures.calls.filter(call => call.pathname === '/api/data')).toHaveLength(1)
+  expect(fixtures.calls.filter(call => call.pathname === '/api/ai/jobs')).toHaveLength(0)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1)
+  await page.screenshot({ path: testInfo.outputPath('ai-plan-mobile-closed-reconcile.png'), fullPage: true })
   expect(errors).toEqual([])
 })
 

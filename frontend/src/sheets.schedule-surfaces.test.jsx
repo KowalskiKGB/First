@@ -31,7 +31,7 @@ vi.mock('./components/Icon.jsx', () => ({
   default: ({ name, className = '' }) => <i data-icon={name} className={className} />,
 }))
 
-import { calendarSheet, dayOverrideSheet } from './sheets.jsx'
+import { calendarSheet, dayOverrideSheet, SessionPicker } from './sheets.jsx'
 
 const managedRestState = () => ({
   routines: [{ id: 'ai-monday', name: 'AI Monday', emoji: 'sparkles', ex: [] }],
@@ -70,5 +70,14 @@ describe('schedule sheets with rest preference and managed availability', () => 
     calendarSheet('2026-08-15T12:00:00')
 
     expect(openedMarkup()).toContain('<span>31</span><i class="ovr"></i>')
+  })
+
+  it('routes the session chooser heading and count through the translation fallback', () => {
+    const markup = renderToStaticMarkup(<SessionPicker options={[
+      { sourceType: 'ai', planId: 'plan-1', routineId: 'ai-monday', label: 'Plano IA', routine: harness.state.routines[0] },
+    ]} close={vi.fn()} />)
+
+    expect(markup).toContain('<h3>Choose a session</h3>')
+    expect(markup).toContain('You have 1 sessions available.')
   })
 })

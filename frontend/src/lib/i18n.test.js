@@ -42,6 +42,8 @@ describe('Brazilian Portuguese defaults', () => {
       'Undo generation',
       'Weekly intelligence',
       'My workout',
+      'Choose a session',
+      'You have {0} sessions available.',
       'Prefer rest for this day',
       'Dev credential',
       'Providers and AI models',
