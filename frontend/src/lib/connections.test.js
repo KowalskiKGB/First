@@ -92,6 +92,12 @@ describe('explicit grants', () => {
     expect(requestGrants('trainer', { plansWrite: true })).toEqual({})
   })
 
+  it.each([undefined, null, '', 'admin', 'STUDENT'])('rejects invalid actor role %s before building a request', actorRole => {
+    expect(() => requestGrants(actorRole, { plansWrite: true })).toThrowError('Invalid connection actor role')
+    expect(() => connectionRequestPayload(actorRole, 'A'.repeat(32), { plansWrite: true }))
+      .toThrowError('Invalid connection actor role')
+  })
+
   it('lets the student explicitly choose grants when accepting a trainer request', () => {
     const trainerRequest = { ...studentRequest, requestedBy: 'trainer-1', grants: {} }
     expect(responseGrants(trainerRequest, 'student-1', { progressRead: true })).toEqual({
