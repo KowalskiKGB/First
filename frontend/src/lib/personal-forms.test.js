@@ -74,7 +74,7 @@ describe('finance and Fortaleza helpers', () => {
   })
 
   it.each([
-    ['0', 0],
+    ['0,01', 1],
     ['12', 1200],
     ['12,3', 1230],
     ['1.234,56', 123456],
@@ -83,7 +83,7 @@ describe('finance and Fortaleza helpers', () => {
     expect(reaisToCents(value)).toBe(cents)
   })
 
-  it.each(['', '-1,00', '1,234', '12,345', '1.23,45', 'abc', '1000000,01'])('rejects invalid reais value %s', value => {
+  it.each(['', '0', '0,00', '-1,00', '1,234', '12,345', '1.23,45', 'abc', '1000000,01'])('rejects invalid reais value %s', value => {
     expect(() => reaisToCents(value)).toThrow('Valor em reais inválido')
   })
 
@@ -140,5 +140,18 @@ describe('controlled form markup', () => {
     expect(markup).toContain('Salvar aula')
     expect(markup).toContain('Salvar cobrança')
     expect(markup).toContain('Histórico financeiro dos últimos seis meses')
+  })
+
+  it('shows a paid timestamp on its Fortaleza calendar date while editing', () => {
+    const markup = renderToStaticMarkup(React.createElement(ReceivableForm, {
+      clients,
+      receivable: {
+        id: 'receivable-1', clientId: 'client-1', period: '2026-08', dueOn: '2026-08-29',
+        amountCents: 10000, status: 'paid', paidAt: '2026-08-30T01:00:00.000Z', paymentMethod: 'pix',
+      },
+      onSubmit: vi.fn(),
+    }))
+
+    expect(markup).toMatch(/name="paidOn"[^>]*value="2026-08-29"/)
   })
 })
