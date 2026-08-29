@@ -66,6 +66,7 @@ test('the deployment template is complete and builds only this repository', () =
   assert.match(androidGradle, /androidx\.credentials:credentials:/)
   assert.match(androidGradle, /androidx\.credentials:credentials-play-services-auth:/)
   assert.match(androidGradle, /androidx\.webkit:webkit:/)
+  assert.match(androidManifest, /android:allowBackup="false"/)
   assert.match(androidManifest, /android:name="asset_statements"/)
   assert.match(androidManifest, /android:autoVerify="true"/)
   assert.match(androidStrings, /https:\/\/first\.rocketxsistemas\.com\.br\/\.well-known\/assetlinks\.json/)
