@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { AI_JOB_STATUSES, AI_PLAN_SOURCES, AI_PLAN_STATUSES, migrateCollaboration } from '../domain/schema.js';
+import {
+  AI_JOB_STAGES,
+  AI_JOB_STATUSES,
+  AI_PLAN_SOURCES,
+  AI_PLAN_STATUSES,
+  migrateCollaboration
+} from '../domain/schema.js';
 
 const NOW = '2026-08-29T12:00:00.000Z';
 
@@ -9,6 +15,7 @@ test('AIPlan and AIJob migrations close legacy source/status values into canonic
   assert.deepEqual([...AI_PLAN_SOURCES], ['ai', 'personal']);
   assert.deepEqual([...AI_PLAN_STATUSES], ['applied', 'superseded']);
   assert.deepEqual([...AI_JOB_STATUSES], ['queued', 'running', 'applied', 'failed']);
+  assert.deepEqual([...AI_JOB_STAGES], ['organizing', 'generating', 'validating', 'applying']);
   const migrated = migrateCollaboration({
     aiPlans: [{
       id: 'legacy', studentId: 'student-a', version: 1, provider: 'openai', model: 'test', contextHash: 'hash',
@@ -23,6 +30,37 @@ test('AIPlan and AIJob migrations close legacy source/status values into canonic
   assert.equal(migrated.aiPlans[0].source, 'ai');
   assert.equal(migrated.aiPlans[0].status, 'applied');
   assert.equal(migrated.aiJobs[0].status, 'applied');
+  assert.equal(migrated.aiJobs[0].stage, 'applying');
+});
+
+test('AIJob migration maps known legacy stages and never exposes arbitrary stored text', () => {
+  const job = (id, stage, status = 'running') => ({
+    id,
+    idempotencyKey: `key-${id}`,
+    studentId: 'student-a',
+    status,
+    stage,
+    publicError: null,
+    contextHash: 'hash',
+    planVersion: null,
+    createdAt: NOW,
+    updatedAt: NOW
+  });
+  const migrated = migrateCollaboration({
+    aiJobs: [
+      job('queued', 'queued', 'queued'),
+      job('provider', 'provider'),
+      job('validation', 'validation'),
+      job('unknown', 'internal-secret-step', 'failed')
+    ]
+  });
+
+  assert.deepEqual(migrated.aiJobs.map(item => item.stage), [
+    'organizing',
+    'generating',
+    'validating',
+    'organizing'
+  ]);
 });
 
 test('AI retention caps only generated history and preserves every Personal or legacy manual plan', () => {
