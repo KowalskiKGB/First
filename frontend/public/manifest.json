@@ -1,7 +1,7 @@
 {
-  "name": "openGym",
-  "short_name": "openGym",
-  "description": "Personal gym & body weight tracker",
+  "name": "First",
+  "short_name": "First",
+  "description": "Treinos, progresso e peso corporal em um só lugar",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

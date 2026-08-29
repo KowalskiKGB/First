@@ -13,6 +13,7 @@ body {
 }
 a { color: var(--acc); text-decoration: none; }
 a:hover { text-decoration: underline; }
+:focus-visible { outline: 3px solid var(--acc); outline-offset: 3px; }
 img { max-width: 100%; }
 
 .wrap { max-width: 1060px; margin: 0 auto; padding: 0 22px; }
@@ -107,7 +108,7 @@ h2 { font-size: clamp(26px, 4.5vw, 34px); letter-spacing: -.02em; margin: 6px 0 
 
 /* ---------- story / quote ---------- */
 .story {
-  background: linear-gradient(160deg, var(--card) 0%, #12161c 100%);
+  background: var(--card);
   border-radius: 20px; padding: clamp(24px, 5vw, 44px); margin-top: 6px;
 }
 .story blockquote { font-size: clamp(18px, 3vw, 23px); line-height: 1.5; letter-spacing: -.01em; max-width: 760px; }

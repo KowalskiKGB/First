@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!frontend/.env.mobile
 data/
 
 # Downloaded third-party exercise media
@@ -18,6 +19,7 @@ frontend/android/app/build/
 # Local tooling
 graphify-out/
 .codex/
+tmp-playwright/
 
 # Signing material
 *.jks

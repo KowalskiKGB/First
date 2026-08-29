@@ -1,69 +1,72 @@
-# Contributing to openGym
+# Contributing to First
 
-Thanks for taking a look! openGym is intentionally small and dependency-light, and the goal is
-to keep it that way — easy to read, easy to self-host.
+Thanks for taking a look. First is an independent, AGPL-licensed version derived from
+openGym. Keep changes small, dependency-light, and easy to self-host.
 
 ## Project layout
 
+```text
+frontend/  React + Vite app (including the optional Capacitor mobile shells).
+api/       Node backend with WebAuthn and Web Push support.
+Dockerfile builds the frontend and serves it through nginx.
+web/       nginx configuration for the app and the /api proxy.
+docs/      self-hosting and mobile build guides.
 ```
-frontend/  React + Vite app (src/views, src/components, src/store, src/lib). Builds to static files.
-           android/ + ios/ are the Capacitor shells for the standalone mobile app (docs/MOBILE.md).
-api/       backend — server.js (Node, no framework), one dependency (@simplewebauthn/server).
-web/       multi-stage Dockerfile (builds frontend → nginx) + nginx.conf (serves app, proxies /api).
-media/     exercise img/gif (gitignored, fetched at runtime).
-docs/      self-hosting guide.
-```
+
+Exercise images and GIFs are not part of this repository or the default build. Do not add or
+enable them without documenting a separate license from the relevant copyright holder. The
+exercise metadata and instructional text derived from `hasaneyldrm/exercises-dataset` remain
+under that project's MIT license; see [NOTICE.md](NOTICE.md).
 
 ## Running for development
 
+For the complete local stack, copy the environment template, set `RP_ID=localhost` and
+`ORIGIN=http://localhost:8080` in `.env`, then run:
+
 ```bash
 cp .env.example .env
-docker compose up -d --build      # api + web + media on :8080
-# frontend hot reload:
-cd frontend && npm install && npm run dev
-# training logic (progression rules, 1RM, how a session is read back):
-cd frontend && npm test
+docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+```
+
+The local override binds the app to `127.0.0.1:${WEB_PORT:-8080}`. For frontend hot reload and
+tests:
+
+```bash
+cd frontend
+npm install
+npm run dev
+npm test
 ```
 
 ## Guidelines
 
-- **Keep it dependency-light.** The frontend uses React + Router + Zustand and nothing else;
-  new deps (front or back) are a hard sell. `api/` has two (`@simplewebauthn/server` for passkeys,
-  `web-push` for notifications) — keep it near that.
-- **Match the style.** Small components, clear names, comments only where the "why" isn't obvious.
-  State lives in the Zustand store (`src/store`); pure helpers in `src/lib`.
-- **Don't commit** the exercise media (`media/`) or `data/` — they're gitignored.
-- **Test the flow** you touched — click through the affected screens (and the workout flow) in a
-  browser before opening a PR.
-- **Training logic gets a unit test.** Anything deciding what you lift next, or reading a logged
-  session back, belongs in a pure helper in `src/lib` with tests beside it (`npm test`). These
-  rules are easy to get subtly wrong and nearly impossible to verify by clicking — the
-  progression engine grew two real bugs that only a test pinned down.
+- Keep it dependency-light. The frontend uses React, React Router, Zustand, and Capacitor; the
+  API uses `@simplewebauthn/server` and `web-push`.
+- Match the existing style: small components, clear names, and comments only where the reason is
+  not obvious. State belongs in the Zustand store; pure helpers belong in `frontend/src/lib`.
+- Never commit runtime data, secrets, or unlicensed media.
+- Test the flow you touched in a browser before opening a pull request.
+- Training logic needs focused unit tests beside the helper it changes.
 
 ## Good first issues
 
-- Additional starter plans (upper/lower, full-body, 5×5…)
-- More languages for the exercise instructions (the dataset ships several)
-- Percentage / training-max programming (5/3/1-style) on top of the progression engine in
-  `src/lib/progression.js` — the policy interface is already there
-- Accessibility passes on the workout and chart screens
+The following are future work, not current features:
+
+- Additional starter plans such as upper/lower, full-body, and 5x5.
+- Percentage/training-max programming.
+- Exercise notes and a plate calculator.
+- Accessibility passes on workout and chart screens.
+
+See [PLANEJAMENTO.md](PLANEJAMENTO.md) for the full roadmap.
 
 ## Where to ask what
 
-| You have | Goes to |
-| --- | --- |
-| A question, or self-hosting that won't behave | [Discussions → Q&A](https://github.com/DuarteSantos8/openGym/discussions/categories/q-a) |
-| An idea you're not sure about yet | [Discussions → Ideas](https://github.com/DuarteSantos8/openGym/discussions/categories/ideas) |
-| A reproducible bug | [Issues](https://github.com/DuarteSantos8/openGym/issues) |
-| A change you've already built | A pull request |
+Use [Issues](https://github.com/KowalskiKGB/First/issues) for questions, reproducible bugs, and
+agreed work. Submit completed changes as pull requests.
 
-An answered question in Q&A is worth more than the same answer buried in a closed issue — the
-next person searching "passkey login fails behind my reverse proxy" actually finds it.
+When reporting a passkey problem, include `RP_ID` and `ORIGIN`, but never attach the contents of
+the Docker data volume.
 
-## Reporting bugs
-
-Open an issue with: what you did, what you expected, what happened, and your browser/OS. If it's
-about login/passkeys, include your `RP_ID`/`ORIGIN` (not the `data/` contents) — most login
-issues are an origin mismatch.
-
-By contributing you agree your work is licensed under the project's [GNU AGPL v3.0](LICENSE).
+By contributing, you agree that your contribution is distributed under the project's
+[GNU AGPL v3.0](LICENSE). Preserve the upstream attribution and third-party notices in
+[NOTICE.md](NOTICE.md).

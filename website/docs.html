@@ -3,152 +3,117 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Docs — openGym</title>
-<meta name="description" content="How to install openGym on Android, use it on iPhone, self-host it with Docker, import your training history, and keep backups.">
+<title>Docs - First</title>
+<meta name="description" content="Deploy First with Docker Compose, preview it locally, configure passkeys, and understand its data and licensing boundaries.">
 <meta name="theme-color" content="#0c0e12">
-<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
-<link rel="icon" type="image/png" sizes="180x180" href="icon-180.png">
-<link rel="apple-touch-icon" href="icon-180.png">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-<nav><div class="wrap nav-in">
-  <a class="brand" href="/">
-    <img src="icon-180.png" alt="" width="26" height="26" style="border-radius:6px">
-    openGym
-  </a>
+<nav aria-label="Primary"><div class="wrap nav-in">
+  <a class="brand" href="/">First</a>
   <div class="nav-links">
     <a href="/#features" class="hide-s">Features</a>
-    <a href="/#screens" class="hide-s">Screenshots</a>
-    <a href="/#demo" class="hide-s">Demo</a>
-    <a href="docs.html">Docs</a>
+    <a href="/#selfhost" class="hide-s">Self-host</a>
+    <a href="docs.html" aria-current="page">Docs</a>
     <a href="about.html" class="hide-s">About</a>
-    <a href="https://github.com/DuarteSantos8/openGym" rel="noopener"><span data-gh="stars">GitHub</span></a>
-    <a class="cta" href="/#download">Download</a>
+    <a href="https://github.com/KowalskiKGB/First" class="hide-s" rel="noopener"><span data-gh="stars">GitHub</span></a>
+    <a class="cta" href="https://first.rocketxsistemas.com.br" rel="noopener">Open First</a>
   </div>
 </div></nav>
 
-<main class="wrap prose">
-  <h1>Docs</h1>
-  <p class="lead">Everything you need to get openGym running — on a phone, or on your own
-     server. The deeper, maintainer-level docs live
-     <a href="https://github.com/DuarteSantos8/openGym/tree/main/docs" rel="noopener">in the repository</a>.</p>
+<main id="main" class="wrap prose" style="padding-left:22px;padding-right:22px">
+  <h1>First documentation</h1>
+  <p class="lead">Deploy the public service from source, or add the local override for a
+     loopback-only preview. Maintainer documentation lives
+     <a href="https://github.com/KowalskiKGB/First/tree/main/docs" rel="noopener">in the First repository</a>.</p>
 
-  <div class="toc">
-    <a href="#android">Android</a>
-    <a href="#iphone">iPhone</a>
-    <a href="#selfhost">Self-hosting</a>
-    <a href="#import">Import your history</a>
-    <a href="#backup">Backups</a>
-    <a href="#build">Build it yourself</a>
-    <a href="#faq">FAQ</a>
+  <div class="toc" aria-label="On this page">
+    <a href="#production">Production</a>
+    <a href="#local">Local preview</a>
+    <a href="#passkeys">Passkeys</a>
+    <a href="#data">Data and backups</a>
+    <a href="#media">Exercise media</a>
+    <a href="#mobile">Mobile builds</a>
+    <a href="#license">License</a>
   </div>
 
-  <h2 id="android">Install on Android</h2>
-  <ol>
-    <li>Open <a href="/#download">the download</a> on your phone and tap <b>Download for Android</b>.</li>
-    <li>Your browser will ask whether it may install apps — allow it. This is standard for
-        any app installed outside the Play Store (called <i>sideloading</i>), and you can
-        revoke the permission right after.</li>
-    <li>Open the downloaded <code>openGym.apk</code>, confirm, done. No account, no setup.</li>
-  </ol>
-  <div class="note">openGym is deliberately <b>not</b> on the Play Store — no store account
-    between you and an open-source app. The APK is signed; updates install over the old
-    version and keep your data.</div>
-  <p>Everything is stored on the phone itself. The only things fetched from the internet are
-     the exercise images and animations (from a CDN, on demand).</p>
-
-  <h2 id="iphone">Use on iPhone</h2>
-  <p>Apple does not allow installing apps outside the App Store, so there is no iOS download —
-     that's a platform rule, not a choice we made. What works instead:</p>
-  <ul>
-    <li><b>Self-host + home screen (recommended):</b> open your own openGym instance in
-        Safari → <b>Share</b> → <b>Add to Home Screen</b>. You get a full-screen app with its
-        own icon, passkey sign-in and sync — no expiry, no fees.</li>
-    <li><b>Build it onto your own iPhone:</b> with a Mac and Xcode, the native app runs on
-        your device with a free Apple ID (Apple expires the signature after 7 days; re-run
-        from Xcode to renew). See
-        <a href="https://github.com/DuarteSantos8/openGym/blob/main/docs/MOBILE.md" rel="noopener">docs/MOBILE.md</a>.</li>
-    <li><b>Just looking?</b> The <a href="https://duartesantos8.github.io/openGym/" rel="noopener">live demo</a>
-        runs in any browser with example data.</li>
-  </ul>
-
-  <h2 id="selfhost">Self-host with Docker</h2>
-  <p>The self-hosted flavor adds passkey profiles, sync across devices, and (optionally) an
-     admin dashboard. You need <a href="https://docs.docker.com/get-docker/" rel="noopener">Docker</a>
-     with Compose:</p>
-  <pre><code>git clone https://github.com/DuarteSantos8/openGym
-cd openGym
+  <h2 id="production">Production deployment</h2>
+  <p>The production stack builds the API and web images from the checked-out source:</p>
+  <pre><code>git clone https://github.com/KowalskiKGB/First
+cd First
 cp .env.example .env
-docker compose pull    # prebuilt images (amd64 + arm64) — skip to build from source
-docker compose up -d</code></pre>
-  <p>Open <code>http://localhost:8080</code>, tap <b>Create profile</b>, and you're in. The
-     first launch downloads the exercise media (~140&nbsp;MB) once.</p>
-  <div class="note">Want it reachable from your phone with passkeys? You'll need an HTTPS
-    domain — a two-line change in <code>.env</code>. The full guide, including reverse-proxy
-    examples and the invite-only/admin options, is in
-    <a href="https://github.com/DuarteSantos8/openGym/blob/main/docs/SELF_HOSTING.md" rel="noopener">docs/SELF_HOSTING.md</a>.</div>
+docker compose -f docker-compose.yml up -d --build</code></pre>
+  <p><code>.env.example</code> is prepared for
+     <code>https://first.rocketxsistemas.com.br</code>. Review it before starting the service.</p>
+  <div class="note">The base Compose file does not publish a host port. Attach your HTTPS reverse
+    proxy to the Compose network (normally <code>first_default</code>) and route the public hostname
+    to <code>web:80</code>. First does not publish prebuilt container images.</div>
+  <p>The complete production guide is
+     <a href="https://github.com/KowalskiKGB/First/blob/main/docs/SELF_HOSTING.md" rel="noopener">docs/SELF_HOSTING.md</a>.</p>
 
-  <h2 id="import">Import your training history</h2>
-  <p>Coming from another tracker? <b>Settings → Data → Import from another app</b> reads:</p>
-  <ul>
-    <li><b>FitNotes</b> (both the Android and the FitNotes 2 iOS export)</li>
-    <li><b>Strong</b> and <b>Hevy</b> (CSV exports — session lengths carry over, so the
-        activity heatmap fills in properly)</li>
-    <li><b>Apple Health</b> (body-weight history from the XML export)</li>
-    <li>…and anything else with date, exercise-name and weight/reps columns</li>
-  </ul>
-  <p>Exercise names are matched against the 1,324-exercise library; anything genuinely
-     ambiguous becomes one of your own custom exercises instead of being guessed at. A summary
-     shows exactly what will happen before anything is written, and importing is idempotent —
-     running it twice never duplicates a workout.</p>
+  <h2 id="local">Local preview</h2>
+  <p>Copy <code>.env.example</code> to <code>.env</code>, then replace the production passkey origin
+     with these local values:</p>
+  <pre><code>RP_ID=localhost
+ORIGIN=http://localhost:8080
+VAPID_SUBJECT=mailto:admin@localhost
+WEB_PORT=8080</code></pre>
+  <p>Start the base file and local override together:</p>
+  <pre><code>docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build</code></pre>
+  <p>Open <a href="http://localhost:8080">http://localhost:8080</a>. The override binds to
+     <code>127.0.0.1</code>, so it is intentionally unavailable from other devices.</p>
 
-  <h2 id="backup">Backups</h2>
-  <p><b>Settings → Data → Export backup (JSON)</b> writes your entire log — plan, workouts,
-     weights, settings — into one file. On the mobile app it goes out through the share sheet
-     (Files, AirDrop, mail…); in the browser it downloads. <b>Import backup</b> restores it
-     anywhere: another phone, your self-hosted instance, or a fresh install. That file is the
-     whole point of openGym — your training log as a file <i>you</i> own.</p>
+  <h2 id="passkeys">Passkeys and HTTPS</h2>
+  <p><code>RP_ID</code> must equal the hostname in <code>ORIGIN</code>. Browsers allow WebAuthn over
+     HTTPS and, for development, over <code>http://localhost</code>. A plain LAN-IP URL is not a
+     supported passkey origin. Changing <code>RP_ID</code> later invalidates passkeys registered for
+     the old hostname.</p>
 
-  <h2 id="build">Build it yourself</h2>
-  <p>Everything on this page is built from the public repo:</p>
-  <ul>
-    <li><b>Web / self-host:</b> <code>docker compose up -d --build</code> builds the frontend
-        inside the container — no local Node needed.</li>
-    <li><b>Android APK / iOS app:</b> the Capacitor projects live in <code>frontend/android</code>
-        and <code>frontend/ios</code> — build, signing and distribution notes are in
-        <a href="https://github.com/DuarteSantos8/openGym/blob/main/docs/MOBILE.md" rel="noopener">docs/MOBILE.md</a>.</li>
-  </ul>
+  <h2 id="data">Data and backups</h2>
+  <p>The API writes profiles, public passkey records, sessions, Web Push keys, training state, and
+     body-weight history under <code>/data</code> in the named volume
+     <code>first_first-data</code>. The volume is not encrypted.</p>
+  <pre><code>docker compose -f docker-compose.yml stop api
+docker compose -f docker-compose.yml cp api:/data ./first-data-backup
+docker compose -f docker-compose.yml start api</code></pre>
+  <p>Protect and test that cold backup. Do not run <code>docker compose down -v</code> unless you
+     intend to delete the persistent volume.</p>
 
-  <h2 id="faq">FAQ</h2>
-  <h3>Is it really free?</h3>
-  <p>Yes — free as in cost <i>and</i> as in freedom (AGPL-3.0). No pro tier, no locked
-     features, no ads, and the license keeps every fork open source too.</p>
-  <h3>What data does openGym collect?</h3>
-  <p>None. There is no telemetry, no analytics, no crash reporting. The mobile app's only
-     network traffic is fetching exercise media from a CDN; a self-hosted instance talks only
-     to your own server.</p>
-  <h3>Why isn't it on the Play Store / App Store?</h3>
-  <p>By choice (and on iOS, by Apple's rules for sideloading). Store accounts cost money,
-     impose terms that sit badly with the AGPL, and put a gatekeeper between you and an app
-     whose whole point is that your data is yours.</p>
-  <h3>Mobile app or self-hosted — which one should I pick?</h3>
-  <p>If you just want to track your training: the mobile app. If you want your data on your
-     own hardware, synced across devices, with profiles for the people you train with: self-host.
-     You can start with the app and move to a server later — the backup file migrates everything.</p>
-  <h3>Where does the exercise database come from?</h3>
-  <p>From <a href="https://github.com/hasaneyldrm/exercises-dataset" rel="noopener">hasaneyldrm/exercises-dataset</a>
-     (CC-licensed): 1,324 exercises with animations and instructions in 10 languages.</p>
+  <h2 id="media">Exercise data and media</h2>
+  <p>Exercise metadata and instructional text derived from
+     <a href="https://github.com/hasaneyldrm/exercises-dataset" rel="noopener">hasaneyldrm/exercises-dataset</a>
+     retain its MIT license. Images and GIFs require a separate license from their copyright
+     holder. First does not include, download, serve, or enable them by default.</p>
+  <p>Review <a href="https://github.com/KowalskiKGB/First/blob/main/NOTICE.md" rel="noopener">NOTICE.md</a>
+     before preparing a separately licensed deployment.</p>
+
+  <h2 id="mobile">Mobile builds</h2>
+  <p>First includes inherited Capacitor source for local Android and iOS builds, but it does not
+     publish a signed APK or iOS package. Build and signing instructions are in
+     <a href="https://github.com/KowalskiKGB/First/blob/main/docs/MOBILE.md" rel="noopener">docs/MOBILE.md</a>.
+     The standard mobile build also leaves exercise images and GIFs disabled and absent.</p>
+
+  <h2 id="license">License and provenance</h2>
+  <p>First is an independent modified version of openGym. The original work is Copyright (C) 2026
+     Duarte Santos, and its attribution is preserved. Program code remains under the GNU AGPL
+     v3.0. If you operate a modified network version, offer its users the corresponding source as
+     required by AGPL section 13. This version's corresponding source is
+     <a href="https://github.com/KowalskiKGB/First" rel="noopener">KowalskiKGB/First</a>.</p>
+
+  <h2 id="roadmap">Roadmap status</h2>
+  <p>The student/trainer portal, measurements, additional starters, exercise notes, plate
+     calculator, and percentage/training-max programming are documented future work. They are not
+     current features. See
+     <a href="https://github.com/KowalskiKGB/First/blob/main/PLANEJAMENTO.md" rel="noopener">PLANEJAMENTO.md</a>.</p>
 </main>
 
 <footer><div class="wrap foot">
-  <span>openGym · AGPL-3.0 · © 2026 <a href="https://duarte-santos.ch" rel="noopener">Duarte Santos</a></span>
+  <span>First - AGPL-3.0 - derived from openGym, Copyright (C) 2026 Duarte Santos</span>
   <div class="links">
-    <a href="docs.html">Docs</a>
-    <a href="about.html" class="hide-s">About</a>
-    <a href="https://github.com/DuarteSantos8/openGym" rel="noopener">GitHub</a>
-    <a href="https://duartesantos8.github.io/openGym/" rel="noopener">Live demo</a>
+    <a href="docs.html" aria-current="page">Docs</a>
+    <a href="about.html">About</a>
+    <a href="https://github.com/KowalskiKGB/First" rel="noopener">GitHub</a>
   </div>
 </div></footer>
 

@@ -26,13 +26,13 @@ export function registerCustom(list) {
 // Full searchable catalogue — customs first so your own exercises are easy to find.
 export const allExercises = st => [...(st.customEx || []), ...EXDB]
 
-// Media normally sits next to the app (img/ and gif/, mounted into the web container).
-// A build can point them somewhere else — the demo build pulls them off a CDN instead of
-// shipping ~140 MB of images into the deployment.
+// Exercise media is not covered by the dataset's MIT license. It stays off unless a deployer
+// explicitly enables media they are licensed to use and supplies the matching files or URLs.
+export const mediaEnabled = import.meta.env.VITE_EXERCISE_MEDIA === '1'
 const IMG_BASE = import.meta.env.VITE_IMG_BASE || 'img/'
 const GIF_BASE = import.meta.env.VITE_GIF_BASE || 'gif/'
-export const imgSrc = ex => IMG_BASE + ex.img
-export const gifSrc = ex => GIF_BASE + ex.gif
+export const imgSrc = ex => mediaEnabled && ex?.img ? IMG_BASE + ex.img : null
+export const gifSrc = ex => mediaEnabled && ex?.gif ? GIF_BASE + ex.gif : null
 
 // Cardio exercises log time + speed instead of weight × reps.
 export const isCardio = idOrEx => (typeof idOrEx === 'string' ? EXIDX[idOrEx] : idOrEx)?.bp === 'cardio'

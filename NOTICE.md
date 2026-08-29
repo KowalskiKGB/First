@@ -3,6 +3,11 @@
 openGym — Copyright (C) 2026 Duarte Santos.
 openGym's own code is licensed under the **GNU AGPL v3.0** (see [LICENSE](LICENSE)).
 
+This independent version, **First**, has been modified since 29 August 2026. Its corresponding
+source is available at <https://github.com/KowalskiKGB/First>. Exercise images and animations
+are not included, fetched, or enabled by default because they require separate permission from
+their copyright holder.
+
 ## App store exception
 
 As an additional permission under section 7 of the AGPL v3.0, the copyright holder permits
@@ -46,11 +51,12 @@ SOFTWARE.
 
 ## Exercise data & media
 
-The exercise names, instructions (English in `frontend/src/lib/exercises-data.js`, other
-languages in `frontend/src/instr/`, regenerated via `scripts/build-instructions.mjs`), images
-and animations (fetched into `media/` at build time) come from
-[**hasaneyldrm/exercises-dataset**](https://github.com/hasaneyldrm/exercises-dataset)
-and are **not** covered by openGym's AGPL license — they remain under that dataset's own terms.
-The media files are not distributed in this repository; they are downloaded from the upstream
-source on first run. If you redistribute openGym with the media included, review the upstream
-license first.
+The exercise names and instructions (English in `frontend/src/lib/exercises-data.js`, other
+languages in `frontend/src/instr/`, regenerated via `scripts/build-instructions.mjs`) are derived
+from [**hasaneyldrm/exercises-dataset**](https://github.com/hasaneyldrm/exercises-dataset)
+and are provided under that dataset's MIT license; they are not covered by openGym's AGPL
+license. The dataset's visual media is separate and is not covered by that MIT grant.
+
+Exercise images and animations are not distributed in this repository, are not fetched on first
+run, and are not enabled by the default Docker or mobile build. If you enable or redistribute
+exercise media, review the upstream terms and obtain any needed permission first.

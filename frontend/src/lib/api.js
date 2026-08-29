@@ -1,7 +1,12 @@
 // Backend + WebAuthn helpers (ported from the vanilla app).
-export const IS_APPLE = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent)
-export const IS_ANDROID = /Android/.test(navigator.userAgent)
-export const BIO = IS_APPLE ? 'Face ID / Touch ID' : IS_ANDROID ? 'fingerprint or face unlock' : 'your fingerprint, face or PIN'
+import { getLang } from './i18n.js'
+
+const USER_AGENT = globalThis.navigator?.userAgent || ''
+export const IS_APPLE = /iPhone|iPad|iPod|Macintosh/.test(USER_AGENT)
+export const IS_ANDROID = /Android/.test(USER_AGENT)
+export const bioLabel = (language = getLang()) => language === 'pt'
+  ? (IS_APPLE ? 'Face ID / Touch ID' : IS_ANDROID ? 'impressão digital ou desbloqueio facial' : 'sua biometria, rosto ou PIN')
+  : (IS_APPLE ? 'Face ID / Touch ID' : IS_ANDROID ? 'fingerprint or face unlock' : 'your fingerprint, face or PIN')
 export const VAULT = IS_APPLE ? 'iCloud Keychain' : IS_ANDROID ? 'Google Password Manager' : 'your password manager'
 export const webauthnOK = () => !!(window.PublicKeyCredential && navigator.credentials)
 

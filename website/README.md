@@ -1,13 +1,14 @@
-# opengym.duarte-santos.ch
+# First static website
 
-Source of the project website — plain hand-written HTML/CSS/JS, no build step,
-served by nginx.
+Hand-written HTML, CSS, and JavaScript for the First project site. The canonical project URL is
+<https://first.rocketxsistemas.com.br> and the source repository is
+<https://github.com/KowalskiKGB/First>.
 
-Not in this folder (added at deploy time):
+This folder has no build step or separately copied assets. The application itself is deployed
+with the root `docker-compose.yml`; local application previews add `docker-compose.local.yml`.
 
-- `img/` — the five screenshots from `../assets/screenshots/` plus `banner.png`
-- `icon-180.png` / `icon-512.png` — copied from `../frontend/public/` (the same
-  icons the PWA uses, so the browser tab, home screen and app all match)
-- `openGym.apk` — the signed release build (see `../docs/MOBILE.md`)
+No APK, exercise images, or exercise GIFs are part of the static-site deployment. Exercise media
+requires a separate license and remains disabled and absent by default.
 
-`site.js` fetches the star/fork counts from the public GitHub API at view time.
+`site.js` reads public stars, forks, issues, and releases from `KowalskiKGB/First` on GitHub. The
+page still works when the unauthenticated API is unavailable.

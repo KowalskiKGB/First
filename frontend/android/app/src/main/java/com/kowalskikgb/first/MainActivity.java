@@ -1,4 +1,4 @@
-package ch.duartesantos.opengym;
+package com.kowalskikgb.first;
 
 import com.getcapacitor.BridgeActivity;
 

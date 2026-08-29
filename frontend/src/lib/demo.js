@@ -11,4 +11,7 @@
 // lands in a self-hosted bundle.
 export const DEMO = import.meta.env.VITE_DEMO === '1'
 export const DEMO_SEEDED = 'gym_demo_seeded_v1'
-export const REPO = 'https://github.com/DuarteSantos8/openGym'
+export const APP_NAME = 'First'
+export const APP_SLUG = 'first'
+export const APP_URL = 'https://first.rocketxsistemas.com.br'
+export const REPO = 'https://github.com/KowalskiKGB/First'
