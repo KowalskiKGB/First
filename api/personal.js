@@ -96,13 +96,11 @@ export function ensureProfile({ collaboration, userId, roles = [], name, now, ra
     }
   };
 }
-
 function clientFor(collaboration, clientId) {
   const client = collaboration.clients.find(item => item.id === clientId && !item.archivedAt);
   if (!client) throw fail('client not found', 404);
   return client;
 }
-
 function activeConnection(collaboration, client) {
   if (!client.studentUserId) return null;
   return collaboration.connections.find(item =>
@@ -111,7 +109,6 @@ function activeConnection(collaboration, client) {
     item.trainerId === client.trainerId
   ) || null;
 }
-
 export function authorize({ collaboration, actorId, client, action }) {
   if (!actorId || !client) return false;
   if (client.trainerId === actorId && !client.studentUserId) return true;
@@ -121,14 +118,12 @@ export function authorize({ collaboration, actorId, client, action }) {
   const grant = ACTION_GRANT[action];
   return !!(connection && connection.trainerId === actorId && grant && connection.grants?.[grant]);
 }
-
 function requireTrainerAccess(collaboration, actorId, clientId, action = RELATIONSHIP_ACTION, hideForeign = true) {
   const client = clientFor(collaboration, clientId);
   if (client.trainerId !== actorId) throw fail(hideForeign ? 'client not found' : 'forbidden', hideForeign ? 404 : 403);
   if (!authorize({ collaboration, actorId, client, action })) throw fail('forbidden', 403);
   return client;
 }
-
 export function requestConnection({ collaboration, actorId, actorRole, shareCode, grants = {}, now, randomId }) {
   const actor = collaboration.profiles.find(profile => profile.userId === actorId);
   if (!['student', 'trainer'].includes(actorRole) || !actor?.roles?.includes(actorRole)) throw fail('actor role required');
@@ -157,10 +152,9 @@ export function requestConnection({ collaboration, actorId, actorRole, shareCode
     endedAt: null
   };
   let next = { ...collaboration, connections: [...collaboration.connections, connection] };
-  next = notify(next, randomId, actorId === studentId ? trainerId : studentId, 'Solicitacao de vinculo', 'Um novo vinculo com Personal aguarda resposta.', connection.id, now);
+  next = notify(next, randomId, actorId === studentId ? trainerId : studentId, 'Solicitação de vínculo', 'Um novo vínculo com Personal aguarda resposta.', connection.id, now);
   return { collaboration: next, connection };
 }
-
 export function respondConnection({ collaboration, actorId, connectionId, accept, grants = {}, now, randomId }) {
   const connection = collaboration.connections.find(item => item.id === connectionId && item.status === 'pending');
   if (!connection) throw fail('connection not found', 404);
@@ -198,20 +192,18 @@ export function respondConnection({ collaboration, actorId, connectionId, accept
     clients = existing ? clients.map(item => item.id === existing.id ? client : item) : [...clients, client];
   }
   let next = { ...collaboration, clients, connections: collaboration.connections.map(item => item.id === connection.id ? nextConnection : item) };
-  next = notify(next, randomId, actorId === connection.studentId ? connection.trainerId : connection.studentId, accept ? 'Vinculo aceito' : 'Vinculo recusado', accept ? 'O aluno agora aparece no painel do Personal.' : 'A solicitacao foi encerrada.', connection.id, now);
+  next = notify(next, randomId, actorId === connection.studentId ? connection.trainerId : connection.studentId, accept ? 'Vínculo aceito' : 'Vínculo recusado', accept ? 'O aluno agora aparece no painel do Personal.' : 'A solicitação foi encerrada.', connection.id, now);
   return { collaboration: next, connection: nextConnection };
 }
-
 export function endConnection({ collaboration, actorId, connectionId, now, randomId }) {
   const connection = collaboration.connections.find(item => item.id === connectionId && item.status === 'active');
   if (!connection) throw fail('connection not found', 404);
   if (![connection.studentId, connection.trainerId].includes(actorId)) throw fail('forbidden', 403);
   const nextConnection = { ...connection, status: 'ended', endedAt: now };
   let next = { ...collaboration, connections: collaboration.connections.map(item => item.id === connection.id ? nextConnection : item) };
-  next = notify(next, randomId, actorId === connection.studentId ? connection.trainerId : connection.studentId, 'Vinculo encerrado', 'As permissoes compartilhadas foram revogadas.', connection.id, now);
+  next = notify(next, randomId, actorId === connection.studentId ? connection.trainerId : connection.studentId, 'Vínculo encerrado', 'As permissões compartilhadas foram revogadas.', connection.id, now);
   return { collaboration: next, connection: nextConnection };
 }
-
 export function createClient({ collaboration, trainerId, data, now, randomId }) {
   const name = text(data.name, 80);
   if (!name) throw fail('name required');
@@ -233,7 +225,6 @@ export function createClient({ collaboration, trainerId, data, now, randomId }) 
   next = appendAudit(next, { id: randomId(), actorId: trainerId, action: 'client.create', entity: 'client', entityId: client.id, clientId: client.id, now });
   return { collaboration: next, client };
 }
-
 export function updateClient({ collaboration, actorId, clientId, data, now, randomId }) {
   const client = requireTrainerAccess(collaboration, actorId, clientId);
   const updated = {
@@ -250,7 +241,6 @@ export function updateClient({ collaboration, actorId, clientId, data, now, rand
   next = appendAudit(next, { id: randomId(), actorId, action: 'client.update', entity: 'client', entityId: clientId, clientId, now });
   return { collaboration: next, client: updated };
 }
-
 function normalizeProgram(data) {
   const seen = new Set();
   const routines = (Array.isArray(data.routines) ? data.routines : []).slice(0, 12).map((routine, index) => {
@@ -279,9 +269,8 @@ function normalizeProgram(data) {
     .map(([weekday, routineId]) => [weekday, routineId]));
   return { routines, week };
 }
-
 export function saveProgram({ collaboration, actorId, clientId, data, now, randomId }) {
-  requireTrainerAccess(collaboration, actorId, clientId, 'plans:write');
+  const client = requireTrainerAccess(collaboration, actorId, clientId, 'plans:write');
   const existing = collaboration.programs.find(item => item.id === data.id && item.clientId === clientId) ||
     collaboration.programs.find(item => item.clientId === clientId && item.trainerId === actorId);
   const version = (existing?.version || 0) + 1;
@@ -306,9 +295,9 @@ export function saveProgram({ collaboration, actorId, clientId, data, now, rando
     programs: existing ? collaboration.programs.map(item => item.id === existing.id ? program : item) : [...collaboration.programs, program]
   };
   next = appendAudit(next, { id: randomId(), actorId, action: 'program.publish', entity: 'program', entityId: program.id, clientId, now });
+  next = notify(next, randomId, client.studentUserId, existing ? 'Treino atualizado' : 'Treino publicado', existing ? 'Seu Personal atualizou seu treino.' : 'Seu Personal publicou um novo treino para você.', program.id, now);
   return { collaboration: next, program };
 }
-
 function normalizeMeasurement(data, now) {
   const kind = text(data.kind, 40);
   if (!['weight', 'waist', 'chest', 'hip', 'neck', 'arm', 'thigh', 'calf', 'bodyFat'].includes(kind)) throw fail('invalid measurement');
@@ -325,7 +314,6 @@ function normalizeMeasurement(data, now) {
   if (value < range[0] || value > range[1]) throw fail('invalid measurement');
   return { kind, side, value, unit, observedAt };
 }
-
 export function recordMeasurement({ collaboration, actorId, clientId, data, now, randomId }) {
   const client = requireTrainerAccess(collaboration, actorId, clientId, 'measurements:write');
   if (client.studentUserId && client.trainerId !== actorId && !authorize({ collaboration, actorId, client, action: 'measurements:write' })) throw fail('forbidden');
@@ -342,7 +330,6 @@ export function recordMeasurement({ collaboration, actorId, clientId, data, now,
   next = appendAudit(next, { id: randomId(), actorId, action: 'measurement.record', entity: 'measurement', entityId: measurement.id, clientId, now });
   return { collaboration: next, measurement };
 }
-
 function timezoneFor(collaboration, trainerId) {
   const timezone = collaboration.profiles.find(item => item.userId === trainerId)?.timezone || 'America/Fortaleza';
   try {
@@ -352,7 +339,6 @@ function timezoneFor(collaboration, trainerId) {
     return 'America/Fortaleza';
   }
 }
-
 function zonedParts(value, timezone) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone,
@@ -362,7 +348,6 @@ function zonedParts(value, timezone) {
   const get = type => Number(parts.find(part => part.type === type)?.value);
   return { year: get('year'), month: get('month'), day: get('day'), hour: get('hour'), minute: get('minute'), second: get('second') };
 }
-
 function localDate(value, timezone) {
   const parts = zonedParts(value, timezone);
   return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
@@ -671,6 +656,21 @@ export function createPersonalRoutes({ dataDir, origin, readSession, readBody, j
     if (!Number.isInteger(body.rev)) throw fail('rev required');
     return store.update(body.rev, reducer);
   };
+  const pushNotification = notification => {
+    if (!notification || typeof sendPush !== 'function') return;
+    try { Promise.resolve(sendPush(notification.userId, { title: notification.title, body: notification.body, tag: 'personal' })).catch(() => {}); }
+    catch {}
+  };
+  const writeAndPush = (req, body, reducer) => {
+    let notification;
+    const result = write(req, body, state => {
+      const next = reducer(state);
+      if (next.notifications.length > state.notifications.length) notification = next.notifications.at(-1);
+      return next;
+    });
+    pushNotification(notification);
+    return result;
+  };
   const withUser = async (req, res, handler) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
@@ -727,17 +727,17 @@ export function createPersonalRoutes({ dataDir, origin, readSession, readBody, j
     }),
     'POST /api/connections/request': async (req, res) => withUser(req, res, async user => {
       const body = await readBody(req, COMMON_BODY);
-      const result = write(req, body, state => requestConnection({ collaboration: state, actorId: user.id, actorRole: body.actorRole, shareCode: body.shareCode, grants: body.grants || {}, now: now(), randomId }).collaboration);
+      const result = writeAndPush(req, body, state => requestConnection({ collaboration: state, actorId: user.id, actorRole: body.actorRole, shareCode: body.shareCode, grants: body.grants || {}, now: now(), randomId }).collaboration);
       json(res, 200, { rev: result.rev, connections: result.connections.filter(item => item.studentId === user.id || item.trainerId === user.id) });
     }),
     'POST /api/connections/respond': async (req, res) => withUser(req, res, async user => {
       const body = await readBody(req, COMMON_BODY);
-      const result = write(req, body, state => respondConnection({ collaboration: state, actorId: user.id, connectionId: body.connectionId, accept: !!body.accept, grants: body.grants || {}, now: now(), randomId }).collaboration);
+      const result = writeAndPush(req, body, state => respondConnection({ collaboration: state, actorId: user.id, connectionId: body.connectionId, accept: !!body.accept, grants: body.grants || {}, now: now(), randomId }).collaboration);
       json(res, 200, { rev: result.rev, connections: result.connections.filter(item => item.studentId === user.id || item.trainerId === user.id) });
     }),
     'POST /api/connections/end': async (req, res) => withUser(req, res, async user => {
       const body = await readBody(req, COMMON_BODY);
-      const result = write(req, body, state => endConnection({ collaboration: state, actorId: user.id, connectionId: body.connectionId, now: now(), randomId }).collaboration);
+      const result = writeAndPush(req, body, state => endConnection({ collaboration: state, actorId: user.id, connectionId: body.connectionId, now: now(), randomId }).collaboration);
       json(res, 200, { rev: result.rev });
     }),
     'POST /api/notifications/read': async (req, res) => withUser(req, res, async user => {
@@ -763,7 +763,7 @@ export function createPersonalRoutes({ dataDir, origin, readSession, readBody, j
     }),
     'PUT /api/personal/program': async (req, res) => withUser(req, res, async user => {
       const body = await readTrainerBody(user, req, PROGRAM_BODY);
-      const result = write(req, body, state => saveProgram({ collaboration: state, actorId: user.id, clientId: body.clientId, data: body, now: now(), randomId }).collaboration);
+      const result = writeAndPush(req, body, state => saveProgram({ collaboration: state, actorId: user.id, clientId: body.clientId, data: body, now: now(), randomId }).collaboration);
       json(res, 200, buildClientDetail({ collaboration: result, trainerId: user.id, clientId: body.clientId, now: now(), readState }));
     }),
     'POST /api/personal/measurements': async (req, res) => withUser(req, res, async user => {
