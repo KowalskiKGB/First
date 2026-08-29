@@ -10,17 +10,26 @@ import {
 } from '@simplewebauthn/server';
 import webpush from 'web-push';
 import {
-  AI_PROVIDERS,
+  AI_EQUIPMENT,
   WORKOUT_SCHEMA,
   applyAiWorkout,
   buildWorkoutPrompt,
   candidateExercises,
-  decryptSecret,
-  encryptSecret,
   missingAiFields,
-  normalizeAiWorkout,
-  parseModelJson
+  normalizeAiWorkout
 } from './ai.js';
+import { createDevAuth, isTrustedMutation } from './dev-auth.js';
+import {
+  activateProvider,
+  activeProvider,
+  listProviderModels,
+  providerSlotsDto,
+  recordAiUsage,
+  runStructuredOutput,
+  summarizeAiUsage,
+  testProvider,
+  upsertProvider
+} from './ai-providers.js';
 import { createPersonalRoutes } from './personal.js';
 
 const PORT = +(process.env.PORT || 3000);
@@ -59,6 +68,7 @@ try { db = JSON.parse(fs.readFileSync(dbFile, 'utf8')); } catch {}
 db.subs = db.subs || [];
 db.invites = db.invites || [];
 db.aiProviders = db.aiProviders || [];
+db.aiUsage = db.aiUsage || [];
 const isAdmin = user => !!user && (user.admin === true || ADMIN_UIDS.includes(user.id));
 function saveDb() { atomicWrite(dbFile, JSON.stringify(db, null, 2)); }
 function atomicWrite(file, content) {
@@ -233,57 +243,12 @@ function sessionCookie(user) {
   return `gymsid=${makeSession(user)}; Path=/; Max-Age=${SESSION_DAYS * 86400}; HttpOnly;${SECURE} SameSite=Lax`;
 }
 const clearCookie = `gymsid=; Path=/; Max-Age=0; HttpOnly;${SECURE} SameSite=Lax`;
-const devCookieName = 'firstdev';
-const clearDevCookie = `${devCookieName}=; Path=/; Max-Age=0; HttpOnly;${SECURE} SameSite=Strict`;
-
-function hashPassword(password, salt = crypto.randomBytes(16).toString('base64url')) {
-  const hash = crypto.scryptSync(String(password), salt, 32).toString('base64url');
-  return `scrypt:${salt}:${hash}`;
-}
-function verifyPassword(password, encoded) {
-  const [, salt, hash] = String(encoded || '').split(':');
-  if (!salt || !hash) return false;
-  const actual = hashPassword(password, salt).split(':')[2];
-  try { return crypto.timingSafeEqual(Buffer.from(actual), Buffer.from(hash)); }
-  catch { return false; }
-}
-function readDevConfig() {
-  if (process.env.DEV_PANEL_USER && process.env.DEV_PANEL_PASSWORD_HASH) {
-    return { username: process.env.DEV_PANEL_USER, passwordHash: process.env.DEV_PANEL_PASSWORD_HASH };
-  }
-  const file = path.join(DATA, 'dev-panel.json');
-  try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
-  catch {
-    const username = `dev_${crypto.randomBytes(4).toString('hex')}`;
-    const password = crypto.randomBytes(18).toString('base64url');
-    const config = { username, passwordHash: hashPassword(password), initialPassword: password, createdAt: new Date().toISOString() };
-    fs.writeFileSync(file, JSON.stringify(config, null, 2), { mode: 0o600 });
-    console.warn(`Generated dev panel credentials at ${file}. Copy them to a private password manager and remove initialPassword.`);
-    return config;
-  }
-}
-const devConfig = readDevConfig();
-function makeDevSession(username) {
-  const exp = Date.now() + 8 * 3600000;
-  return sign(`dev:${username}:${exp}`);
-}
-function readDevSession(req) {
-  const cookies = Object.fromEntries((req.headers.cookie || '').split(';').map(c => {
-    const i = c.indexOf('='); return i < 0 ? ['', ''] : [c.slice(0, i).trim(), c.slice(i + 1).trim()];
-  }));
-  const payload = verifySig(cookies[devCookieName] || '');
-  if (!payload) return null;
-  const [kind, username, exp] = payload.split(':');
-  return kind === 'dev' && username === devConfig.username && +exp > Date.now() ? username : null;
-}
+const devAuth = createDevAuth({ env: process.env, signingSecret: SECRET, origin: ORIGIN });
 function requireDev(req, res) {
   const user = requireAdmin(req, res);
   if (!user) return null;
-  if (!readDevSession(req)) { json(res, 401, { error: 'dev panel locked' }); return null; }
+  if (!devAuth.readSession(req)) { json(res, 401, { error: 'dev panel locked' }); return null; }
   return user;
-}
-function devSessionCookie(username) {
-  return `${devCookieName}=${makeDevSession(username)}; Path=/; Max-Age=${8 * 3600}; HttpOnly;${SECURE} SameSite=Strict`;
 }
 
 /* ---------- challenge store (in-memory, 5 min TTL) ---------- */
@@ -306,6 +271,11 @@ function json(res, code, obj, extraHeaders) {
   const body = JSON.stringify(obj);
   res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...(extraHeaders || {}) });
   res.end(body);
+}
+function requireTrustedWrite(req, res) {
+  if (isTrustedMutation(req, ORIGIN)) return true;
+  json(res, 403, { error: 'invalid origin' });
+  return false;
 }
 function requestError(message, status) {
   const error = new Error(message);
@@ -331,118 +301,8 @@ function readBody(req, max = COMMON_BODY) {
   });
 }
 const b64uToBuf = s => Buffer.from(s, 'base64url');
-
-function safeProviders() {
-  return db.aiProviders.map(({ apiKeyEnc, ...provider }) => ({ ...provider, hasKey: !!apiKeyEnc }));
-}
-function configuredProvider() {
-  return db.aiProviders.find(provider => provider.active && provider.apiKeyEnc) || db.aiProviders.find(provider => provider.apiKeyEnc) || null;
-}
-function aiSystemPrompt() {
-  return 'Você é um planejador de treino para um app de academia. Responda somente JSON válido, em pt-BR, usando apenas os IDs permitidos. Não dê diagnóstico médico.';
-}
-function openAiText(data) {
-  if (typeof data.output_text === 'string') return data.output_text;
-  return (data.output || []).flatMap(item => item.content || []).map(part => part.text || '').join('\n');
-}
-function anthropicText(data) {
-  return (data.content || []).map(part => part.text || '').join('\n');
-}
-function geminiText(data) {
-  return (data.candidates || []).flatMap(item => item.content?.parts || []).map(part => part.text || '').join('\n');
-}
-function toGeminiSchema(schema) {
-  if (Array.isArray(schema)) return schema.map(toGeminiSchema);
-  if (!schema || typeof schema !== 'object') return schema;
-  const next = {};
-  for (const [key, value] of Object.entries(schema)) {
-    if (key === 'additionalProperties') continue;
-    if (key === 'type' && typeof value === 'string') next[key] = value.toUpperCase();
-    else next[key] = toGeminiSchema(value);
-  }
-  return next;
-}
-async function fetchJsonWithTimeout(url, options, timeoutMs = 45000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const detail = data.error?.message || data.error || response.statusText;
-      throw requestError(`AI provider failed: ${String(detail).slice(0, 180)}`, response.status >= 500 ? 502 : 400);
-    }
-    return data;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-async function generateAiWorkout(providerConfig, prompt) {
-  const provider = providerConfig.provider;
-  const model = providerConfig.model;
-  const apiKey = decryptSecret(SECRET, providerConfig.apiKeyEnc);
-  if (!apiKey) throw requestError('AI provider key is missing', 503);
-  if (provider === 'openai') {
-    const data = await fetchJsonWithTimeout('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        input: [{ role: 'system', content: aiSystemPrompt() }, { role: 'user', content: prompt }],
-        text: { format: { type: 'json_schema', name: 'weekly_workout', strict: true, schema: WORKOUT_SCHEMA } },
-        max_output_tokens: 4000
-      })
-    });
-    return parseModelJson(openAiText(data));
-  }
-  if (provider === 'gemini') {
-    const data = await fetchJsonWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: aiSystemPrompt() }] },
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { response_mime_type: 'application/json', response_schema: toGeminiSchema(WORKOUT_SCHEMA) }
-      })
-    });
-    return parseModelJson(geminiText(data));
-  }
-  if (provider === 'anthropic') {
-    const data = await fetchJsonWithTimeout('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        max_tokens: 4000,
-        system: aiSystemPrompt(),
-        messages: [{ role: 'user', content: prompt }],
-        output_config: { format: { type: 'json_schema', schema: WORKOUT_SCHEMA } }
-      })
-    });
-    return parseModelJson(anthropicText(data));
-  }
-  throw requestError('unsupported AI provider', 400);
-}
-async function listAiModels(providerConfig) {
-  const apiKey = decryptSecret(SECRET, providerConfig.apiKeyEnc);
-  if (providerConfig.provider === 'openai') {
-    const data = await fetchJsonWithTimeout('https://api.openai.com/v1/models', {
-      headers: { 'Authorization': `Bearer ${apiKey}` }
-    }, 20000);
-    return (data.data || []).map(model => model.id).filter(Boolean).sort();
-  }
-  if (providerConfig.provider === 'gemini') {
-    const data = await fetchJsonWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`, {}, 20000);
-    return (data.models || []).map(model => String(model.name || '').replace(/^models\//, '')).filter(Boolean).sort();
-  }
-  if (providerConfig.provider === 'anthropic') {
-    const data = await fetchJsonWithTimeout('https://api.anthropic.com/v1/models', {
-      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }
-    }, 20000);
-    return (data.data || []).map(model => model.id).filter(Boolean);
-  }
-  return [];
-}
+const AI_MASTER_KEY = String(process.env.AI_CONFIG_MASTER_KEY || '').trim();
+const aiConfigurationEnabled = () => /^[0-9a-fA-F]{64}$/.test(AI_MASTER_KEY);
 
 /* ---------- live presence (in-memory) ---------- */
 // Clients heartbeat /api/activity while a workout is on screen; the admin dashboard reads who's
@@ -602,17 +462,19 @@ const routes = {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
     const state = readState(user.id) || {};
-    const provider = configuredProvider();
+    const provider = activeProvider(db.aiProviders);
     json(res, 200, {
-      configured: !!provider,
+      configured: !!provider && aiConfigurationEnabled(),
       missing: missingAiFields(state),
-      provider: provider ? { provider: provider.provider, label: provider.label, model: provider.model } : null
+      equipment: AI_EQUIPMENT,
+      provider: provider ? { provider: provider.provider, selectedModel: provider.selectedModel } : null
     });
   },
 
   'POST /api/ai/workout/generate': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!requireTrustedWrite(req, res)) return;
     if (!withinLimit(aiGenerateAttempts, user.id, 6, 3600000)) return json(res, 429, { error: 'AI generation limit reached; try again later' });
     const body = await readBody(req);
     const state = readState(user.id) || {};
@@ -620,85 +482,144 @@ const routes = {
     const mergedState = { ...state, aiProfile: profile };
     const missing = missingAiFields(mergedState);
     if (missing.length) return json(res, 400, { error: 'missing profile fields', missing });
-    const provider = configuredProvider();
-    if (!provider) return json(res, 503, { error: 'AI provider not configured' });
+    const provider = activeProvider(db.aiProviders);
+    if (!provider || !aiConfigurationEnabled()) return json(res, 503, { error: 'tested active AI provider unavailable' });
     const generatedAt = new Date().toISOString();
     const candidates = candidateExercises(profile);
     const prompt = buildWorkoutPrompt({ state: mergedState, profile, candidates, generatedAt });
-    const rawPlan = await generateAiWorkout(provider, prompt);
-    const normalized = normalizeAiWorkout(rawPlan, candidates);
+    const startedAt = Date.now();
+    let generated;
+    try {
+      generated = await runStructuredOutput(provider, { masterKey: AI_MASTER_KEY, prompt, schema: WORKOUT_SCHEMA });
+      db.aiUsage = recordAiUsage(db.aiUsage, generated.usage, {
+        status: 'success', latencyMs: Date.now() - startedAt, timestamp: generatedAt
+      });
+      saveDb();
+    } catch (error) {
+      db.aiUsage = recordAiUsage(db.aiUsage, {
+        provider: provider.provider, model: provider.selectedModel, inputTokens: 0, outputTokens: 0, totalTokens: 0
+      }, { status: 'failed', latencyMs: Date.now() - startedAt, timestamp: generatedAt });
+      saveDb();
+      throw requestError(error.message, 502);
+    }
+    const normalized = normalizeAiWorkout(generated.value, candidates, { existingIds: (state.routines || []).map(routine => routine.id) });
     const nextState = applyAiWorkout(mergedState, normalized, generatedAt);
     atomicWrite(stateFile(user.id), JSON.stringify(nextState));
     json(res, 200, {
       state: nextState,
       plan: normalized,
-      provider: { provider: provider.provider, label: provider.label, model: provider.model }
+      provider: { provider: provider.provider, selectedModel: provider.selectedModel }
     });
   },
 
   'GET /api/dev/session': async (req, res) => {
     const user = requireAdmin(req, res);
     if (!user) return;
-    json(res, 200, { unlocked: !!readDevSession(req), username: devConfig.username });
+    json(res, 200, { unlocked: !!devAuth.readSession(req), username: devAuth.credential?.username || null });
   },
 
   'POST /api/dev/login': async (req, res) => {
     const user = requireAdmin(req, res);
     if (!user) return;
+    if (!requireTrustedWrite(req, res)) return;
     const body = await readBody(req);
     const username = String(body.username || '').trim();
     const password = String(body.password || '');
     const attemptKey = `${req.socket.remoteAddress || 'unknown'}:${username}`;
     if (!withinLimit(devLoginAttempts, attemptKey, 8, 15 * 60000)) return json(res, 429, { error: 'too many dev login attempts' });
-    if (username !== devConfig.username || !verifyPassword(password, devConfig.passwordHash)) {
+    if (!devAuth.credential) return json(res, 503, { error: 'dev credentials not configured' });
+    if (!devAuth.authenticate(username, password)) {
       return json(res, 401, { error: 'invalid dev credentials' });
     }
-    json(res, 200, { ok: true }, { 'Set-Cookie': devSessionCookie(username) });
+    json(res, 200, { ok: true }, { 'Set-Cookie': devAuth.sessionCookie(username) });
   },
 
-  'POST /api/dev/logout': async (req, res) => json(res, 200, { ok: true }, { 'Set-Cookie': clearDevCookie }),
+  'POST /api/dev/logout': async (req, res) => {
+    if (!requireTrustedWrite(req, res)) return;
+    json(res, 200, { ok: true }, { 'Set-Cookie': devAuth.clearCookie });
+  },
 
   'GET /api/dev/ai/providers': async (req, res) => {
     if (!requireDev(req, res)) return;
-    json(res, 200, { providers: safeProviders(), supported: AI_PROVIDERS });
+    json(res, 200, { providers: providerSlotsDto(db.aiProviders, db.aiUsage) });
   },
 
-  'POST /api/dev/ai/providers': async (req, res) => {
+  'PUT /api/dev/ai/provider': async (req, res) => {
     if (!requireDev(req, res)) return;
+    if (!requireTrustedWrite(req, res)) return;
+    if (!aiConfigurationEnabled()) return json(res, 503, { error: 'AI configuration disabled' });
     const body = await readBody(req);
-    const provider = String(body.provider || '').trim();
-    if (!AI_PROVIDERS.includes(provider)) return json(res, 400, { error: 'unsupported provider' });
-    const id = String(body.id || crypto.randomBytes(8).toString('base64url')).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
-    const existing = db.aiProviders.find(item => item.id === id);
-    const item = existing || { id, createdAt: new Date().toISOString() };
-    item.provider = provider;
-    item.label = String(body.label || provider).trim().slice(0, 60);
-    item.model = String(body.model || '').trim().slice(0, 80);
-    item.active = !!body.active;
-    item.updatedAt = new Date().toISOString();
-    if (!item.model) return json(res, 400, { error: 'model required' });
-    if (String(body.apiKey || '').trim()) item.apiKeyEnc = encryptSecret(SECRET, String(body.apiKey).trim());
-    if (!item.apiKeyEnc) return json(res, 400, { error: 'api key required' });
-    if (!existing) db.aiProviders.push(item);
-    if (item.active) db.aiProviders.forEach(other => { if (other.id !== item.id) other.active = false; });
-    saveDb();
-    json(res, 200, { provider: safeProviders().find(row => row.id === item.id) });
+    try {
+      const updated = upsertProvider(db.aiProviders, body, AI_MASTER_KEY);
+      db.aiProviders = updated.records;
+      saveDb();
+      json(res, 200, { provider: updated.provider });
+    } catch (error) {
+      json(res, 400, { error: error.message });
+    }
   },
 
-  'POST /api/dev/ai/providers/delete': async (req, res) => {
+  'POST /api/dev/ai/provider/test': async (req, res) => {
     if (!requireDev(req, res)) return;
+    if (!requireTrustedWrite(req, res)) return;
+    if (!aiConfigurationEnabled()) return json(res, 503, { error: 'AI configuration disabled' });
     const body = await readBody(req);
-    db.aiProviders = db.aiProviders.filter(item => item.id !== body.id);
-    saveDb();
-    json(res, 200, { ok: true });
+    const startedAt = Date.now();
+    try {
+      const tested = await testProvider(db.aiProviders, body.provider, { masterKey: AI_MASTER_KEY });
+      db.aiProviders = tested.records;
+      const testedSlot = db.aiProviders.find(provider => provider.provider === body.provider);
+      const testUsage = tested.usage || {
+        provider: testedSlot?.provider || String(body.provider || ''),
+        model: testedSlot?.selectedModel || '', inputTokens: 0, outputTokens: 0, totalTokens: 0
+      };
+      db.aiUsage = recordAiUsage(db.aiUsage, testUsage, {
+        status: tested.error ? 'failed' : 'success', latencyMs: Date.now() - startedAt, timestamp: new Date().toISOString()
+      });
+      saveDb();
+      json(res, tested.error ? 422 : 200, { provider: tested.provider, error: tested.error });
+    } catch (error) {
+      json(res, 400, { error: error.message });
+    }
+  },
+
+  'PUT /api/dev/ai/active': async (req, res) => {
+    if (!requireDev(req, res)) return;
+    if (!requireTrustedWrite(req, res)) return;
+    const body = await readBody(req);
+    try {
+      const activated = activateProvider(db.aiProviders, body.provider);
+      db.aiProviders = activated.records;
+      saveDb();
+      json(res, 200, { provider: activated.provider });
+    } catch (error) {
+      json(res, 409, { error: error.message });
+    }
+  },
+
+  'GET /api/dev/ai/usage': async (req, res) => {
+    if (!requireDev(req, res)) return;
+    const window = new URL(req.url, 'http://x').searchParams.get('window') || '7d';
+    try { json(res, 200, { usage: summarizeAiUsage(db.aiUsage, window) }); }
+    catch (error) { json(res, 400, { error: error.message }); }
   },
 
   'GET /api/dev/ai/models': async (req, res) => {
     if (!requireDev(req, res)) return;
-    const id = new URL(req.url, 'http://x').searchParams.get('id');
-    const provider = db.aiProviders.find(item => item.id === id);
-    if (!provider) return json(res, 404, { error: 'provider not found' });
-    json(res, 200, { models: await listAiModels(provider) });
+    if (!aiConfigurationEnabled()) return json(res, 503, { error: 'AI configuration disabled' });
+    const providerName = new URL(req.url, 'http://x').searchParams.get('provider');
+    const provider = db.aiProviders.find(item => item.provider === providerName);
+    if (!provider) return json(res, 404, { error: 'provider not configured' });
+    json(res, 200, { models: await listProviderModels(provider, { masterKey: AI_MASTER_KEY }) });
+  },
+
+  'DELETE /api/dev/ai/provider': async (req, res) => {
+    if (!requireDev(req, res)) return;
+    if (!requireTrustedWrite(req, res)) return;
+    const body = await readBody(req);
+    db.aiProviders = db.aiProviders.filter(item => item.provider !== body.provider);
+    saveDb();
+    json(res, 200, { ok: true });
   },
 
   'GET /api/push/public-key': async (req, res) => json(res, 200, { key: vapid.publicKey }),

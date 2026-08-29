@@ -45,7 +45,9 @@ services:
         echo "Installed 1,324 images and 1,324 GIFs from $$MEDIA_SHA"
 
   api:
-    build: ./api
+    build:
+      context: .
+      dockerfile: api/Dockerfile
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -58,6 +60,9 @@ services:
       INVITE_ONLY: ${INVITE_ONLY:-0}
       SESSION_DAYS: ${SESSION_DAYS:-30}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-https://example.invalid}
+      DEV_PANEL_USER: ${DEV_PANEL_USER:?DEV_PANEL_USER must begin with first_dev_}
+      DEV_PANEL_PASSWORD_HASH: ${DEV_PANEL_PASSWORD_HASH:?DEV_PANEL_PASSWORD_HASH must be an scrypt hash}
+      AI_CONFIG_MASTER_KEY: ${AI_CONFIG_MASTER_KEY:-}
     volumes:
       - first-data:/data
     healthcheck:

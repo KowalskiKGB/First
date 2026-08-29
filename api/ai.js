@@ -1,33 +1,22 @@
 import crypto from 'node:crypto';
+import { EXDB } from '../frontend/src/lib/exercises-data.js';
+import ptNames from '../frontend/src/exercise-names/pt.js';
 
 export const AI_PROVIDERS = ['openai', 'gemini', 'anthropic'];
 
-export const AI_EXERCISES = [
-  { id: '0025', name: 'Supino reto com barra', bp: 'chest', eq: 'barbell' },
-  { id: '0047', name: 'Supino inclinado com halteres', bp: 'chest', eq: 'dumbbell' },
-  { id: '0334', name: 'Crucifixo no cabo', bp: 'chest', eq: 'cable' },
-  { id: '0251', name: 'Triceps na polia', bp: 'upper arms', eq: 'cable' },
-  { id: '0241', name: 'Desenvolvimento com halteres', bp: 'shoulders', eq: 'dumbbell' },
-  { id: '0027', name: 'Remada curvada com barra', bp: 'back', eq: 'barbell' },
-  { id: '0007', name: 'Puxada na polia', bp: 'back', eq: 'cable' },
-  { id: '0031', name: 'Rosca direta com barra', bp: 'upper arms', eq: 'barbell' },
-  { id: '1323', name: 'Remada sentada no cabo', bp: 'back', eq: 'cable' },
-  { id: '0043', name: 'Agachamento com barra', bp: 'upper legs', eq: 'barbell' },
-  { id: '0085', name: 'Leg press', bp: 'upper legs', eq: 'leverage machine' },
-  { id: '0739', name: 'Cadeira extensora', bp: 'upper legs', eq: 'leverage machine' },
-  { id: '0585', name: 'Mesa flexora', bp: 'upper legs', eq: 'leverage machine' },
-  { id: '0605', name: 'Panturrilha em pe', bp: 'lower legs', eq: 'leverage machine' },
-  { id: '0001', name: 'Abdominal curto', bp: 'waist', eq: 'body weight' },
-  { id: '0003', name: 'Bicicleta no solo', bp: 'waist', eq: 'body weight' },
-  { id: '1311', name: 'Flexao de braco', bp: 'chest', eq: 'body weight' },
-  { id: '1429', name: 'Barra fixa pegada aberta', bp: 'back', eq: 'body weight' },
-  { id: '2363', name: 'Mergulho nas paralelas', bp: 'chest', eq: 'body weight' },
-  { id: '0852', name: 'Agachamento com peso', bp: 'upper legs', eq: 'weighted' },
-  { id: '0846', name: 'Russian twist com peso', bp: 'waist', eq: 'weighted' },
-  { id: '0853', name: 'Rosca com peso', bp: 'upper arms', eq: 'weighted' },
-  { id: '0036', name: 'Bicicleta ergometrica', bp: 'cardio', eq: 'stationary bike' },
-  { id: '0501', name: 'Esteira', bp: 'cardio', eq: 'cardio machine' }
-];
+export const AI_EXERCISES = EXDB.map(exercise => ({
+  id: exercise.id,
+  name: ptNames[exercise.id] || exercise.n,
+  bp: exercise.bp,
+  eq: exercise.eq,
+  tg: exercise.tg
+}));
+
+export const AI_EQUIPMENT = [...new Set(AI_EXERCISES.map(exercise => exercise.eq).filter(Boolean))]
+  .sort((a, b) => {
+    const count = eq => AI_EXERCISES.filter(exercise => exercise.eq === eq).length;
+    return count(b) - count(a) || a.localeCompare(b);
+  });
 
 const text = (value, max = 180) => String(value || '').trim().slice(0, max);
 const int = (value, min, max, fallback) => {
@@ -97,16 +86,30 @@ export function missingAiFields(state) {
   if (!latestWeight?.w) missing.push('peso');
   if (!profile.heightCm) missing.push('altura');
   if (!text(profile.goal)) missing.push('objetivo');
+  if (!text(profile.gymName)) missing.push('academia');
   if (!Array.isArray(profile.equipment) || !profile.equipment.length) missing.push('aparelhos');
   return missing;
 }
 
 export function candidateExercises(profile = {}, catalogue = AI_EXERCISES) {
-  const allowed = new Set((profile.equipment || []).map(item => String(item).toLowerCase()));
+  const allowed = new Set((profile.equipment || []).map(item => String(item).toLowerCase()).filter(Boolean));
+  const blocked = new Set((profile.blockedExerciseIds || []).map(String));
+  const favorites = new Set((profile.favoriteExerciseIds || []).map(String));
+  const targets = new Set((profile.targetAreas || []).map(String));
   const bodyWeightAllowed = allowed.size === 0 || allowed.has('body weight') || allowed.has('peso corporal');
-  const rows = catalogue.filter(exercise => allowed.size === 0 || allowed.has(exercise.eq) || (exercise.eq === 'body weight' && bodyWeightAllowed));
+  const rows = catalogue.filter(exercise =>
+    !blocked.has(exercise.id) &&
+    (allowed.size === 0 || allowed.has(String(exercise.eq).toLowerCase()) || (exercise.eq === 'body weight' && bodyWeightAllowed))
+  );
   const ranked = rows.length ? rows : catalogue.filter(exercise => exercise.eq === 'body weight');
-  return ranked.slice(0, 48);
+  return ranked
+    .map((exercise, index) => ({
+      exercise,
+      score: (favorites.has(exercise.id) ? 50 : 0) + (targets.has(exercise.bp) ? 12 : 0) + (exercise.eq === 'body weight' ? 2 : 0) - index / 10000
+    }))
+    .sort((a, b) => b.score - a.score || a.exercise.name.localeCompare(b.exercise.name))
+    .slice(0, 120)
+    .map(item => item.exercise);
 }
 
 export function buildWorkoutPrompt({ state, profile, candidates, generatedAt }) {
@@ -121,12 +124,24 @@ export function buildWorkoutPrompt({ state, profile, candidates, generatedAt }) 
       experiencia: profile.experience || 'intermediario',
       sessoesPorSemana: int(profile.sessionsPerWeek, 2, 7, 4),
       minutosPorSessao: int(profile.minutesPerSession, 25, 120, 60),
+      academia: text(profile.gymName, 120),
+      medidasCm: {
+        cintura: profile.measurements?.waist || null,
+        peito: profile.measurements?.chest || null,
+        quadril: profile.measurements?.hip || null,
+        braco: profile.measurements?.arm || null,
+        coxa: profile.measurements?.thigh || null,
+        panturrilha: profile.measurements?.calf || null
+      },
+      focoCorporal: (profile.targetAreas || []).slice(0, 5),
       restricoes: text(profile.limitations, 260),
       preferencias: text(profile.preferences, 260),
-      aparelhosFavoritos: (profile.favoriteEquipment || []).slice(0, 8)
+      aparelhosFavoritos: (profile.favoriteEquipment || []).slice(0, 8),
+      exerciciosFavoritos: (profile.favoriteExerciseIds || []).slice(0, 12),
+      exerciciosBloqueados: (profile.blockedExerciseIds || []).slice(0, 24)
     },
     aparelhosDisponiveis: [...new Set(candidates.map(item => item.eq))],
-    exerciciosPermitidos: candidates.map(item => ({ id: item.id, nome: item.name, grupo: item.bp, aparelho: item.eq }))
+    exerciciosPermitidos: candidates.map(item => ({ id: item.id, nome: item.name, grupo: item.bp, alvo: item.tg, aparelho: item.eq }))
   };
   return [
     '# Pedido de treino semanal',
@@ -141,14 +156,28 @@ export function buildWorkoutPrompt({ state, profile, candidates, generatedAt }) 
   ].join('\n');
 }
 
-export function normalizeAiWorkout(plan, candidates) {
+export function normalizeAiWorkout(plan, candidates, options = {}) {
   const allowed = new Set(candidates.map(item => item.id));
   if (!plan || typeof plan !== 'object' || !Array.isArray(plan.routines)) throw new Error('invalid workout');
-  const routines = plan.routines.slice(0, 7).map((routine, index) => ({
-    id: text(routine.id, 60) || `ia-${index + 1}`,
+  const idMap = new Map();
+  const usedIds = new Set(options.existingIds || []);
+  const idFactory = options.idFactory || (() => `ai-${crypto.randomUUID()}`);
+  const nextId = () => {
+    let id;
+    do { id = text(idFactory(), 80); } while (!id || usedIds.has(id));
+    usedIds.add(id);
+    return id;
+  };
+  const routines = plan.routines.slice(0, 7).map((routine, index) => {
+    const sourceId = text(routine.id, 60) || `ia-${index + 1}`;
+    const safeId = nextId();
+    if (!idMap.has(sourceId)) idMap.set(sourceId, safeId);
+    return {
+    id: safeId,
     name: text(routine.name, 80) || `Treino IA ${index + 1}`,
     emoji: routine.emoji || 'sparkles',
     _aiGenerated: true,
+    _aiSourceRoutineId: sourceId,
     _aiSummary: text(plan.summary, 240),
     ex: (Array.isArray(routine.ex) ? routine.ex : []).slice(0, 10).map(exercise => {
       const id = text(exercise.id, 40);
@@ -162,13 +191,15 @@ export function normalizeAiWorkout(plan, candidates) {
         note: text(exercise.note, 220)
       };
     }).filter(Boolean)
-  })).filter(routine => routine.ex.length);
+  };
+  }).filter(routine => routine.ex.length);
   if (!routines.length) throw new Error('empty workout');
   const routineIds = new Set(routines.map(item => item.id));
   const weekEntries = Array.isArray(plan.week)
     ? plan.week.map(item => [String(item.day), item.routineId])
     : Object.entries(plan.week || {});
   const week = Object.fromEntries(weekEntries
+    .map(([day, routineId]) => [day, idMap.get(routineId) || routineId])
     .filter(([day, routineId]) => /^[0-6]$/.test(day) && routineIds.has(routineId))
     .slice(0, 7));
   if (!Object.keys(week).length) {
@@ -183,10 +214,11 @@ export function applyAiWorkout(state, normalized, generatedAt) {
     ...(state.routines || []).filter(item => !oldAi.has(item.id)),
     ...normalized.routines.map(item => ({ ...item, _aiGeneratedAt: generatedAt, _aiPlanName: normalized.name }))
   ];
-  const week = {
-    ...Object.fromEntries(Object.entries(state.week || {}).filter(([, routineId]) => !oldAi.has(routineId))),
-    ...normalized.week
-  };
+  const week = Object.fromEntries(Object.entries(state.week || {}).filter(([, routineId]) => !oldAi.has(routineId)));
+  for (const [day, routineId] of Object.entries(normalized.week || {})) {
+    const current = state.week?.[day];
+    if (!current || oldAi.has(current)) week[day] = routineId;
+  }
   return {
     ...state,
     routines,
@@ -200,21 +232,4 @@ export function parseModelJson(response) {
   const source = String(response || '').trim();
   const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(source);
   return JSON.parse((fenced ? fenced[1] : source).trim());
-}
-
-export function encryptSecret(secret, value) {
-  const key = crypto.createHash('sha256').update(secret).digest();
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-  const ciphertext = Buffer.concat([cipher.update(String(value), 'utf8'), cipher.final()]);
-  return [iv.toString('base64url'), cipher.getAuthTag().toString('base64url'), ciphertext.toString('base64url')].join('.');
-}
-
-export function decryptSecret(secret, value) {
-  const [iv, tag, ciphertext] = String(value || '').split('.');
-  if (!iv || !tag || !ciphertext) return '';
-  const key = crypto.createHash('sha256').update(secret).digest();
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'base64url'));
-  decipher.setAuthTag(Buffer.from(tag, 'base64url'));
-  return Buffer.concat([decipher.update(Buffer.from(ciphertext, 'base64url')), decipher.final()]).toString('utf8');
 }

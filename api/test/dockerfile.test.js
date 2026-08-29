@@ -6,6 +6,8 @@ const dockerfile = fs.readFileSync(new URL('../Dockerfile', import.meta.url), 'u
 
 test('production image includes every local module imported by the API', () => {
   assert.match(dockerfile, /COPY [^\n]*\bpersonal\.js\b[^\n]* \.\//);
-  assert.match(dockerfile, /COPY domain \.\/domain/);
-  assert.match(dockerfile, /COPY lib \.\/lib/);
+  assert.match(dockerfile, /\bai-providers\.js\b/);
+  assert.match(dockerfile, /\bdev-auth\.js\b/);
+  assert.match(dockerfile, /COPY api\/domain \.\/domain/);
+  assert.match(dockerfile, /COPY api\/lib \.\/lib/);
 });

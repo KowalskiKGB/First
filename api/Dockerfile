@@ -1,12 +1,14 @@
 FROM node:22-alpine
-WORKDIR /app
-COPY package.json package-lock.json ./
+WORKDIR /app/api
+COPY api/package.json api/package-lock.json ./
 RUN apk add --no-cache su-exec \
   && npm ci --omit=dev \
   && npm cache clean --force
-COPY server.js personal.js ai.js ./
-COPY domain ./domain
-COPY lib ./lib
+COPY api/server.js api/personal.js api/ai.js api/ai-providers.js api/dev-auth.js ./
+COPY api/domain ./domain
+COPY api/lib ./lib
+COPY frontend/src/lib/exercises-data.js ../frontend/src/lib/exercises-data.js
+COPY frontend/src/exercise-names ../frontend/src/exercise-names
 RUN mkdir -p /data && chown node:node /data
 ENV NODE_ENV=production
 EXPOSE 3000

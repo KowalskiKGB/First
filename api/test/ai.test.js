@@ -5,8 +5,6 @@ import {
   applyAiWorkout,
   buildWorkoutPrompt,
   candidateExercises,
-  decryptSecret,
-  encryptSecret,
   missingAiFields,
   normalizeAiWorkout,
   parseModelJson
@@ -20,6 +18,7 @@ const baseState = {
   aiProfile: {
     heightCm: 178,
     goal: 'hipertrofia com foco em costas',
+    gymName: 'Academia de teste',
     equipment: ['barbell', 'cable']
   }
 };
@@ -33,6 +32,8 @@ test('candidateExercises limits the catalogue to selected equipment', () => {
   const rows = candidateExercises({ equipment: ['barbell'] }, AI_EXERCISES);
   assert.ok(rows.length > 0);
   assert.ok(rows.every(row => row.eq === 'barbell'));
+  const fallback = candidateExercises({ equipment: ['not-in-catalogue'] }, AI_EXERCISES);
+  assert.ok(fallback.every(row => row.eq === 'body weight'));
 });
 
 test('buildWorkoutPrompt produces a compact markdown request with allowed exercise ids', () => {
@@ -64,8 +65,9 @@ test('applyAiWorkout replaces old AI routines and preserves manual routines', ()
   assert.ok(next.routines.some(routine => routine.id === 'manual'));
   assert.ok(!next.routines.some(routine => routine.id === 'old-ai'));
   assert.equal(next.week[1], 'manual');
-  assert.equal(next.week[2], 'new-ai');
-  assert.equal(next.routines.find(routine => routine.id === 'new-ai')._aiGenerated, true);
+  const generated = next.routines.find(routine => routine._aiSourceRoutineId === 'new-ai');
+  assert.equal(next.week[2], generated.id);
+  assert.equal(generated._aiGenerated, true);
 });
 
 test('applyAiWorkout never overwrites manual or Personal schedule assignments', () => {
@@ -116,12 +118,18 @@ test('normalizeAiWorkout always replaces model routine ids with collision-free s
   assert.ok(normalized.routines.every(routine => !suppliedIds.includes(routine.id)));
 });
 
-test('encrypted provider secrets round-trip without storing plaintext', () => {
-  const encrypted = encryptSecret('server-secret', 'sk-test-value');
-  assert.notEqual(encrypted, 'sk-test-value');
-  assert.equal(decryptSecret('server-secret', encrypted), 'sk-test-value');
+test('normalizeAiWorkout creates a safe fallback week when provider mappings are invalid', () => {
+  const candidates = candidateExercises(baseState.aiProfile, AI_EXERCISES);
+  const normalized = normalizeAiWorkout({
+    name: '', summary: '',
+    routines: [{ id: 'source', name: '', ex: [{ id: candidates[0].id }] }],
+    week: [{ day: 9, routineId: 'missing' }]
+  }, candidates, { idFactory: () => 'server-routine' });
+  assert.deepEqual(normalized.week, { 1: 'server-routine' });
+  assert.equal(normalized.name, 'Treino da semana com IA');
 });
 
 test('parseModelJson handles fenced JSON responses', () => {
   assert.deepEqual(parseModelJson('```json\n{"ok":true}\n```'), { ok: true });
+  assert.deepEqual(parseModelJson({ ok: true }), { ok: true });
 });
