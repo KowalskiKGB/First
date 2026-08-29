@@ -9,6 +9,7 @@ import {
   generateAuthenticationOptions, verifyAuthenticationResponse
 } from '@simplewebauthn/server';
 import webpush from 'web-push';
+import { createPersonalRoutes } from './personal.js';
 
 const PORT = +(process.env.PORT || 3000);
 const DATA = process.env.DATA_DIR || '/data';
@@ -28,7 +29,8 @@ const INVITE_ONLY = /^(1|true|yes|on)$/i.test(process.env.INVITE_ONLY || '');
 // internet don't want the same number. Only affects cookies minted from now on — the expiry is
 // baked into each cookie when it's issued, so lowering this never cuts an existing session short.
 const SESSION_DAYS = Math.max(1, +(process.env.SESSION_DAYS || 90) || 90);
-const MAX_BODY = 5 * 1024 * 1024;
+const COMMON_BODY = 32 * 1024;
+const MAX_STATE_BODY = 5 * 1024 * 1024;
 // Secure cookies require HTTPS; over plain http://localhost the flag would drop the cookie
 const SECURE = /^https:/i.test(ORIGIN) ? ' Secure;' : '';
 
@@ -225,17 +227,25 @@ function json(res, code, obj, extraHeaders) {
   res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...(extraHeaders || {}) });
   res.end(body);
 }
-function readBody(req) {
+function requestError(message, status) {
+  const error = new Error(message);
+  error.expose = true;
+  error.status = status;
+  return error;
+}
+function readBody(req, max = COMMON_BODY) {
   return new Promise((resolve, reject) => {
-    let size = 0; const chunks = [];
+    let size = 0; let settled = false; const chunks = [];
     req.on('data', d => {
+      if (settled) return;
       size += d.length;
-      if (size > MAX_BODY) { reject(new Error('body too large')); req.destroy(); return; }
+      if (size > max) { settled = true; reject(requestError('body too large', 413)); return; }
       chunks.push(d);
     });
     req.on('end', () => {
+      if (settled) return;
       try { resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}); }
-      catch { reject(new Error('bad json')); }
+      catch { reject(requestError('bad json', 400)); }
     });
     req.on('error', reject);
   });
@@ -388,7 +398,7 @@ const routes = {
   'PUT /api/data': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
-    const body = await readBody(req);
+    const body = await readBody(req, MAX_STATE_BODY);
     if (!body.state || typeof body.state !== 'object') return json(res, 400, { error: 'state required' });
     delete body.state.active;              // in-progress workouts stay device-local
     atomicWrite(stateFile(user.id), JSON.stringify(body.state));
@@ -545,6 +555,16 @@ const routes = {
   }
 };
 
+Object.assign(routes, createPersonalRoutes({
+  dataDir: DATA,
+  origin: ORIGIN,
+  readSession,
+  readBody,
+  json,
+  readState,
+  sendPush
+}));
+
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const key = req.method + ' ' + url.pathname;
@@ -552,7 +572,8 @@ http.createServer(async (req, res) => {
   if (!handler) return json(res, 404, { error: 'not found' });
   try { await handler(req, res); }
   catch (e) {
-    console.error(key, e);
-    if (!res.headersSent) json(res, 500, { error: 'server error' });
+    const status = e.expose && Number.isInteger(e.status) ? e.status : 500;
+    if (status >= 500) console.error(key, e);
+    if (!res.headersSent) json(res, status, { error: e.expose ? e.message : 'server error' });
   }
 }).listen(PORT, () => console.log(`gym-api on :${PORT} (rpID=${RP_ID}, origin=${ORIGIN})`));

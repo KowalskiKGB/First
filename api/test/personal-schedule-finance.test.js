@@ -18,7 +18,7 @@ const NOW = '2026-08-29T12:00:00.000Z';
 const profile = (userId, timezone = 'America/Fortaleza') => ({
   userId,
   roles: ['student', 'trainer'],
-  shareCode: userId,
+  shareCode: (userId.endsWith('a') ? 'A' : 'B').repeat(32),
   shareCodeExpiresAt: '2026-09-29T00:00:00.000Z',
   timezone,
   createdAt: NOW,

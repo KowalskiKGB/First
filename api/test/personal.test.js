@@ -26,8 +26,8 @@ test('connection grants allow plans and deny revoked cross access immediately', 
   const randomId = idSource();
   let collaboration = structuredClone(INITIAL_COLLABORATION);
 
-  collaboration = ensureProfile({ collaboration, userId: 'student1', now, randomId }).collaboration;
-  collaboration = ensureProfile({ collaboration, userId: 'trainer1', roles: ['trainer'], now, randomId }).collaboration;
+  collaboration = ensureProfile({ collaboration, userId: 'student1', now, randomId, randomShareCode: () => 'A'.repeat(32) }).collaboration;
+  collaboration = ensureProfile({ collaboration, userId: 'trainer1', roles: ['trainer'], now, randomId, randomShareCode: () => 'B'.repeat(32) }).collaboration;
 
   const requested = requestConnection({
     collaboration,
