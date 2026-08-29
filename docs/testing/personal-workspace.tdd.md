@@ -39,7 +39,7 @@ revogados, conflitos de revisão, valores monetários em centavos e recuperaçã
 |---|---|
 | API (`node --test`) | 66/66 testes aprovados |
 | Cobertura da API | 99,77% linhas; 82,96% branches; 91,93% funções |
-| Frontend (`vitest run`) | 341/341 testes aprovados |
+| Frontend (`vitest run`) | 345/345 testes aprovados |
 | Playwright (`playwright test`) | 3/3 fluxos completos aprovados em 360×800, 768×1024 e 1440×900 |
 | Build Vite | concluído; 134 módulos transformados |
 | Docker Compose | imagens `api` e `web` aprovadas; healthcheck e shell verificados |

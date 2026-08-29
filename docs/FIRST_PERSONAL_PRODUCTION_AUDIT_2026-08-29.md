@@ -31,7 +31,7 @@ None found for the private deployment scope.
 
 - `npm test` in `api`: 66 passed.
 - `npm run test:coverage` in `api`: 99.77% lines, 82.96% branches, 91.93% functions.
-- `npm test` in `frontend`: 341 passed.
+- `npm test` in `frontend`: 345 passed.
 - `npm run test:e2e` in `frontend`: 3 passed.
 - `npm run build` in `frontend`: success with expected large catalogue chunk warning.
 - Docker Compose `api`/`web` build and local API/web smoke: approved.

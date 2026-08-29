@@ -80,7 +80,7 @@ finding was introduced.
 
 - `npm test` in `api`: 66 passed.
 - `npm run test:coverage` in `api`: all files 99.77% lines, 82.96% branches, 91.93% functions.
-- `npm test` in `frontend`: 341 passed.
+- `npm test` in `frontend`: 345 passed.
 - `npm run test:e2e` in `frontend`: 3 passed for 360x800, 768x1024 and 1440x900.
 - `npm run build` in `frontend`: success; expected catalogue chunk warning only.
 - `docker compose -f docker-compose.yml build api web`: success after lockfile synchronization.
