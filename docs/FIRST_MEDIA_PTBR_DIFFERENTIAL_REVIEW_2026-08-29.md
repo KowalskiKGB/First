@@ -16,7 +16,7 @@ Scope reviewed: exercise media delivery, pt-BR catalogue/instructions, translate
 
 ## What changed
 
-Commit range reviewed: `a721d08..working-tree` plus the follow-up hardening commit.
+Commit range reviewed: `8ade3d5..working-tree`.
 
 Main production surfaces:
 
@@ -35,10 +35,10 @@ No blocking findings.
 
 Reviewed controls:
 
-- Media is mounted into nginx as read-only: `docker-compose.yml:83`.
-- The web image still does not bake media binaries into the image: `Dockerfile:24`.
+- Media is mounted into nginx as read-only: `docker-compose.yml:87`.
+- The web image still does not bake media binaries into the image: `Dockerfile:26`.
 - Production media download is pinned to upstream commit `7455efae41b330c265e7cd4b78dfa848e7ce5ebd`: `docker-compose.yml:13`.
-- The media initializer verifies both counts and the sorted media path-list hash before reuse/install: `docker-compose.yml:14`, `docker-compose.yml:21`, `docker-compose.yml:35`.
+- The media initializer verifies both counts, the sorted media path-list hash, and the content hash before reuse/install: `docker-compose.yml:14`, `docker-compose.yml:15`, `docker-compose.yml:38`, `docker-compose.yml:39`.
 - Mobile media copy refuses paths outside `frontend/dist` and child media directories: `frontend/scripts/copy-exercise-media.mjs:13`, `frontend/scripts/copy-exercise-media.mjs:21`.
 - `@capacitor/assets` was removed because it was unused in the build/test scripts and pulled vulnerable dev tooling (`sharp`/`tar`); `npm audit --audit-level=high` is now clean.
 - Public Git tracking excludes media binaries; `git ls-files media frontend/dist frontend/android/app/src/main/assets/public/media frontend/ios/App/App/public/media` returned no files.
@@ -68,7 +68,7 @@ Manual/interactive checks:
 - Android debug APK built, installed, launched, and inspected on `SM_S936B`.
 - Android screenshot confirmed PT-BR UI and exercise media rendering.
 - Local preview confirmed `media/img/...` and `media/gif/...` requests returning HTTP 200.
-- Local preview confirmed `supino barra` resolves to `Supino reto com barra` with no console errors.
+- Local preview confirmed `flexao lateral` resolves to `Flexão lateral a 45°`; all tested media requests returned HTTP 200. The only console error was the expected unauthenticated `GET /api/me` 401 before login.
 - `npm audit --audit-level=high` in `frontend/` and `npm audit --omit=dev --audit-level=high` in `api/` both passed after removing unused vulnerable dev tooling.
 
 ## Methodology
@@ -77,7 +77,7 @@ Strategy: Focused review. The high-risk surface was deployment/media acquisition
 
 Checks applied:
 
-- Differential inspection against `a721d08`.
+- Differential inspection against `8ade3d5`.
 - Insecure-defaults scan for hardcoded secrets, fail-open auth/config, and accidental public media tracking.
 - Adversarial review of media path traversal, partial copy/deploy state, third-party download drift, and redistribution risk.
 - Fresh build/test/coverage/mobile/browser verification before commit.
