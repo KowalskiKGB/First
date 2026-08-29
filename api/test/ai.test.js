@@ -25,7 +25,7 @@ const baseState = {
 };
 
 test('missingAiFields reports the minimum data needed for an AI plan', () => {
-  assert.deepEqual(missingAiFields({ bodyweight: [], aiProfile: {} }), ['peso', 'altura', 'objetivo', 'aparelhos']);
+  assert.deepEqual(missingAiFields({ bodyweight: [], aiProfile: {} }), ['peso', 'altura', 'objetivo', 'academia', 'aparelhos']);
   assert.deepEqual(missingAiFields(baseState), []);
 });
 
@@ -66,6 +66,54 @@ test('applyAiWorkout replaces old AI routines and preserves manual routines', ()
   assert.equal(next.week[1], 'manual');
   assert.equal(next.week[2], 'new-ai');
   assert.equal(next.routines.find(routine => routine.id === 'new-ai')._aiGenerated, true);
+});
+
+test('applyAiWorkout never overwrites manual or Personal schedule assignments', () => {
+  const state = {
+    ...baseState,
+    routines: [
+      ...baseState.routines,
+      { id: 'personal', name: 'Prescrito', _personalProgramId: 'program-1', ex: [] }
+    ],
+    week: { 1: 'manual', 2: 'old-ai', 3: 'personal' }
+  };
+  const normalized = {
+    name: 'Semana IA', summary: 'segura',
+    routines: [
+      { id: 'ai-a', name: 'A', _aiGenerated: true, ex: [{ id: '0025' }] },
+      { id: 'ai-b', name: 'B', _aiGenerated: true, ex: [{ id: '0047' }] },
+      { id: 'ai-c', name: 'C', _aiGenerated: true, ex: [{ id: '0334' }] }
+    ],
+    week: { 1: 'ai-a', 2: 'ai-b', 3: 'ai-c' }
+  };
+
+  const next = applyAiWorkout(state, normalized, '2026-08-29T12:00:00.000Z');
+
+  assert.equal(next.week[1], 'manual');
+  assert.equal(next.week[2], 'ai-b');
+  assert.equal(next.week[3], 'personal');
+});
+
+test('normalizeAiWorkout always replaces model routine ids with collision-free server ids', () => {
+  const candidates = candidateExercises(baseState.aiProfile, AI_EXERCISES);
+  const suppliedIds = ['manual', 'manual', 'personal'];
+  let sequence = 0;
+  const normalized = normalizeAiWorkout({
+    name: 'Semana IA', summary: 'ids hostis',
+    routines: suppliedIds.map((id, index) => ({
+      id,
+      name: `Treino ${index}`,
+      ex: [{ id: candidates[index].id, sets: 3, reps: '8', rest: 90, note: '' }]
+    })),
+    week: suppliedIds.map((routineId, day) => ({ day: day + 1, routineId }))
+  }, candidates, {
+    existingIds: ['manual', 'personal', 'ai-fixed-1'],
+    idFactory: () => sequence++ === 0 ? 'manual' : `server-${sequence}`
+  });
+
+  assert.equal(new Set(normalized.routines.map(routine => routine.id)).size, 3);
+  assert.ok(normalized.routines.every(routine => routine.id.startsWith('server-')));
+  assert.ok(normalized.routines.every(routine => !suppliedIds.includes(routine.id)));
 });
 
 test('encrypted provider secrets round-trip without storing plaintext', () => {
