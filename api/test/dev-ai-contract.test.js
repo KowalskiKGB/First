@@ -48,3 +48,7 @@ test('generation never forwards raw provider error messages to DTOs or 5xx logs'
   assert.ok(body.indexOf('normalized = normalizeAiWorkout') > body.indexOf('try {'));
   assert.ok(body.indexOf('normalized = normalizeAiWorkout') < body.indexOf('} catch'));
 });
+
+test('generation failure wiring retains provider usage captured before normalization fails', () => {
+  assert.match(routeBody('POST /api/ai/workout/generate'), /failedGenerationUsage\(generated, provider\)/);
+});

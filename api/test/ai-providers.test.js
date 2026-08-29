@@ -6,6 +6,7 @@ import {
   buildProviderRequest,
   decryptProviderKey,
   encryptProviderKey,
+  failedGenerationUsage,
   listProviderModels,
   providerSlotsDto,
   recordAiUsage,
@@ -261,4 +262,23 @@ test('usage summaries enforce windows, cutoff old rows, and count failures', () 
   assert.equal(summary.failures, 1);
   assert.equal(summary.totalTokens, 3);
   assert.throws(() => summarizeAiUsage(rows, '1d'), /7d or 30d/);
+});
+
+test('failed invalid-plan generation retains billed provider tokens and only pre-usage failures use zeros', () => {
+  const provider = { provider: 'openai', selectedModel: 'gpt-billed' };
+  const generatedWithInvalidPlan = {
+    value: { routines: [{ id: 'semantically-invalid' }] },
+    usage: { provider: 'openai', model: 'gpt-billed', inputTokens: 17, outputTokens: 9, totalTokens: 26 }
+  };
+  const billed = recordAiUsage([], failedGenerationUsage(generatedWithInvalidPlan, provider), {
+    status: 'failed', latencyMs: 44, timestamp: '2026-08-29T15:00:00.000Z'
+  });
+  assert.deepEqual(billed[0], {
+    provider: 'openai', model: 'gpt-billed', status: 'failed', inputTokens: 17,
+    outputTokens: 9, totalTokens: 26, latencyMs: 44, timestamp: '2026-08-29T15:00:00.000Z'
+  });
+
+  assert.deepEqual(failedGenerationUsage(undefined, provider), {
+    provider: 'openai', model: 'gpt-billed', inputTokens: 0, outputTokens: 0, totalTokens: 0
+  });
 });
