@@ -171,7 +171,10 @@ export function requestConnection({ collaboration, actorId, actorRole, shareCode
 export function respondConnection({ collaboration, actorId, connectionId, accept, grants = {}, now, randomId }) {
   const connection = collaboration.connections.find(item => item.id === connectionId && item.status === 'pending');
   if (!connection) throw fail('connection not found', 404);
-  if (connection.requestedBy === actorId || ![connection.studentId, connection.trainerId].includes(actorId)) throw fail('forbidden', 403);
+  const participants = [connection.studentId, connection.trainerId];
+  if (!participants.includes(actorId)) throw fail('forbidden', 403);
+  if (!participants.includes(connection.requestedBy)) throw fail('invalid connection state', 409);
+  if (connection.requestedBy === actorId) throw fail('forbidden', 403);
   if (accept && collaboration.connections.some(item =>
     item.id !== connection.id && item.studentId === connection.studentId && item.status === 'active'
   )) throw fail('student already linked', 409);
