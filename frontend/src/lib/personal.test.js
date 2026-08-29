@@ -26,7 +26,6 @@ describe('personal helpers', () => {
 
   it.each([
     ['guest', { user: { id: 'u1' }, isGuest: true, mobile: false, profile: { userId: 'u1', roles: ['trainer'] }, ownerId: 'u1' }],
-    ['mobile', { user: { id: 'u1' }, isGuest: false, mobile: true, profile: { userId: 'u1', roles: ['trainer'] }, ownerId: 'u1' }],
     ['missing trainer role', { user: { id: 'u1' }, isGuest: false, mobile: false, profile: { userId: 'u1', roles: ['student'] }, ownerId: 'u1' }],
     ['another user projection', { user: { id: 'u2' }, isGuest: false, mobile: false, profile: { userId: 'u1', roles: ['trainer'] }, ownerId: 'u1' }],
   ])('denies the Personal guard for %s', (_case, state) => {
@@ -38,6 +37,16 @@ describe('personal helpers', () => {
       user: { id: 'u1' },
       isGuest: false,
       mobile: false,
+      profile: { userId: 'u1', roles: ['student', 'trainer'] },
+      ownerId: 'u1',
+    })).toBe(true);
+  });
+
+  it('allows that same authenticated trainer in the Capacitor shell', () => {
+    expect(personal.canEnterPersonal({
+      user: { id: 'u1' },
+      isGuest: false,
+      mobile: true,
       profile: { userId: 'u1', roles: ['student', 'trainer'] },
       ownerId: 'u1',
     })).toBe(true);

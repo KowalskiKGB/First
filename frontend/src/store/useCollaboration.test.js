@@ -70,7 +70,6 @@ describe('collaboration loading boundaries', () => {
   it.each([
     ['guest', { guest: true }],
     ['demo', { demo: true }],
-    ['mobile', { mobile: true }],
   ])('never calls the API for %s', async (_label, mode) => {
     if (mode.guest) localStorage.setItem('gym_guest', '1');
     const store = await collaborationStore(mode);
@@ -78,6 +77,24 @@ describe('collaboration loading boundaries', () => {
     await store.getState().load({ id: 'u1' });
 
     expect(apiMock).not.toHaveBeenCalled();
+  });
+
+  it('loads the authenticated projection and published programs on mobile', async () => {
+    localStorage.setItem('gym_user', JSON.stringify({ id: 'u1' }));
+    const store = await collaborationStore({ mobile: true });
+    const program = { id: 'p1', clientId: 'c1', version: 1, routines: [], week: {} };
+    apiMock.mockResolvedValueOnce({
+      rev: 2,
+      profile: { userId: 'u1', roles: ['student'] },
+      connections: [],
+      notifications: [],
+      programs: [program],
+    });
+
+    await store.getState().load({ id: 'u1' });
+
+    expect(apiMock).toHaveBeenCalledWith('/api/collaboration');
+    expect(store.getState()).toMatchObject({ ownerId: 'u1', programs: [program], context: 'student' });
   });
 
   it('clears another user projection before the next request resolves', async () => {

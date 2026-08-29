@@ -7,6 +7,7 @@ import MeasurementForm from '../components/personal/MeasurementForm.jsx'
 import MoneyBars from '../components/personal/MoneyBars.jsx'
 import ProgramEditor from '../components/personal/ProgramEditor.jsx'
 import ReceivableForm from '../components/personal/ReceivableForm.jsx'
+import { buildSets } from './history.js'
 import * as timeZoneForms from './personal-forms.js'
 import {
   formatBRL,
@@ -82,6 +83,65 @@ describe('program helpers', () => {
     expect(reorderItem(original, 0, 2)).toEqual(['b', 'c', 'a'])
     expect(original).toEqual(['a', 'b', 'c'])
     expect(reorderItem(original, -1, 1)).toBe(original)
+  })
+
+  it('turns a published Personal program into an executable weekly routine without replacing manual plans', () => {
+    const source = {
+      routines: [{ id: 'manual', name: 'Meu treino', ex: [] }],
+      week: { 0: 'manual' },
+      workouts: [],
+    }
+    const program = {
+      id: 'program-1',
+      version: 2,
+      name: 'Hipertrofia',
+      routines: [{
+        id: 'routine-a',
+        name: 'Treino A',
+        ex: [{ id: '0043', sets: 4, reps: '8-12', rest: 90, note: 'Amplitude controlada' }],
+      }],
+      week: { 1: 'routine-a' },
+    }
+    const merge = timeZoneForms.mergePublishedPrograms || (() => null)
+
+    const merged = merge(source, [program])
+
+    expect(merged).toMatchObject({
+      routines: [
+        { id: 'manual', name: 'Meu treino' },
+        {
+          id: 'personal-program-1-routine-a',
+          name: 'Treino A',
+          _personalProgramId: 'program-1',
+          _personalVersion: 2,
+          ex: [{ id: '0043', sets: 4, reps: 8, weight: 0, rest: 90, note: 'Amplitude controlada' }],
+        },
+      ],
+      week: { 0: 'manual', 1: 'personal-program-1-routine-a' },
+    })
+    expect(buildSets(merged, merged.routines[1].ex[0])).toEqual([
+      { w: 0, r: 8, done: false },
+      { w: 0, r: 8, done: false },
+      { w: 0, r: 8, done: false },
+      { w: 0, r: 8, done: false },
+    ])
+    expect(source).toEqual({ routines: [{ id: 'manual', name: 'Meu treino', ex: [] }], week: { 0: 'manual' }, workouts: [] })
+  })
+
+  it('removes only Personal-managed routines when the active connection no longer publishes them', () => {
+    const merge = timeZoneForms.mergePublishedPrograms || (() => null)
+    const merged = merge({
+      routines: [
+        { id: 'manual', name: 'Meu treino', ex: [] },
+        { id: 'personal-old-a', name: 'Antigo', _personalProgramId: 'old', ex: [] },
+      ],
+      week: { 1: 'personal-old-a', 3: 'manual' },
+    }, [])
+
+    expect(merged).toMatchObject({
+      routines: [{ id: 'manual', name: 'Meu treino', ex: [] }],
+      week: { 3: 'manual' },
+    })
   })
   it('renders financial months returned by the workspace API', () => {
     const markup = renderToStaticMarkup(React.createElement(MoneyBars, {
