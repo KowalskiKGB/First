@@ -146,7 +146,10 @@ export const useCollaboration = create((set, get) => ({
       if (result.profile) set({ profile: result.profile, rev: result.rev ?? get().rev });
       else if (result.client) {
         set({ detail: result, rev: result.rev ?? get().rev });
-        await get().reloadWorkspace();
+        try { await get().reloadWorkspace(); }
+        catch (refreshError) {
+          if (refreshError.status === 401 || refreshError.status === 403) throw refreshError;
+        }
         if (get().ownerId !== ownerId) return result;
       }
       else if (result.clients || result.kpis) set({ workspace: result, rev: result.rev ?? get().rev });
