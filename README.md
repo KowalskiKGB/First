@@ -29,6 +29,7 @@ atribuição ao openGym, os avisos de terceiros e o histórico da cópia indepen
 - Uso como convidado ou por perfil com passkey e sincronização na API autohospedada.
 - Catálogo de 1.324 exercícios com nomes e instruções pt-BR e busca bilíngue.
 - Tela de conexões para solicitar, aceitar, recusar ou encerrar o vínculo com um personal.
+- Programas publicados pelo personal sincronizados como rotinas executáveis, sem apagar planos manuais.
 
 ### Painel do personal
 
@@ -37,13 +38,14 @@ atribuição ao openGym, os avisos de terceiros e o histórico da cópia indepen
 - Ficha individual com perfil, programa, evolução, medidas, agenda e financeiro.
 - Agenda por disponibilidade, horários livres e detecção de conflito.
 - Recebíveis por cliente, situação de pagamento, totais e gráficos operacionais.
-- Vínculos por consentimento, permissões explícitas, notificações e trilha de auditoria.
+- Vínculos por consentimento, permissões explícitas, inbox, Web Push e trilha de auditoria.
 
 O financeiro registra cobranças e recebimentos para organização; não processa pagamentos. O
-programa publicado pelo personal ainda não é convertido automaticamente em treino no estado local
-do aluno, e a evolução ainda não agrega todo o histórico local. Essas integrações, a programação
-percentage/training-max 5/3/1-style, starters upper/lower, full-body e 5×5, notas por exercício e
-calculadora de anilhas permanecem no [PLANEJAMENTO.md](PLANEJAMENTO.md).
+programa publicado pelo personal já entra na agenda semanal do aluno como treino executável e uma
+atualização substitui somente rotinas gerenciadas pelo personal; rotinas manuais, treino em andamento
+e histórico permanecem intactos. A programação percentage/training-max 5/3/1-style, starters
+upper/lower, full-body e 5×5, histórico ampliado de medidas, notas por exercício e calculadora de
+anilhas permanecem no [PLANEJAMENTO.md](PLANEJAMENTO.md).
 
 ## Subir em produção
 
@@ -84,7 +86,7 @@ origem HTTP por IP local não é válida para WebAuthn.
 ## Arquitetura
 
 ```text
-navegador / PWA
+navegador / PWA / Capacitor
        │ HTTPS
        ▼
 proxy TLS externo
@@ -130,15 +132,18 @@ As instruções pt-BR usam a
 [`contribuição tutods`](https://github.com/tutods/exercises-dataset/commit/93475e2982117339d2cbf88eb900ad2ceb8d97d6).
 
 Imagens e GIFs exigem direitos separados e não são commitados neste repositório. O deploy privado
-baixa 1.324 JPGs e 1.324 GIFs do commit upstream fixado e os serve com autenticação. A interface
+baixa 2.648 mídias — 1.324 JPGs e 1.324 GIFs — do commit upstream fixado e as serve com
+autenticação. A interface
 exibe **© Gym visual**. Operar ou distribuir esses arquivos continua sendo responsabilidade de quem
 faz o deploy; veja [NOTICE.md](NOTICE.md).
 
 ## App móvel
 
-Os projetos Capacitor Android/iOS são mantidos para builds locais. O APK standalone guarda os
-dados no aparelho e não habilita o portal colaborativo do personal. Use a PWA autenticada para o
-painel profissional. Build, mídia offline e instalação USB: [docs/MOBILE.md](docs/MOBILE.md).
+Os projetos Capacitor Android/iOS são mantidos para builds locais. No Android, o app aceita login
+por passkey associado ao domínio, sincroniza conta, programas e portal do personal quando está
+online e mantém o treino local disponível como fallback offline. O backup automático de dados do
+app pelo Android fica desativado. Build, 2.648 mídias offline, Digital Asset Links e instalação USB:
+[docs/MOBILE.md](docs/MOBILE.md).
 
 ## Qualidade e documentação
 
