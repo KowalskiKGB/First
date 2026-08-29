@@ -272,7 +272,7 @@ export function recordAiUsage(entries = [], usage, details) {
     ...(details.studentId ? { studentId: String(details.studentId).slice(0, 100) } : {}),
     timestamp: details.timestamp
   };
-  return [...entries, entry].slice(-10_000);
+  return [...entries, entry].slice(-2_000);
 }
 
 export function failedGenerationUsage(generated, provider) {

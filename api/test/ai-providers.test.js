@@ -135,6 +135,34 @@ test('structured generation normalizes token usage without retaining prompt or r
   assert.equal(summarizeAiUsage(entry, '7d', new Date('2026-08-30T00:00:00.000Z')).totalTokens, 8);
 });
 
+test('runtime usage retention keeps the newest two thousand records', async () => {
+  const { records } = upsertProvider([], { provider: 'gemini', selectedModel: 'gemini-test', apiKey: 'key-b' }, masterKey, '2026-08-29T12:00:00.000Z');
+  const existing = Array.from({ length: 2000 }, (_, index) => ({
+    provider: 'gemini',
+    model: 'gemini-test',
+    status: 'success',
+    inputTokens: index,
+    outputTokens: 0,
+    totalTokens: index,
+    latencyMs: 1,
+    timestamp: `2026-08-29T12:${String(index % 60).padStart(2, '0')}:00.000Z`
+  }));
+  const fetchImpl = async () => new Response(JSON.stringify({
+    candidates: [{ content: { parts: [{ text: '{"ok":true}' }] } }],
+    usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 3, totalTokenCount: 8 }
+  }), { status: 200 });
+  const result = await runStructuredOutput(records[0], { masterKey, fetchImpl, prompt: 'private prompt', schema });
+  const retained = recordAiUsage(existing, result.usage, {
+    status: 'success',
+    studentId: 'student-a',
+    latencyMs: 12,
+    timestamp: '2026-08-29T13:00:00.000Z'
+  });
+  assert.equal(retained.length, 2000);
+  assert.equal(retained[0].inputTokens, 1);
+  assert.equal(retained.at(-1).studentId, 'student-a');
+});
+
 test('OpenAI and Anthropic alternate response shapes parse successfully', async () => {
   const openaiSlot = upsertProvider([], { provider: 'openai', selectedModel: 'gpt-test', apiKey: 'key-a' }, masterKey, 'now').records[0];
   const openai = await runStructuredOutput(openaiSlot, {
