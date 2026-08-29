@@ -230,7 +230,7 @@ export function authorize({ collaboration, actorId, client, action }) {
   const connection = activeConnection(collaboration, client);
   if (action === RELATIONSHIP_ACTION) return !!(connection && connection.trainerId === actorId);
   const grant = ACTION_GRANT[action];
-  return !!(connection && connection.trainerId === actorId && grant && connection.grants?.[grant]);
+  return !!(connection && connection.trainerId === actorId && grant && connection.grants?.[grant] === true);
 }
 function requireTrainerAccess(collaboration, actorId, clientId, action = RELATIONSHIP_ACTION, hideForeign = true) {
   const client = clientFor(collaboration, clientId);
@@ -847,10 +847,10 @@ export function buildWorkspace({ collaboration, trainerId, now, readState }) {
   const today = localDate(now, timezone);
   const rows = clients.map(client => {
     const connection = activeConnection(collaboration, client);
-    const workoutsRead = !client.studentUserId || !!connection?.grants?.workoutsRead;
-    const progressRead = !client.studentUserId || !!connection?.grants?.progressRead;
-    const trainingProfileWrite = !!(client.studentUserId && connection?.grants?.trainingProfileWrite);
-    const aiPlanRead = !!(client.studentUserId && connection?.grants?.aiPlanRead);
+    const workoutsRead = !client.studentUserId || connection?.grants?.workoutsRead === true;
+    const progressRead = !client.studentUserId || connection?.grants?.progressRead === true;
+    const trainingProfileWrite = !!client.studentUserId && connection?.grants?.trainingProfileWrite === true;
+    const aiPlanRead = !!client.studentUserId && connection?.grants?.aiPlanRead === true;
     const studentState = client.studentUserId && (workoutsRead || progressRead) ? readState(client.studentUserId) : null;
     const fullProgress = summarizeProgress(client, studentState, now);
     const progress = !client.studentUserId ? fullProgress : {

@@ -2,6 +2,10 @@ const AGE_BANDS = new Set(['under14', '14to17', 'adult']);
 const EXPERIENCES = new Set(['iniciante', 'intermediario', 'avancado']);
 const JOB_STATUSES = new Set(['queued', 'running', 'completed', 'failed', 'cancelled']);
 const USAGE_STATUSES = new Set(['success', 'failed']);
+const CONNECTION_GRANTS = [
+  'plansWrite', 'workoutsRead', 'progressRead', 'measurementsWrite',
+  'liveActivityRead', 'trainingProfileWrite', 'aiPlanRead'
+];
 
 const text = (value, max) => typeof value === 'string' ? value.trim().slice(0, max) : '';
 const timestamp = value => text(value, 40) || null;
@@ -161,15 +165,26 @@ function onePerStudent(values, normalize) {
   return [...byStudent.values()];
 }
 
+function normalizeConnection(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  return {
+    ...value,
+    grants: Object.fromEntries(CONNECTION_GRANTS.map(key => [key, value.grants?.[key] === true]))
+  };
+}
+
 function retainedPlans(values) {
   const byStudent = new Map();
   for (const value of Array.isArray(values) ? values : []) {
     const normalized = normalizeAiPlan(value);
     if (!normalized) continue;
     const plans = byStudent.get(normalized.studentId) || [];
-    byStudent.set(normalized.studentId, [...plans, normalized].slice(-10));
+    byStudent.set(normalized.studentId, [...plans, normalized]);
   }
-  return [...byStudent.values()].flat();
+  const compare = (a, b) => a.version - b.version ||
+    String(a.updatedAt || a.createdAt || '').localeCompare(String(b.updatedAt || b.createdAt || '')) ||
+    a.id.localeCompare(b.id);
+  return [...byStudent.values()].flatMap(plans => plans.sort(compare).slice(-10));
 }
 
 export const INITIAL_COLLABORATION = {
@@ -195,13 +210,14 @@ export const INITIAL_COLLABORATION = {
 export function migrateCollaboration(value) {
   const collaboration = value && typeof value === 'object' && !Array.isArray(value) ? structuredClone(value) : {};
   const legacyCollections = Object.keys(INITIAL_COLLABORATION)
-    .filter(key => !['schemaVersion', 'rev', 'trainingProfiles', 'gymProfiles', 'aiPlans', 'aiJobs', 'aiUsage'].includes(key));
+    .filter(key => !['schemaVersion', 'rev', 'connections', 'trainingProfiles', 'gymProfiles', 'aiPlans', 'aiJobs', 'aiUsage'].includes(key));
 
   return {
     ...collaboration,
     schemaVersion: 2,
     rev: Number.isInteger(collaboration.rev) && collaboration.rev >= 0 ? collaboration.rev : 0,
     ...Object.fromEntries(legacyCollections.map(key => [key, Array.isArray(collaboration[key]) ? collaboration[key] : []])),
+    connections: (Array.isArray(collaboration.connections) ? collaboration.connections : []).map(normalizeConnection),
     trainingProfiles: onePerStudent(collaboration.trainingProfiles, normalizeTrainingProfile),
     gymProfiles: onePerStudent(collaboration.gymProfiles, normalizeGymProfile),
     aiPlans: retainedPlans(collaboration.aiPlans),
