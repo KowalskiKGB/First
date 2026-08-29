@@ -127,7 +127,7 @@ function normalizeAiPlan(value) {
   const id = text(value?.id, 100);
   const studentId = text(value?.studentId, 100);
   if (!id || !studentId || !Number.isInteger(value.version) || value.version < 1) return null;
-  const legacySource = value.source === 'generated' ? 'ai' : value.source;
+  const legacySource = value.source === 'generated' ? 'ai' : value.source === 'manual' ? 'personal' : value.source;
   const source = PLAN_SOURCES.has(legacySource) ? legacySource : 'ai';
   const legacyStatus = ['completed', 'active'].includes(value.status) ? 'applied'
     : ['draft', 'inactive', 'archived'].includes(value.status) ? 'superseded'
@@ -218,7 +218,10 @@ function retainedPlans(values) {
   const compare = (a, b) => a.version - b.version ||
     String(a.updatedAt || a.createdAt || '').localeCompare(String(b.updatedAt || b.createdAt || '')) ||
     a.id.localeCompare(b.id);
-  return [...byStudent.values()].flatMap(plans => plans.sort(compare).slice(-10));
+  return [...byStudent.values()].flatMap(plans => [
+    ...plans.filter(plan => plan.source === 'personal').sort(compare),
+    ...plans.filter(plan => plan.source === 'ai').sort(compare).slice(-10)
+  ]);
 }
 
 export const INITIAL_COLLABORATION = {

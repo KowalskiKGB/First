@@ -203,8 +203,14 @@ export async function runStructuredOutput(slot, { masterKey: masterKeyHex, fetch
   const apiKey = decryptProviderKey(masterKeyHex, slot.apiKeyEnc);
   const request = buildProviderRequest(slot.provider, { apiKey, model: slot.selectedModel, prompt, schema });
   const data = await fetchJson(fetchImpl, request.url, request.options, timeoutMs);
-  assertCompleteResponse(slot.provider, data);
-  return { value: parseStructured(providerText(slot.provider, data)), usage: normalizedUsage(slot.provider, slot.selectedModel, data) };
+  const usage = normalizedUsage(slot.provider, slot.selectedModel, data);
+  try {
+    assertCompleteResponse(slot.provider, data);
+    return { value: parseStructured(providerText(slot.provider, data)), usage };
+  } catch (error) {
+    Object.defineProperty(error, 'usage', { value: usage, enumerable: false });
+    throw error;
+  }
 }
 
 export async function testProvider(records, providerValue, options) {

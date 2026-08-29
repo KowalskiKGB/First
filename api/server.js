@@ -9,10 +9,7 @@ import {
   generateAuthenticationOptions, verifyAuthenticationResponse
 } from '@simplewebauthn/server';
 import webpush from 'web-push';
-import {
-  AI_EQUIPMENT,
-  missingAiFields
-} from './ai.js';
+import { AI_EQUIPMENT } from './ai.js';
 import { createAiJobRoutes, createAiJobService } from './ai-jobs.js';
 import { bridgeAiUsageProperty } from './ai-usage.js';
 import { createDevAuth, isTrustedMutation } from './dev-auth.js';
@@ -27,7 +24,12 @@ import {
   testProvider,
   upsertProvider
 } from './ai-providers.js';
-import { createCollaborationStore, createPersonalRoutes, notifyAiPlanApplied } from './personal.js';
+import {
+  buildAiGenerationStatus,
+  createCollaborationStore,
+  createPersonalRoutes,
+  notifyAiPlanApplied
+} from './personal.js';
 
 const PORT = +(process.env.PORT || 3000);
 const DATA = process.env.DATA_DIR || '/data';
@@ -458,13 +460,15 @@ const routes = {
   'GET /api/ai/status': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
-    const state = readState(user.id) || {};
     const provider = activeProvider(db.aiProviders);
     json(res, 200, {
-      configured: !!provider && aiConfigurationEnabled(),
-      missing: missingAiFields(state),
+      ...buildAiGenerationStatus({
+        collaboration: collaborationStore.read(),
+        studentId: user.id,
+        provider,
+        configured: aiConfigurationEnabled()
+      }),
       equipment: AI_EQUIPMENT,
-      provider: provider ? { provider: provider.provider, selectedModel: provider.selectedModel } : null
     });
   },
 

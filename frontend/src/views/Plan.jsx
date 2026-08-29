@@ -6,6 +6,7 @@ import { DAYN, uid, exCount } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
 import { api } from '../lib/api.js'
 import { AI_EQUIPMENT, AI_EXPERIENCE, aiMissingFields, aiProfile, latestBodyWeight } from '../lib/ai-plan.js'
+import { applyAiPlanToState, generateAiWorkout } from '../lib/ai-job-flow.js'
 import { dayAssignSheet, loadStarterPlan, planToolsSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button, NumberField, Segmented, TextArea, TextField } from '../components/ui.jsx'
@@ -55,7 +56,7 @@ export default function Plan() {
   </>
 }
 
-function AiPlanCard() {
+export function AiPlanCard() {
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
   const update = useStore(s => s.update)
@@ -67,6 +68,7 @@ function AiPlanCard() {
   const [busy, setBusy] = useState(false)
   const [weight, setWeight] = useState(latest?.w || '')
   const missing = aiMissingFields(S)
+  const generationMissing = Array.isArray(status?.missing) ? status.missing : missing
 
   useEffect(() => { setWeight(latest?.w || '') }, [latest?.w])
   useEffect(() => {
@@ -90,14 +92,22 @@ function AiPlanCard() {
   }
   const generate = async () => {
     if (!user) { toast('Entre com sua conta para usar IA.'); return }
-    const nowMissing = aiMissingFields(useStore.getState().S)
+    const nowMissing = Array.isArray(status?.missing) ? status.missing : aiMissingFields(useStore.getState().S)
     if (nowMissing.length) { toast(`Complete: ${nowMissing.join(', ')}`); return }
+    if (status?.blockers?.length) { toast('A geração está bloqueada até a revisão dos dados de saúde.'); return }
     setBusy(true)
     try {
       await useStore.getState().pushState()
-      const result = await api('/api/ai/workout/generate', { method: 'POST', body: JSON.stringify({ profile: useStore.getState().S.aiProfile }) })
-      replaceState(result.state, false)
-      setStatus(current => ({ ...(current || {}), configured: true, provider: result.provider }))
+      const { context } = await generateAiWorkout({ idempotencyKey: `plan-${uid()}` })
+      replaceState(applyAiPlanToState(useStore.getState().S, context.plan), false)
+      await useStore.getState().pushState()
+      setStatus(current => ({
+        ...(current || {}),
+        configured: true,
+        eligible: context.completeness?.eligible ?? true,
+        missing: context.completeness?.missing || [],
+        blockers: context.completeness?.blockers || []
+      }))
       toast('Treino da semana gerado e aplicado.')
     } catch (error) {
       toast(error.message || 'Não foi possível gerar o treino.')
@@ -145,8 +155,8 @@ function AiPlanCard() {
       </div>
 
       <div className="ai-actions">
-        <div className="ss">{missing.length ? `Falta: ${missing.join(', ')}` : status?.provider ? `Modelo: ${status.provider.label || status.provider.provider} · ${status.provider.model}` : 'Dados completos para gerar.'}</div>
-        <Button icon="sparkles" onClick={generate} disabled={busy || !status?.configured}>{busy ? 'Gerando…' : 'Elaborar meu treino com IA'}</Button>
+        <div className="ss">{generationMissing.length ? `Falta: ${generationMissing.join(', ')}` : status?.provider ? `Modelo: ${status.provider.label || status.provider.provider} · ${status.provider.selectedModel}` : 'Dados completos para gerar.'}</div>
+        <Button icon="sparkles" onClick={generate} disabled={busy || !status?.configured || status?.eligible === false}>{busy ? 'Gerando…' : 'Elaborar meu treino com IA'}</Button>
       </div>
     </section>
   )

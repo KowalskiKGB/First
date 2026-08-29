@@ -28,6 +28,7 @@ const EXERCISE_FIELDS = new Set([
 ]);
 const SCHEDULE_FIELDS = new Set(['day', 'routineRef']);
 const MODES = new Set(['reps', 'time', 'cardio']);
+const ABSOLUTE_LOAD_UNIT = /\b(?:kg|kgs|quilogramas?|quilos?|lb|lbs|libras?|pounds?|ounces?)\b/i;
 const FUNDAMENTAL_TARGETS = new Set(['pectorals', 'lats', 'quads', 'hamstrings', 'glutes', 'delts', 'abs']);
 
 const nullableInteger = (minimum, maximum) => ({
@@ -382,12 +383,15 @@ function validateMode(exercise, ageBand) {
       throw fail('faixa de repetições inválida');
     }
   } else {
-    const maxSeconds = exercise.mode === 'cardio' ? 7200 : limits.seconds;
+    const maxSeconds = exercise.mode === 'cardio' && ageBand !== 'under14' ? 7200 : limits.seconds;
     if (exercise.repMin !== null || exercise.repMax !== null || !Number.isInteger(exercise.seconds) ||
         exercise.seconds < 5 || exercise.seconds > maxSeconds) throw fail('faixa de tempo inválida');
   }
   if (!cleanText(exercise.progression, 500)) throw fail('progressão obrigatória');
   if (typeof exercise.note !== 'string' || exercise.note.length > 300) throw fail('nota inválida');
+  if (ABSOLUTE_LOAD_UNIT.test(exercise.progression) || ABSOLUTE_LOAD_UNIT.test(exercise.note)) {
+    throw fail('prescrição de carga absoluta não é permitida');
+  }
 }
 
 export function validateAiWorkoutPlan(response, options) {

@@ -14,6 +14,12 @@ const PUBLIC_GENERATION_ERROR = 'Não foi possível gerar o plano. Tente novamen
 const PUBLIC_INTERRUPTION_ERROR = 'A geração foi interrompida por uma reinicialização. Crie um novo pedido.';
 
 const text = (value, max = 160) => typeof value === 'string' ? value.trim().slice(0, max) : '';
+class ExistingJobSelection extends Error {
+  constructor(job) {
+    super('existing AI job selected');
+    this.job = job;
+  }
+}
 const publicJob = job => job ? {
   id: job.id,
   status: job.status,
@@ -205,24 +211,31 @@ export function createAiJobService({
       const owner = text(studentId, 100);
       const key = text(idempotencyKey, 160);
       if (!owner || !key) throw Object.assign(new Error('idempotency key obrigatória'), { expose: true, status: 400 });
-      const snapshot = store.read();
-      const same = snapshot.aiJobs.find(job => job.studentId === owner && job.idempotencyKey === key);
-      if (same) return publicJob(same);
-      const active = snapshot.aiJobs.find(job => job.studentId === owner && ACTIVE_JOB_STATUSES.has(job.status));
-      if (active) return publicJob(active);
       const requestedAt = new Date(now()).getTime();
-      const recentJobs = snapshot.aiJobs.filter(job => job.studentId === owner &&
-        requestedAt - new Date(job.createdAt).getTime() < 3_600_000);
-      if (recentJobs.length >= 6) {
-        throw Object.assign(new Error('Limite de gerações atingido. Tente novamente mais tarde.'), { expose: true, status: 429 });
+      let job;
+      try {
+        updateStore(store, state => {
+          const same = state.aiJobs.find(item => item.studentId === owner && item.idempotencyKey === key);
+          if (same) throw new ExistingJobSelection(same);
+          const active = state.aiJobs.find(item => item.studentId === owner && ACTIVE_JOB_STATUSES.has(item.status));
+          if (active) throw new ExistingJobSelection(active);
+          const recentJobs = state.aiJobs.filter(item => item.studentId === owner &&
+            requestedAt - new Date(item.createdAt).getTime() < 3_600_000);
+          if (recentJobs.length >= 6) {
+            throw Object.assign(new Error('Limite de gerações atingido. Tente novamente mais tarde.'), { expose: true, status: 429 });
+          }
+          const createdAt = now();
+          job = {
+            id: randomId(), idempotencyKey: key, studentId: owner,
+            status: 'queued', stage: 'organizing', publicError: null,
+            contextHash: '', planVersion: null, createdAt, updatedAt: createdAt
+          };
+          return { ...state, aiJobs: [...state.aiJobs, job] };
+        });
+      } catch (error) {
+        if (error instanceof ExistingJobSelection) return publicJob(error.job);
+        throw error;
       }
-      const createdAt = now();
-      const job = {
-        id: randomId(), idempotencyKey: key, studentId: owner,
-        status: 'queued', stage: 'organizing', publicError: null,
-        contextHash: '', planVersion: null, createdAt, updatedAt: createdAt
-      };
-      updateStore(store, state => ({ ...state, aiJobs: [...state.aiJobs, job] }));
       defer(() => { service.drain().catch(() => {}); });
       return publicJob(job);
     },

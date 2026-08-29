@@ -569,7 +569,11 @@ function contextCompleteness(profile, gym, measurements) {
     if (profile.ageBand !== 'adult' && profile.guardianConsent !== true) missing.push('guardianConsent');
   }
   if (!gym) missing.push('gym');
-  else if (!gym.genericEquipment?.length && !gym.specificMachines?.length) missing.push('equipment');
+  else {
+    if (!gym.name) missing.push('gymName');
+    const hasSpecificExercise = gym.specificMachines?.some(machine => machine.exerciseIds?.length);
+    if (!gym.genericEquipment?.length && !hasSpecificExercise) missing.push('equipment');
+  }
   if (!measurements.weight) missing.push('weight');
   const blockers = [
     ...(profile?.acuteRisk ? ['acuteRisk'] : []),
@@ -597,6 +601,18 @@ export function buildAiContext({ collaboration, studentId }) {
     completeness: contextCompleteness(profile, gym, measurements),
     plan: projectAiPlan(plan),
     job: projectAiJob(job)
+  };
+}
+export function buildAiGenerationStatus({ collaboration, studentId, provider, configured }) {
+  const context = buildAiContext({ collaboration, studentId });
+  const providerReady = configured === true && !!provider;
+  return {
+    configured: providerReady,
+    eligible: providerReady && context.completeness.eligible,
+    missing: [...context.completeness.missing],
+    blockers: [...context.completeness.blockers],
+    conservative: context.completeness.conservative,
+    provider: provider ? { provider: provider.provider, selectedModel: provider.selectedModel } : null
   };
 }
 export function notifyAiPlanApplied({ collaboration, studentId, planId, now, randomId }) {

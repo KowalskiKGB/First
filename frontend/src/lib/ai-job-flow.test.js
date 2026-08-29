@@ -43,12 +43,16 @@ describe('AI job flow', () => {
   })
 
   it('surfaces a failed job public error without refreshing context', async () => {
-    const request = vi.fn(async path => path === '/api/ai/jobs'
-      ? { job: { id: 'job-1', status: 'queued' } }
-      : { job: { id: 'job-1', status: 'failed', publicError: 'Geração interrompida.' } })
+    const calls = []
+    const request = async path => {
+      calls.push(path)
+      return path === '/api/ai/jobs'
+        ? { job: { id: 'job-1', status: 'queued' } }
+        : { job: { id: 'job-1', status: 'failed', publicError: 'Geração interrompida.' } }
+    }
 
     await expect(generateAiWorkout({ request, idempotencyKey: 'request-1', wait: async () => {} }))
       .rejects.toThrow('Geração interrompida.')
-    expect(request).toHaveBeenCalledTimes(2)
+    expect(calls).toEqual(['/api/ai/jobs', '/api/ai/job?id=job-1'])
   })
 })
