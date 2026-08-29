@@ -134,28 +134,69 @@ function localParts(date, time) {
 }
 
 export function fortalezaDateTime(date, time) {
-  const { year, month, day, hour, minute } = localParts(date, time)
-  return new Date(Date.UTC(year, month - 1, day, hour + 3, minute)).toISOString()
+  return timeZoneDateTime(date, time, 'America/Fortaleza')
 }
 
 export function fortalezaInterval(date, time, durationMinutes) {
+  return timeZoneInterval(date, time, durationMinutes, 'America/Fortaleza')
+}
+
+function timeZoneParts(value, timeZone) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timeZone || 'UTC',
+    hourCycle: 'h23',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  }).formatToParts(new Date(value))
+  const get = type => Number(parts.find(part => part.type === type)?.value)
+  return { year: get('year'), month: get('month'), day: get('day'), hour: get('hour'), minute: get('minute') }
+}
+
+export function timeZoneDateTime(date, time, timeZone = 'UTC') {
+  const { year, month, day, hour, minute } = localParts(date, time)
+  const target = Date.UTC(year, month - 1, day, hour, minute)
+  let guess = target
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const actual = timeZoneParts(guess, timeZone)
+    const observed = Date.UTC(actual.year, actual.month - 1, actual.day, actual.hour, actual.minute)
+    guess += target - observed
+  }
+  const result = timeZoneParts(guess, timeZone)
+  if (result.year !== year || result.month !== month || result.day !== day || result.hour !== hour || result.minute !== minute) {
+    throw new TypeError('Data ou hora inválida')
+  }
+  return new Date(guess).toISOString()
+}
+
+export function timeZoneInterval(date, time, durationMinutes, timeZone = 'UTC') {
   const duration = Number(durationMinutes)
   if (![30, 45, 60, 90].includes(duration)) throw new TypeError('Duração inválida')
-  const startsAt = fortalezaDateTime(date, time)
+  const startsAt = timeZoneDateTime(date, time, timeZone)
   return { startsAt, endsAt: new Date(Date.parse(startsAt) + duration * 60000).toISOString() }
 }
 
 export function fortalezaFields(iso) {
+  return timeZoneFields(iso, 'America/Fortaleza')
+}
+
+export function timeZoneFields(iso, timeZone = 'UTC') {
   const timestamp = Date.parse(iso)
   if (!Number.isFinite(timestamp)) return { date: '', time: '' }
-  const local = new Date(timestamp - 3 * 3600000).toISOString()
-  return { date: local.slice(0, 10), time: local.slice(11, 16) }
+  const parts = timeZoneParts(timestamp, timeZone)
+  const pad = value => String(value).padStart(2, '0')
+  return {
+    date: `${parts.year}-${pad(parts.month)}-${pad(parts.day)}`,
+    time: `${pad(parts.hour)}:${pad(parts.minute)}`,
+  }
 }
 
 export function todayFortaleza(now = new Date()) {
+  return todayInTimeZone(now, 'America/Fortaleza')
+}
+
+export function todayInTimeZone(now = new Date(), timeZone = 'UTC') {
   const timestamp = now instanceof Date ? now.getTime() : Date.parse(now)
   if (!Number.isFinite(timestamp)) throw new TypeError('Data inválida')
-  return new Date(timestamp - 3 * 3600000).toISOString().slice(0, 10)
+  return timeZoneFields(timestamp, timeZone).date
 }
 
 function decimalValue(value) {

@@ -144,7 +144,11 @@ export const useCollaboration = create((set, get) => ({
       const result = await api(path, { method, body: JSON.stringify(payload) });
       if (get().ownerId !== ownerId) return result;
       if (result.profile) set({ profile: result.profile, rev: result.rev ?? get().rev });
-      else if (result.client) set({ detail: result, rev: result.rev ?? get().rev });
+      else if (result.client) {
+        set({ detail: result, rev: result.rev ?? get().rev });
+        await get().reloadWorkspace();
+        if (get().ownerId !== ownerId) return result;
+      }
       else if (result.clients || result.kpis) set({ workspace: result, rev: result.rev ?? get().rev });
       else if (result.rev != null) set({ rev: result.rev });
       set({ error: null, message: null });

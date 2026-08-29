@@ -679,6 +679,8 @@ export default {
   'Charge due within three days': 'Cobrança a vencer em até três dias',
   'Data updated; keep this form open and repeat the action.': 'Os dados foram atualizados; mantenha este formulário aberto e repita a ação.',
   'Could not save changes': 'Não foi possível salvar as alterações',
+  'This time overlaps another class. Choose another time.': 'Este horário conflita com outra aula. Escolha outro horário.',
+  'This time is outside your availability. Change the time or update your weekly availability.': 'Este horário está fora da sua disponibilidade. Altere o horário ou atualize sua disponibilidade semanal.',
   'Schedule class': 'Agendar aula',
   'Edit class': 'Editar aula',
   'Times use the trainer’s configured timezone. Conflicts are checked when saving.': 'Os horários usam o fuso configurado pelo Personal. Conflitos são verificados ao salvar.',

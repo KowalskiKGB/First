@@ -16,7 +16,7 @@ import {
   timeOf,
 } from './components.jsx'
 
-function AppointmentSheet({ close, appointment, clients }) {
+function AppointmentSheet({ close, appointment, clients, timeZone }) {
   const editing = Boolean(appointment?.id)
   return (
     <>
@@ -28,7 +28,7 @@ function AppointmentSheet({ close, appointment, clients }) {
         success={editing ? 'Class updated' : 'Class scheduled'}
         close={close}
       >
-        {({ submit, busy }) => <AppointmentForm appointment={appointment} clients={clients} onSubmit={submit} busy={busy} />}
+        {({ submit, busy }) => <AppointmentForm appointment={appointment} clients={clients} timeZone={timeZone} onSubmit={submit} busy={busy} />}
       </PersonalMutation>
     </>
   )
@@ -45,8 +45,8 @@ function AvailabilitySheet({ close, availability }) {
   )
 }
 
-const openAppointment = (appointment, clients) => useUI.getState().openSheet(close => (
-  <AppointmentSheet close={close} appointment={appointment} clients={clients} />
+const openAppointment = (appointment, clients, timeZone) => useUI.getState().openSheet(close => (
+  <AppointmentSheet close={close} appointment={appointment} clients={clients} timeZone={timeZone} />
 ))
 
 export default function Agenda() {
@@ -70,15 +70,15 @@ export default function Agenda() {
         title={t('Schedule')}
         subtitle={t('Today’s capacity and each student’s next real class.')}
         backTo="/personal"
-        action={<Button variant="primary" icon="plus" onClick={() => openAppointment(null, clients)}>{t('Schedule class')}</Button>}
+        action={<Button variant="primary" icon="plus" onClick={() => openAppointment(null, clients, timeZone)}>{t('Schedule class')}</Button>}
       />
       {message ? <p className="personal-notice" role="status">{message}</p> : null}
 
       <div className="agenda-layout">
         <AgendaRail
           agenda={workspace.agenda}
-          onEdit={appointment => openAppointment(appointment, clients)}
-          onBook={slot => openAppointment({ ...slot, status: 'scheduled' }, clients)}
+          onEdit={appointment => openAppointment(appointment, clients, timeZone)}
+          onBook={slot => openAppointment({ ...slot, status: 'scheduled' }, clients, timeZone)}
         />
 
         <section className="personal-panel" aria-labelledby="upcoming-title">

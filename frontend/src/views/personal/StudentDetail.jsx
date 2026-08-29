@@ -58,7 +58,7 @@ function ClientSheet({ close, client }) {
   )
 }
 
-function AppointmentSheet({ close, appointment, client, loadClient }) {
+function AppointmentSheet({ close, appointment, client, loadClient, timeZone }) {
   const editing = Boolean(appointment?.id)
   return (
     <>
@@ -70,7 +70,7 @@ function AppointmentSheet({ close, appointment, client, loadClient }) {
         afterSave={() => loadClient(client.id)}
         close={close}
       >
-        {({ submit, busy }) => <AppointmentForm appointment={appointment} clients={[client]} clientId={client.id} onSubmit={submit} busy={busy} />}
+        {({ submit, busy }) => <AppointmentForm appointment={appointment} clients={[client]} clientId={client.id} timeZone={timeZone} onSubmit={submit} busy={busy} />}
       </PersonalMutation>
     </>
   )
@@ -217,7 +217,7 @@ function MeasurementsTab({ client, measurements }) {
 }
 
 function ScheduleTab({ client, appointments, loadClient, timeZone }) {
-  const open = appointment => useUI.getState().openSheet(close => <AppointmentSheet close={close} appointment={appointment} client={client} loadClient={loadClient} />)
+  const open = appointment => useUI.getState().openSheet(close => <AppointmentSheet close={close} appointment={appointment} client={client} loadClient={loadClient} timeZone={timeZone} />)
   return (
     <section className="personal-panel">
       <div className="panel-heading"><h2>{t('Complete class history')}</h2><Button variant="primary" icon="plus" onClick={() => open(null)}>{t('Schedule class')}</Button></div>

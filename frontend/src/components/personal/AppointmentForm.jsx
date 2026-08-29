@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { fortalezaFields, fortalezaInterval, todayFortaleza } from '../../lib/personal-forms.js'
+import { timeZoneFields, timeZoneInterval, todayInTimeZone } from '../../lib/personal-forms.js'
 import { Button, TextArea } from '../ui.jsx'
 
 const DURATIONS = [30, 45, 60, 90]
@@ -12,14 +12,14 @@ const STATUSES = [
   ['no_show', 'Aluno não compareceu'],
 ]
 
-function initialDraft(appointment, clientId, fallbackClientId) {
-  const fields = fortalezaFields(appointment?.startsAt)
+function initialDraft(appointment, clientId, fallbackClientId, timeZone) {
+  const fields = timeZoneFields(appointment?.startsAt, timeZone)
   const duration = appointment?.startsAt && appointment?.endsAt
     ? Math.round((Date.parse(appointment.endsAt) - Date.parse(appointment.startsAt)) / 60000)
     : 60
   return {
     clientId: appointment?.clientId || clientId || fallbackClientId,
-    date: fields.date || todayFortaleza(),
+    date: fields.date || todayInTimeZone(new Date(), timeZone),
     time: fields.time || '08:00',
     duration: DURATIONS.includes(duration) ? duration : 60,
     status: appointment?.status || 'scheduled',
@@ -27,17 +27,17 @@ function initialDraft(appointment, clientId, fallbackClientId) {
   }
 }
 
-export default function AppointmentForm({ appointment, clients = [], clientId = '', onSubmit, busy = false }) {
+export default function AppointmentForm({ appointment, clients = [], clientId = '', timeZone = 'UTC', onSubmit, busy = false }) {
   const fallbackClientId = clients[0]?.id || ''
-  const [draft, setDraft] = useState(() => initialDraft(appointment, clientId, fallbackClientId))
+  const [draft, setDraft] = useState(() => initialDraft(appointment, clientId, fallbackClientId, timeZone))
   const [error, setError] = useState('')
 
-  useEffect(() => setDraft(initialDraft(appointment, clientId, fallbackClientId)), [appointment, clientId, fallbackClientId])
+  useEffect(() => setDraft(initialDraft(appointment, clientId, fallbackClientId, timeZone)), [appointment, clientId, fallbackClientId, timeZone])
 
   const submit = event => {
     event.preventDefault()
     try {
-      const interval = fortalezaInterval(draft.date, draft.time, draft.duration)
+      const interval = timeZoneInterval(draft.date, draft.time, draft.duration, timeZone)
       setError('')
       onSubmit?.({
         clientId: draft.clientId,
@@ -93,7 +93,7 @@ export default function AppointmentForm({ appointment, clients = [], clientId = 
         <TextArea name="appointmentNote" autoComplete="off" maxLength="240" rows="3" value={draft.note} onChange={event => setDraft(current => ({ ...current, note: event.target.value }))} />
       </label>
 
-      <p className="form-hint">Horário de Fortaleza (UTC−03). Conflitos são confirmados ao salvar.</p>
+      <p className="form-hint">Fuso horário: {timeZone}. Conflitos são confirmados ao salvar.</p>
       {error ? <p className="form-error" role="alert" aria-live="polite">{error}</p> : null}
       <Button type="submit" variant="primary" disabled={busy || !draft.clientId}>
         {busy ? 'Salvando…' : 'Salvar aula'}

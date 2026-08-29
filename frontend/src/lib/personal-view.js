@@ -83,6 +83,8 @@ export function dateInTimeZone(value, timeZone = 'America/Fortaleza') {
 export function mutationErrorMessage(error) {
   if (error?.status === 403) return 'Permission revoked'
   if (error?.status === 409) return 'Data updated; keep this form open and repeat the action.'
+  if (error?.message === 'schedule conflict') return 'This time overlaps another class. Choose another time.'
+  if (error?.message === 'outside availability') return 'This time is outside your availability. Change the time or update your weekly availability.'
   return error?.message || 'Could not save changes'
 }
 
