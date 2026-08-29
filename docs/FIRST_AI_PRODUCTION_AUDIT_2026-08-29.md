@@ -20,14 +20,14 @@ Nenhum bloqueador de código foi encontrado. Antes de liberar o host, o operador
 
 - Autenticação, autorização, criptografia, adapters, validação semântica, jobs e migração: `api/dev-auth.js`, `api/ai-providers.js`, `api/ai.js`, `api/ai-jobs.js`, `api/domain/schema.js`, `api/personal.js` e `api/server.js`.
 - Ambiente e operação: `.env.example`, `docker-compose.yml`, `api/Dockerfile`, `Dockerfile`, `SECURITY.md`, `docs/SELF_HOSTING.md` e `docs/MOBILE.md`.
-- API: 156/156; 99,67% linhas e 81,70% branches.
+- API: 157/157; 99,67% linhas e 81,69% branches.
 - Frontend: 412/412; conjunto focado novo/alterado com 134/134 e 80,62% branches.
 - E2E Playwright: 11/11 em fluxos de aluno, Dev, Personal e coexistência de sessões.
 - Dependências: quatro auditorias npm (completo e produção, API e frontend), todas com zero vulnerabilidades.
 - Build web local e dentro do Docker: concluídos; aviso não bloqueante de chunk grande.
 - `docker compose config --quiet`: concluído com fixtures não produtivas.
 - Imagens `first-api` e `first-web`: construídas sem chave de IA.
-- Health em `NODE_ENV=production` sem provedor/master key: HTTP 200 e `{"ok":true}`.
+- Health em `NODE_ENV=production` sem provedor/master key: HTTP 200 e `{"ok":true}` no commit `60babb2`.
 - Capacitor: build web móvel, cópia de 1.324 JPG/1.324 GIF e sync Android/iOS concluídos.
 - Android: `assembleDebug` concluído; APK em `frontend/android/app/build/outputs/apk/debug/app-debug.apk`, 146.281.079 bytes, SHA-256 `B6DD25C92DE82C98BE88335D2F3C5BC6A5F1A95775F84E5B8B6FDD4B8F3F6CB5`.
 - Scan local de arquivos rastreados: nenhuma private key, chave OpenAI/Anthropic/Google ou atribuição de segredo conhecida; nenhum artefato de build rastreado.

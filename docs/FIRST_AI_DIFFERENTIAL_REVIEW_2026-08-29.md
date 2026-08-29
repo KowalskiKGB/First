@@ -4,11 +4,11 @@ Data: 2026-08-29
 
 Baseline: `2658eb57a1d8c44b64e0498e7f8f270d49591e79`
 
-Revisado até: `0f0125a92bf83e2fd31abf9891c17e84a78b3faa`
+Revisado até: `60babb2c8ca7f0e49f2aaf59b6edc1c8944bb6fc`
 
 ## Resumo executivo
 
-**Aprovado para o deploy privado de instância única, sem achados críticos ou altos abertos.** O diferencial tem 91 arquivos, 8.184 adições e 955 remoções. A revisão foi classificada como alta criticidade por alterar autenticação Dev, criptografia de chaves, chamadas externas, autorização entre aluno e Personal e aplicação automática de planos.
+**Aprovado para o deploy privado de instância única, sem achados críticos ou altos abertos.** O diferencial tem 93 arquivos, 8.355 adições e 995 remoções. A revisão foi classificada como alta criticidade por alterar autenticação Dev, criptografia de chaves, chamadas externas, autorização entre aluno e Personal e aplicação automática de planos.
 
 O protótipo inseguro que persistia `initialPassword` foi removido. A configuração atual exige credencial Dev via ambiente, guarda somente hash scrypt, criptografa chaves comerciais com AES-256-GCM e só ativa uma combinação provedor/modelo depois de teste estruturado real.
 
@@ -45,7 +45,7 @@ O protótipo inseguro que persistia `initialPassword` foi removido. A configura�
 - A shortlist é determinística e limitada a 120 IDs. O servidor rejeita ID ausente, equipamento incompatível, duplicidade, dia indisponível, campos extras, faixa inválida, carga absoluta, recusa e truncamento (`api/ai.js:117-146`, `api/ai.js:397-480`).
 - Risco agudo e restrição médica bloqueiam a chamada. Menores exigem consentimento de responsável e recebem limites conservadores (`api/ai.js:245-270`, `api/ai.js:370-395`).
 - Jobs exigem idempotência, têm limite de seis solicitações por aluno/hora e só substituem o plano vigente na transação de aplicação (`api/ai-jobs.js:111-253`).
-- Migração retém dez versões IA por aluno e dois mil jobs/usos; `stage` é enum fechado com fallback seguro para legado (`api/domain/schema.js:1-19`, `api/domain/schema.js:216-275`).
+- Migração e gravação em runtime retêm dez versões IA por aluno e dois mil jobs/usos; `stage` é enum fechado com fallback seguro para legado (`api/domain/schema.js:1-19`, `api/domain/schema.js:216-275`, `api/ai-providers.js:263-276`).
 
 ## Modelagem adversarial
 
@@ -79,7 +79,7 @@ Os módulos críticos possuem unitários e integração, e os fluxos principais 
 
 ## Testes e cobertura
 
-- API: 156/156; cobertura total 99,67% de linhas, 81,70% de branches e 92,82% de funções.
+- API: 157/157; cobertura total 99,67% de linhas, 81,69% de branches e 92,82% de funções.
 - Frontend: 412/412.
 - Módulos frontend novos/alterados de IA, agenda e Personal: 134/134; 88,14% statements, 80,62% branches, 84,18% funções e 92,18% linhas.
 - Playwright: 11/11, incluindo wizard/aplicação/rollback, remount de job, Dev sem vazamento de chave, Personal e seletor de sessões em mobile/desktop.
@@ -90,7 +90,7 @@ Os módulos críticos possuem unitários e integração, e os fluxos principais 
 
 - Estratégia focada para repositório médio: todas as 91 mudanças foram triadas; auth, crypto, chamadas externas, job, schema e autorização tiveram leitura profunda.
 - Ocorrências por arquivo: `createDevAuth` 3, `isTrustedMutation` 3, `encryptProviderKey` 2, `runStructuredOutput` 4, `createAiJobService` 3, `saveTrainingProfile` 2, `saveGymProfile` 2 e `buildAiContext` 2.
-- O histórico mostra a remoção explícita de `initialPassword`, geração automática em `/data` e fallback para qualquer provedor configurado. Os commits de endurecimento relevantes incluem `bef5b4d`, `7db2f1f`, `c72737d`, `4671d35`, `b33fe54` e `e1dd575`.
+- O histórico mostra a remoção explícita de `initialPassword`, geração automática em `/data`, fallback para qualquer provedor configurado e retenção excessiva de uso em runtime. Os commits de endurecimento relevantes incluem `bef5b4d`, `7db2f1f`, `c72737d`, `4671d35`, `b33fe54`, `e1dd575` e `60babb2`.
 - Nenhum acesso removido de um commit de segurança foi encontrado sem controle substituto.
 
 ## Limitações e confiança
