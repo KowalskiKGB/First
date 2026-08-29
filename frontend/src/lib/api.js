@@ -1,6 +1,9 @@
 // Backend + WebAuthn helpers (ported from the vanilla app).
 import { getLang } from './i18n.js'
 
+const API_ROOT = String(import.meta.env.VITE_API_BASE || '').replace(/\/$/, '')
+const MOBILE_API = import.meta.env.VITE_MOBILE === '1' && API_ROOT
+
 const USER_AGENT = globalThis.navigator?.userAgent || ''
 export const IS_APPLE = /iPhone|iPad|iPod|Macintosh/.test(USER_AGENT)
 export const IS_ANDROID = /Android/.test(USER_AGENT)
@@ -11,7 +14,9 @@ export const VAULT = IS_APPLE ? 'iCloud Keychain' : IS_ANDROID ? 'Google Passwor
 export const webauthnOK = () => !!(window.PublicKeyCredential && navigator.credentials)
 
 export async function api(path, opts) {
-  const r = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts))
+  const headers = { 'Content-Type': 'application/json', ...(opts?.headers || {}) }
+  if (MOBILE_API) headers.Origin = API_ROOT
+  const r = await fetch(API_ROOT + path, { credentials: 'include', ...opts, headers })
   const data = await r.json().catch(() => ({}))
   if (!r.ok) { const e = new Error(data.error || ('HTTP ' + r.status)); e.status = r.status; throw e }
   return data

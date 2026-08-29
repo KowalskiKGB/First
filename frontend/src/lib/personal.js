@@ -25,8 +25,8 @@ export const personalTabs = () => [
   { icon: 'gear', to: '/settings', label: 'Adjustments' }
 ];
 
-export const canEnterPersonal = ({ user, isGuest, mobile, profile, ownerId }) =>
-  !!user?.id && !isGuest && !mobile && ownerId === user.id && profile?.userId === user.id && profile.roles?.includes('trainer');
+export const canEnterPersonal = ({ user, isGuest, profile, ownerId }) =>
+  !!user?.id && !isGuest && ownerId === user.id && profile?.userId === user.id && profile.roles?.includes('trainer');
 
 export const todayInputValue = () => new Date().toISOString().slice(0, 10);
 

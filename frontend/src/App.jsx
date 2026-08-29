@@ -49,12 +49,15 @@ function Shell() {
   const { S, user, ready } = useStore()
   const isGuest = useStore(s => s.isGuest())
   const loadCollaboration = useCollaboration(s => s.load)
+  const programs = useCollaboration(s => s.programs)
+  const syncPersonalPrograms = useStore(s => s.syncPersonalPrograms)
   const langV = useLang()   // re-renders the whole shell when the language (pack) changes
   useEffect(() => { setNav(navigate) }, [navigate])
   useEffect(() => { applyPrefs(S.theme, S.accent) }, [S.theme, S.accent])
   useEffect(() => { setLang(S.lang || DEFAULT_LANG) }, [S.lang])
   useEffect(() => { document.documentElement.lang = S.lang || DEFAULT_LANG }, [langV, S.lang])
   useEffect(() => { loadCollaboration(useStore.getState().user) }, [loadCollaboration, user?.id, isGuest])
+  useEffect(() => { if (Array.isArray(programs)) syncPersonalPrograms(programs) }, [programs, syncPersonalPrograms])
   // every tab/route change starts at the top of the page
   useEffect(() => { window.scrollTo(0, 0) }, [loc.pathname])
   // bound to the workout, not to the route — checking Stats mid-session keeps the screen on

@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 
-import { MOBILE } from '../../lib/mobile.js';
 import { canEnterPersonal } from '../../lib/personal.js';
 import { t } from '../../lib/i18n.js';
 import { Button } from '../../components/ui.jsx';
@@ -19,7 +18,7 @@ export default function PersonalGuard({ children }) {
   const context = useCollaboration(state => state.context);
   const setContext = useCollaboration(state => state.setContext);
   const load = useCollaboration(state => state.load);
-  const allowed = canEnterPersonal({ user, isGuest, mobile: MOBILE, profile, ownerId });
+  const allowed = canEnterPersonal({ user, isGuest, profile, ownerId });
   const permissionRevoked = message === 'Permission revoked'
     || message === t('Permission revoked')
     || /revogada/i.test(String(message || ''));
@@ -29,10 +28,10 @@ export default function PersonalGuard({ children }) {
   }, [allowed, context, setContext, user]);
 
   if (allowed) return children;
-  if (user?.id && !isGuest && !MOBILE && ownerId === user.id && permissionRevoked) {
+  if (user?.id && !isGuest && ownerId === user.id && permissionRevoked) {
     return <Navigate to="/home" replace />;
   }
-  if (user?.id && !isGuest && !MOBILE && ownerId === user.id && error) {
+  if (user?.id && !isGuest && ownerId === user.id && error) {
     return (
       <div className="empty" role="alert">
         <p>{t('Could not load Personal')}</p>
@@ -40,7 +39,7 @@ export default function PersonalGuard({ children }) {
       </div>
     );
   }
-  if (user?.id && !isGuest && !MOBILE && (!ownerId || (ownerId === user.id && loading))) {
+  if (user?.id && !isGuest && (!ownerId || (ownerId === user.id && loading))) {
     return <div className="empty" role="status">{t('Loading Personal…')}</div>;
   }
   return <Navigate to="/home" replace />;

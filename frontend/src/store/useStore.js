@@ -5,6 +5,7 @@ import { registerCustom } from '../lib/exercises.js'
 import { DEFAULT_LANG } from '../lib/i18n.js'
 import { DEMO, DEMO_SEEDED } from '../lib/demo.js'
 import { MOBILE, nativeLoad, nativeSave, syncReminder } from '../lib/mobile.js'
+import { mergePublishedPrograms } from '../lib/personal-forms.js'
 import { useCollaboration } from './useCollaboration.js'
 
 const KEY = 'gym_state_v1'
@@ -95,6 +96,12 @@ export const useStore = create((set, get) => {
     },
     replaceState(S, push = false) { persist(clone(S), push) },
 
+    syncPersonalPrograms(programs) {
+      const current = get().S
+      const next = mergePublishedPrograms(current, programs)
+      if (JSON.stringify([current.routines, current.week]) !== JSON.stringify([next.routines, next.week])) persist(next, false)
+    },
+
     isGuest: () => localStorage.getItem('gym_guest') === '1',
     setGuest(v) { if (v) localStorage.setItem('gym_guest', '1'); else localStorage.removeItem('gym_guest'); set({}) },
 
@@ -157,8 +164,8 @@ export const useStore = create((set, get) => {
 
     // Boot: ask the server who we are, then pull.
     async boot() {
-      // Mobile build: no backend either — restore from the file mirror (the durable copy;
-      // localStorage may have been evicted since the last run) and go straight in.
+      // Mobile restores the durable local copy first, then tries the same optional account as web.
+      // If the server is unreachable, the student plan remains fully usable offline.
       if (MOBILE) {
         const saved = await nativeLoad()
         const S = get().S
@@ -167,10 +174,7 @@ export const useStore = create((set, get) => {
         } else if (hasData(S)) {
           nativeSave(S)   // first run after an update from a file-less version: seed the mirror
         }
-        get().setGuest(true)
         syncReminder(get().S)
-        set({ ready: true })
-        return
       }
       // Demo build (GitHub Pages): no backend at all — seed once, stay in guest mode.
       if (DEMO) {
@@ -195,6 +199,7 @@ export const useStore = create((set, get) => {
       } catch (e) {
         if (e.status === 401) get().setUser(null)
       }
+      if (MOBILE && !get().user) get().setGuest(true)
       set({ ready: true })
     }
   }

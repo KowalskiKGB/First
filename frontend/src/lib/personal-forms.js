@@ -87,6 +87,33 @@ export function normalizeProgram(program = {}) {
   }
 }
 
+const personalRoutineId = (programId, routineId) => `personal-${programId}-${routineId}`
+const prescribedReps = reps => Number(String(reps).split('-')[0]) || 10
+
+export function mergePublishedPrograms(state = {}, programs = []) {
+  const currentRoutines = Array.isArray(state.routines) ? state.routines : []
+  const managedIds = new Set(currentRoutines.filter(routine => routine?._personalProgramId).map(routine => routine.id))
+  const routines = currentRoutines.filter(routine => !routine?._personalProgramId)
+  const week = Object.fromEntries(Object.entries(state.week || {}).filter(([, routineId]) => !managedIds.has(routineId)))
+
+  for (const source of Array.isArray(programs) ? programs : []) {
+    if (!source?.id) continue
+    const program = normalizeProgram(source)
+    const ids = new Map(program.routines.map(routine => [routine.id, personalRoutineId(program.id, routine.id)]))
+    routines.push(...program.routines.map(routine => ({
+      ...routine,
+      id: ids.get(routine.id),
+      emoji: 'clipboard',
+      _personalProgramId: program.id,
+      _personalVersion: Number(source.version) || 1,
+      ex: routine.ex.map(exercise => ({ ...exercise, reps: prescribedReps(exercise.reps), weight: 0 })),
+    })))
+    Object.entries(program.week).forEach(([day, routineId]) => { week[day] = ids.get(routineId) })
+  }
+
+  return { ...state, routines, week }
+}
+
 export function reorderItem(items, from, to) {
   if (!Array.isArray(items) || !Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < 0 || from >= items.length || to >= items.length || from === to) return items
   const next = [...items]

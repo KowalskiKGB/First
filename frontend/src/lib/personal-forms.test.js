@@ -90,6 +90,7 @@ describe('program helpers', () => {
       routines: [{ id: 'manual', name: 'Meu treino', ex: [] }],
       week: { 0: 'manual' },
       workouts: [],
+      exWeights: {},
     }
     const program = {
       id: 'program-1',
@@ -125,7 +126,7 @@ describe('program helpers', () => {
       { w: 0, r: 8, done: false },
       { w: 0, r: 8, done: false },
     ])
-    expect(source).toEqual({ routines: [{ id: 'manual', name: 'Meu treino', ex: [] }], week: { 0: 'manual' }, workouts: [] })
+    expect(source).toEqual({ routines: [{ id: 'manual', name: 'Meu treino', ex: [] }], week: { 0: 'manual' }, workouts: [], exWeights: {} })
   })
 
   it('removes only Personal-managed routines when the active connection no longer publishes them', () => {

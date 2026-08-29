@@ -3,6 +3,18 @@
   "appName": "First",
   "webDir": "dist",
   "backgroundColor": "#0c0e12",
+  "server": {
+    "hostname": "first.rocketxsistemas.com.br",
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    },
+    "CapacitorCookies": {
+      "enabled": true
+    }
+  },
   "android": {
     "allowMixedContent": false
   }

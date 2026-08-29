@@ -3,7 +3,6 @@ import { create } from 'zustand';
 import { api } from '../lib/api.js';
 import { DEMO } from '../lib/demo.js';
 import { t } from '../lib/i18n.js';
-import { MOBILE } from '../lib/mobile.js';
 
 const initial = {
   ownerId: null,
@@ -11,6 +10,7 @@ const initial = {
   profile: null,
   connections: [],
   notifications: [],
+  programs: null,
   workspace: null,
   selected: null,
   detail: null,
@@ -37,12 +37,12 @@ function storedUser() {
   catch { return null; }
 }
 
-const realWebAccount = user =>
-  !!user?.id && storedUser()?.id === user.id && !DEMO && !MOBILE && localStorage.getItem('gym_guest') !== '1';
+const realAccount = user =>
+  !!user?.id && storedUser()?.id === user.id && !DEMO && localStorage.getItem('gym_guest') !== '1';
 
 function initialContext() {
   const context = localStorage.getItem('first_context');
-  return realWebAccount(storedUser()) && context === 'trainer' ? 'trainer' : 'student';
+  return realAccount(storedUser()) && context === 'trainer' ? 'trainer' : 'student';
 }
 
 export const useCollaboration = create((set, get) => ({
@@ -50,7 +50,7 @@ export const useCollaboration = create((set, get) => ({
   context: initialContext(),
 
   setContext(context, user) {
-    const next = realWebAccount(user) && context === 'trainer' ? 'trainer' : 'student';
+    const next = realAccount(user) && context === 'trainer' ? 'trainer' : 'student';
     if (next === 'trainer') localStorage.setItem('first_context', next);
     else localStorage.removeItem('first_context');
     set({ context: next });
@@ -62,7 +62,7 @@ export const useCollaboration = create((set, get) => ({
   },
 
   async load(user) {
-    if (!realWebAccount(user)) { get().reset(); return; }
+    if (!realAccount(user)) { get().reset(); return; }
     const switchingAccount = get().ownerId !== user.id;
     set(switchingAccount
       ? { ...clean(), ownerId: user.id, context: initialContext(), loading: true }
@@ -83,6 +83,7 @@ export const useCollaboration = create((set, get) => ({
         profile,
         connections: Array.isArray(base.connections) ? base.connections : [],
         notifications: Array.isArray(base.notifications) ? base.notifications : [],
+        programs: Array.isArray(base.programs) ? base.programs : [],
         workspace,
         loading: false,
         error: null,
