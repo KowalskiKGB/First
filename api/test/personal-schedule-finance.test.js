@@ -10,7 +10,8 @@ import {
   createClient,
   createPersonalRoutes,
   saveAppointment,
-  saveReceivable
+  saveReceivable,
+  updateClient
 } from '../personal.js';
 
 const NOW = '2026-08-29T12:00:00.000Z';
@@ -89,6 +90,26 @@ test('receivables require positive safe integer cents and persist BRL explicitly
   assert.equal(saved.receivable.currency, 'BRL');
 });
 
+test('paid receivables accept only real instants and normalize paidAt', () => {
+  const { collaboration, client, randomId } = managedFixture();
+  const data = {
+    period: '2026-08', dueOn: '2026-08-31', amountCents: 1000, status: 'paid'
+  };
+
+  for (const paidAt of [{ nested: true }, 'not-a-date', '2026-02-30T12:00:00-03:00']) {
+    assert.throws(() => saveReceivable({
+      collaboration, actorId: 'trainer-a', clientId: client.id,
+      data: { ...data, paidAt }, now: NOW, randomId
+    }), /invalid paid date/);
+  }
+
+  const saved = saveReceivable({
+    collaboration, actorId: 'trainer-a', clientId: client.id,
+    data: { ...data, paidAt: '2026-08-29T09:00:00-03:00' }, now: NOW, randomId
+  });
+  assert.equal(saved.receivable.paidAt, '2026-08-29T12:00:00.000Z');
+});
+
 test('receivable calendar values must be real dates and months', () => {
   const { collaboration, client, randomId } = managedFixture();
   const base = { amountCents: 1000, status: 'open' };
@@ -118,10 +139,46 @@ test('custom availability derives slots in the trainer timezone', () => {
 
   assert.deepEqual(workspace.availability, collaboration.availability);
   assert.equal(workspace.agenda.openSlots.length, 4);
+  assert.equal(workspace.kpis.freeHoursToday, 2);
   assert.deepEqual(workspace.agenda.openSlots[0], {
     startsAt: '2026-08-31T07:00:00.000Z',
     endsAt: '2026-08-31T07:30:00.000Z'
   });
+});
+
+test('active relationship authorizes trainer-owned operations independently from plansWrite', () => {
+  const randomId = ids();
+  const client = {
+    id: 'client-a', trainerId: 'trainer-a', studentUserId: 'student-a', name: 'Aluno',
+    targetSessionsPerWeek: 3, inactiveAfterDays: 7, createdAt: NOW, archivedAt: null
+  };
+  let collaboration = state({
+    profiles: [profile('trainer-a')],
+    clients: [client],
+    connections: [{
+      id: 'connection-a', trainerId: 'trainer-a', studentId: 'student-a', requestedBy: 'student-a',
+      status: 'active', grants: { plansWrite: false, workoutsRead: false, progressRead: false }, createdAt: NOW
+    }]
+  });
+
+  collaboration = updateClient({
+    collaboration, actorId: 'trainer-a', clientId: client.id,
+    data: { goal: 'Forca' }, now: NOW, randomId
+  }).collaboration;
+  collaboration = saveAppointment({
+    collaboration, actorId: 'trainer-a', clientId: client.id,
+    data: { startsAt: '2026-08-31T08:00:00-03:00', endsAt: '2026-08-31T09:00:00-03:00' },
+    now: NOW, randomId
+  }).collaboration;
+  collaboration = saveReceivable({
+    collaboration, actorId: 'trainer-a', clientId: client.id,
+    data: { period: '2026-08', dueOn: '2026-08-31', amountCents: 1000 },
+    now: NOW, randomId
+  }).collaboration;
+
+  assert.equal(collaboration.clients[0].goal, 'Forca');
+  assert.equal(collaboration.appointments.length, 1);
+  assert.equal(collaboration.receivables.length, 1);
 });
 
 test('appointments must be real timezone-aware instants inside availability', () => {
@@ -268,4 +325,3 @@ test('workspace and finance remain isolated between trainers', () => {
   assert.equal(workspace.finance.expectedCents, 1000);
   assert.equal(workspace.finance.overdueCents, 0);
 });
-

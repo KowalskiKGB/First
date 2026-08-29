@@ -9,6 +9,7 @@ import {
   buildWorkspace,
   createPersonalRoutes,
   ensureProfile,
+  requestConnection,
   respondConnection
 } from '../personal.js';
 
@@ -180,6 +181,40 @@ test('only the counterpart to requestedBy can accept or refuse a connection', ()
   assert.equal(accepted.connection.status, 'active');
 });
 
+test('trainer accepting a student request cannot widen student grants', () => {
+  const randomId = (() => {
+    let value = 0;
+    return () => `id-${++value}`;
+  })();
+  let current = collaboration({
+    profiles: [
+      profile('student-a'),
+      profile('trainer-a', ['student', 'trainer'], { shareCode: 'A'.repeat(32) })
+    ]
+  });
+  const requested = requestConnection({
+    collaboration: current,
+    actorId: 'student-a',
+    shareCode: 'A'.repeat(32),
+    now: NOW,
+    randomId
+  });
+  current = requested.collaboration;
+
+  const accepted = respondConnection({
+    collaboration: current,
+    actorId: 'trainer-a',
+    connectionId: requested.connection.id,
+    accept: true,
+    grants: { measurementsWrite: true, liveActivityRead: true },
+    now: NOW,
+    randomId
+  });
+
+  assert.equal(accepted.connection.grants.measurementsWrite, false);
+  assert.equal(accepted.connection.grants.liveActivityRead, false);
+});
+
 test('linked clients require an active connection and state projections honor each read grant', async t => {
   const client = {
     id: 'client-a', trainerId: 'trainer-a', studentUserId: 'student-a', name: 'Aluno',
@@ -282,6 +317,18 @@ test('share codes carry 128 bits and expired codes renew without exposing lookup
     }));
     const res = await invoke(fixture, 'GET /api/collaboration', { user: { id: 'student-a', name: 'A' } });
     assert.notEqual(res.body.profile.shareCode, 'EXPIRED');
+    assert.match(res.body.profile.shareCode, /^[A-F0-9]{32}$/);
+  });
+
+  await t.test('legacy weak profile', async t2 => {
+    const fixture = routeFixture(t2, collaboration({
+      profiles: [profile('student-a', ['student'], {
+        shareCode: 'ABCD1234',
+        shareCodeExpiresAt: FUTURE
+      })]
+    }));
+    const res = await invoke(fixture, 'GET /api/collaboration', { user: { id: 'student-a', name: 'A' } });
+    assert.notEqual(res.body.profile.shareCode, 'ABCD1234');
     assert.match(res.body.profile.shareCode, /^[A-F0-9]{32}$/);
   });
 
