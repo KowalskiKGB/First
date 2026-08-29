@@ -1,5 +1,179 @@
+const AGE_BANDS = new Set(['under14', '14to17', 'adult']);
+const EXPERIENCES = new Set(['iniciante', 'intermediario', 'avancado']);
+const JOB_STATUSES = new Set(['queued', 'running', 'completed', 'failed', 'cancelled']);
+const USAGE_STATUSES = new Set(['success', 'failed']);
+
+const text = (value, max) => typeof value === 'string' ? value.trim().slice(0, max) : '';
+const timestamp = value => text(value, 40) || null;
+const nonNegativeInteger = value => Number.isSafeInteger(value) && value >= 0 ? value : 0;
+const stringList = (value, maxItems, maxLength = 100) => [...new Set(
+  (Array.isArray(value) ? value : []).slice(0, maxItems).map(item => text(item, maxLength)).filter(Boolean)
+)];
+const days = value => [...new Set((Array.isArray(value) ? value : [])
+  .filter(day => Number.isInteger(day) && day >= 0 && day <= 6))].slice(0, 7).sort((a, b) => a - b);
+
+function normalizeTrainingProfile(value) {
+  const studentId = text(value?.studentId, 100);
+  if (!studentId || !AGE_BANDS.has(value?.ageBand)) return null;
+  const height = Number(value.heightCm);
+  return {
+    studentId,
+    ageBand: value.ageBand,
+    heightCm: Number.isFinite(height) ? Math.max(80, Math.min(250, Math.round(height))) : null,
+    goal: text(value.goal, 160),
+    experience: EXPERIENCES.has(value.experience) ? value.experience : 'intermediario',
+    availableDays: days(value.availableDays),
+    minutesPerSession: Number.isInteger(value.minutesPerSession)
+      ? Math.max(15, Math.min(180, value.minutesPerSession))
+      : null,
+    focusAreas: stringList(value.focusAreas, 12, 60),
+    favoriteExerciseIds: stringList(value.favoriteExerciseIds, 60),
+    avoidedExerciseIds: stringList(value.avoidedExerciseIds, 60),
+    limitations: text(value.limitations, 1000),
+    acuteRisk: value.acuteRisk === true,
+    medicalRestriction: value.medicalRestriction === true,
+    consent: value.consent === true,
+    guardianConsent: typeof value.guardianConsent === 'boolean' ? value.guardianConsent : null,
+    createdAt: timestamp(value.createdAt),
+    updatedAt: timestamp(value.updatedAt)
+  };
+}
+
+function normalizeGymProfile(value) {
+  const studentId = text(value?.studentId, 100);
+  if (!studentId) return null;
+  return {
+    studentId,
+    name: text(value.name, 120),
+    genericEquipment: stringList(value.genericEquipment, 60),
+    specificMachines: (Array.isArray(value.specificMachines) ? value.specificMachines : []).slice(0, 40).flatMap(machine => {
+      const name = text(machine?.name, 100);
+      if (!name) return [];
+      return [{
+        name,
+        category: text(machine.category, 80),
+        exerciseIds: stringList(machine.exerciseIds, 60)
+      }];
+    }),
+    createdAt: timestamp(value.createdAt),
+    updatedAt: timestamp(value.updatedAt)
+  };
+}
+
+function normalizeRoutine(value, index) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const id = text(value.id || `routine-${index + 1}`, 100);
+  return {
+    id,
+    name: text(value.name, 100),
+    ex: (Array.isArray(value.ex) ? value.ex : []).slice(0, 30).flatMap(exercise => {
+      const exerciseId = text(exercise?.id, 100);
+      if (!exerciseId) return [];
+      return [{
+        id: exerciseId,
+        sets: Number.isInteger(exercise.sets) ? Math.max(1, Math.min(20, exercise.sets)) : 3,
+        reps: text(exercise.reps, 30),
+        rest: Number.isInteger(exercise.rest) ? Math.max(0, Math.min(1800, exercise.rest)) : 60,
+        note: text(exercise.note, 240)
+      }];
+    })
+  };
+}
+
+function normalizeSchedule(value) {
+  if (Array.isArray(value)) {
+    return value.slice(0, 7).flatMap(entry => Number.isInteger(entry?.day) && entry.day >= 0 && entry.day <= 6
+      ? [{ day: entry.day, routineId: text(entry.routineId, 100) }]
+      : []);
+  }
+  if (!value || typeof value !== 'object') return {};
+  return Object.fromEntries(Object.entries(value).slice(0, 7)
+    .filter(([day, routineId]) => /^[0-6]$/.test(day) && typeof routineId === 'string')
+    .map(([day, routineId]) => [day, text(routineId, 100)]));
+}
+
+function normalizeAiPlan(value) {
+  const id = text(value?.id, 100);
+  const studentId = text(value?.studentId, 100);
+  if (!id || !studentId || !Number.isInteger(value.version) || value.version < 1) return null;
+  return {
+    id,
+    studentId,
+    version: value.version,
+    provider: text(value.provider, 40),
+    model: text(value.model, 120),
+    contextHash: text(value.contextHash, 128),
+    justification: text(value.justification, 2000),
+    routines: (Array.isArray(value.routines) ? value.routines : []).slice(0, 14)
+      .map(normalizeRoutine).filter(Boolean),
+    schedule: normalizeSchedule(value.schedule),
+    source: text(value.source, 40),
+    status: text(value.status, 40),
+    createdAt: timestamp(value.createdAt),
+    updatedAt: timestamp(value.updatedAt),
+    appliedAt: timestamp(value.appliedAt)
+  };
+}
+
+function normalizeAiJob(value) {
+  const id = text(value?.id, 100);
+  const studentId = text(value?.studentId, 100);
+  const idempotencyKey = text(value?.idempotencyKey, 160);
+  if (!id || !studentId || !idempotencyKey || !JOB_STATUSES.has(value.status)) return null;
+  return {
+    id,
+    idempotencyKey,
+    studentId,
+    status: value.status,
+    stage: text(value.stage, 80),
+    publicError: text(value.publicError, 240) || null,
+    contextHash: text(value.contextHash, 128),
+    planVersion: Number.isInteger(value.planVersion) && value.planVersion > 0 ? value.planVersion : null,
+    createdAt: timestamp(value.createdAt),
+    updatedAt: timestamp(value.updatedAt)
+  };
+}
+
+function normalizeAiUsage(value) {
+  const provider = text(value?.provider, 40);
+  const model = text(value?.model, 120);
+  if (!provider || !model || !USAGE_STATUSES.has(value.status)) return null;
+  const studentId = text(value.studentId, 100);
+  return {
+    provider,
+    model,
+    inputTokens: nonNegativeInteger(value.inputTokens),
+    outputTokens: nonNegativeInteger(value.outputTokens),
+    totalTokens: nonNegativeInteger(value.totalTokens),
+    latencyMs: nonNegativeInteger(value.latencyMs),
+    status: value.status,
+    ...(studentId ? { studentId } : {}),
+    timestamp: timestamp(value.timestamp)
+  };
+}
+
+function onePerStudent(values, normalize) {
+  const byStudent = new Map();
+  for (const value of Array.isArray(values) ? values : []) {
+    const normalized = normalize(value);
+    if (normalized) byStudent.set(normalized.studentId, normalized);
+  }
+  return [...byStudent.values()];
+}
+
+function retainedPlans(values) {
+  const byStudent = new Map();
+  for (const value of Array.isArray(values) ? values : []) {
+    const normalized = normalizeAiPlan(value);
+    if (!normalized) continue;
+    const plans = byStudent.get(normalized.studentId) || [];
+    byStudent.set(normalized.studentId, [...plans, normalized].slice(-10));
+  }
+  return [...byStudent.values()].flat();
+}
+
 export const INITIAL_COLLABORATION = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   rev: 0,
   profiles: [],
   connections: [],
@@ -10,18 +184,28 @@ export const INITIAL_COLLABORATION = {
   measurements: [],
   availability: [],
   appointments: [],
-  receivables: []
+  receivables: [],
+  trainingProfiles: [],
+  gymProfiles: [],
+  aiPlans: [],
+  aiJobs: [],
+  aiUsage: []
 };
 
 export function migrateCollaboration(value) {
   const collaboration = value && typeof value === 'object' && !Array.isArray(value) ? structuredClone(value) : {};
+  const legacyCollections = Object.keys(INITIAL_COLLABORATION)
+    .filter(key => !['schemaVersion', 'rev', 'trainingProfiles', 'gymProfiles', 'aiPlans', 'aiJobs', 'aiUsage'].includes(key));
 
   return {
     ...collaboration,
-    schemaVersion: 1,
+    schemaVersion: 2,
     rev: Number.isInteger(collaboration.rev) && collaboration.rev >= 0 ? collaboration.rev : 0,
-    ...Object.fromEntries(Object.keys(INITIAL_COLLABORATION)
-      .filter((key) => key !== 'schemaVersion' && key !== 'rev')
-      .map((key) => [key, Array.isArray(collaboration[key]) ? collaboration[key] : []]))
+    ...Object.fromEntries(legacyCollections.map(key => [key, Array.isArray(collaboration[key]) ? collaboration[key] : []])),
+    trainingProfiles: onePerStudent(collaboration.trainingProfiles, normalizeTrainingProfile),
+    gymProfiles: onePerStudent(collaboration.gymProfiles, normalizeGymProfile),
+    aiPlans: retainedPlans(collaboration.aiPlans),
+    aiJobs: (Array.isArray(collaboration.aiJobs) ? collaboration.aiJobs : []).map(normalizeAiJob).filter(Boolean).slice(-2000),
+    aiUsage: (Array.isArray(collaboration.aiUsage) ? collaboration.aiUsage : []).map(normalizeAiUsage).filter(Boolean).slice(-2000)
   };
 }

@@ -4,6 +4,8 @@ export const CONNECTION_GRANTS = Object.freeze([
   { key: 'progressRead', label: 'Read progress', description: 'Shares adherence and progress summaries.' },
   { key: 'measurementsWrite', label: 'Record measurements', description: 'Allows the Personal to add body measurements.' },
   { key: 'liveActivityRead', label: 'See live activity', description: 'Shares activity while a workout is in progress.' },
+  { key: 'trainingProfileWrite', label: 'Edit training profile', description: 'Allows the Personal to edit the training profile and gym equipment.' },
+  { key: 'aiPlanRead', label: 'Read AI plans', description: 'Shares applied AI plans and their justifications.' },
 ])
 
 export const CONNECTION_ENDPOINTS = Object.freeze({

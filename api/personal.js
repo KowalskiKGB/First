@@ -7,14 +7,18 @@ const DEFAULT_GRANTS = {
   workoutsRead: false,
   progressRead: false,
   measurementsWrite: false,
-  liveActivityRead: false
+  liveActivityRead: false,
+  trainingProfileWrite: false,
+  aiPlanRead: false
 };
 const ACTION_GRANT = {
   'plans:write': 'plansWrite',
   'workouts:read': 'workoutsRead',
   'progress:read': 'progressRead',
   'measurements:write': 'measurementsWrite',
-  'liveActivity:read': 'liveActivityRead'
+  'liveActivity:read': 'liveActivityRead',
+  'training-profile:write': 'trainingProfileWrite',
+  'ai-plan:read': 'aiPlanRead'
 };
 const RELATIONSHIP_ACTION = 'relationship:manage';
 const ACTIVE_APPOINTMENT = new Set(['scheduled', 'confirmed']);
@@ -56,6 +60,115 @@ const boundedInteger = (value, min, max, fallback) => {
 const explicitGrants = grants => Object.fromEntries(
   Object.keys(DEFAULT_GRANTS).map(key => [key, grants?.[key] === true])
 );
+const requireText = (value, name, max, required = false) => {
+  if (typeof value !== 'string' || value.length > max || (required && !value.trim())) throw fail(`invalid ${name}`);
+  return value.trim();
+};
+const requireStringList = (value, name, maxItems, maxLength = 100) => {
+  if (!Array.isArray(value) || value.length > maxItems || value.some(item => typeof item !== 'string' || !item.trim() || item.length > maxLength)) {
+    throw fail(`invalid ${name}`);
+  }
+  return [...new Set(value.map(item => item.trim()))];
+};
+function trainingProfilePayload(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw fail('invalid training profile');
+  if (!['under14', '14to17', 'adult'].includes(data.ageBand)) throw fail('invalid age band');
+  if (!Number.isInteger(data.heightCm) || data.heightCm < 80 || data.heightCm > 250) throw fail('invalid height');
+  if (!['iniciante', 'intermediario', 'avancado'].includes(data.experience)) throw fail('invalid experience');
+  if (!Array.isArray(data.availableDays) || data.availableDays.length > 7 || data.availableDays.some(day => !Number.isInteger(day) || day < 0 || day > 6)) {
+    throw fail('invalid available days');
+  }
+  if (!Number.isInteger(data.minutesPerSession) || data.minutesPerSession < 15 || data.minutesPerSession > 180) throw fail('invalid session duration');
+  if (typeof data.acuteRisk !== 'boolean' || typeof data.medicalRestriction !== 'boolean' || typeof data.consent !== 'boolean') {
+    throw fail('invalid consent');
+  }
+  if (data.guardianConsent !== null && typeof data.guardianConsent !== 'boolean') throw fail('invalid guardian consent');
+  return {
+    ageBand: data.ageBand,
+    heightCm: data.heightCm,
+    goal: requireText(data.goal, 'goal', 160, true),
+    experience: data.experience,
+    availableDays: [...new Set(data.availableDays)].sort((a, b) => a - b),
+    minutesPerSession: data.minutesPerSession,
+    focusAreas: requireStringList(data.focusAreas, 'focus areas', 12, 60),
+    favoriteExerciseIds: requireStringList(data.favoriteExerciseIds, 'favorite exercises', 60),
+    avoidedExerciseIds: requireStringList(data.avoidedExerciseIds, 'avoided exercises', 60),
+    limitations: requireText(data.limitations, 'limitations', 1000),
+    acuteRisk: data.acuteRisk,
+    medicalRestriction: data.medicalRestriction,
+    consent: data.consent,
+    guardianConsent: data.guardianConsent
+  };
+}
+function gymProfilePayload(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw fail('invalid gym profile');
+  if (!Array.isArray(data.specificMachines) || data.specificMachines.length > 40) throw fail('invalid specific machines');
+  return {
+    name: requireText(data.name, 'gym name', 120, true),
+    genericEquipment: requireStringList(data.genericEquipment, 'generic equipment', 60),
+    specificMachines: data.specificMachines.map(machine => {
+      if (!machine || typeof machine !== 'object' || Array.isArray(machine)) throw fail('invalid specific machine');
+      return {
+        name: requireText(machine.name, 'machine name', 100, true),
+        category: requireText(machine.category, 'machine category', 80),
+        exerciseIds: requireStringList(machine.exerciseIds, 'machine exercises', 60)
+      };
+    })
+  };
+}
+const projectTrainingProfile = profile => profile ? {
+  studentId: profile.studentId,
+  ageBand: profile.ageBand,
+  heightCm: profile.heightCm,
+  goal: profile.goal,
+  experience: profile.experience,
+  availableDays: [...profile.availableDays],
+  minutesPerSession: profile.minutesPerSession,
+  focusAreas: [...profile.focusAreas],
+  favoriteExerciseIds: [...profile.favoriteExerciseIds],
+  avoidedExerciseIds: [...profile.avoidedExerciseIds],
+  limitations: profile.limitations,
+  acuteRisk: profile.acuteRisk,
+  medicalRestriction: profile.medicalRestriction,
+  consent: profile.consent,
+  guardianConsent: profile.guardianConsent,
+  createdAt: profile.createdAt,
+  updatedAt: profile.updatedAt
+} : null;
+const projectGymProfile = gym => gym ? {
+  studentId: gym.studentId,
+  name: gym.name,
+  genericEquipment: [...gym.genericEquipment],
+  specificMachines: gym.specificMachines.map(machine => ({ ...machine, exerciseIds: [...machine.exerciseIds] })),
+  createdAt: gym.createdAt,
+  updatedAt: gym.updatedAt
+} : null;
+const projectAiPlan = plan => plan ? {
+  id: plan.id,
+  studentId: plan.studentId,
+  version: plan.version,
+  provider: plan.provider,
+  model: plan.model,
+  contextHash: plan.contextHash,
+  justification: plan.justification,
+  routines: structuredClone(plan.routines || []),
+  schedule: structuredClone(plan.schedule || {}),
+  source: plan.source,
+  status: plan.status,
+  createdAt: plan.createdAt,
+  updatedAt: plan.updatedAt,
+  appliedAt: plan.appliedAt || null
+} : null;
+const projectAiJob = job => job ? {
+  id: job.id,
+  status: job.status,
+  stage: job.stage,
+  publicError: job.publicError || null,
+  contextHash: job.contextHash,
+  planVersion: job.planVersion || null,
+  createdAt: job.createdAt,
+  updatedAt: job.updatedAt
+} : null;
 function appendAudit(collaboration, entry) {
   return {
     ...collaboration,
@@ -204,6 +317,21 @@ export function endConnection({ collaboration, actorId, connectionId, now, rando
   next = notify(next, randomId, actorId === connection.studentId ? connection.trainerId : connection.studentId, 'Vínculo encerrado', 'As permissões compartilhadas foram revogadas.', connection.id, now);
   return { collaboration: next, connection: nextConnection };
 }
+export function updateConnectionGrants({ collaboration, actorId, connectionId, grants, now, randomId }) {
+  const connection = collaboration.connections.find(item => item.id === connectionId && item.status === 'active');
+  if (!connection) throw fail('connection not found', 404);
+  if (connection.studentId !== actorId) throw fail('forbidden', 403);
+  const nextConnection = { ...connection, grants: explicitGrants(grants), grantsUpdatedAt: now };
+  let next = {
+    ...collaboration,
+    connections: collaboration.connections.map(item => item.id === connection.id ? nextConnection : item)
+  };
+  next = appendAudit(next, {
+    id: randomId(), actorId, action: 'connection.grants.update', entity: 'connection',
+    entityId: connection.id, now
+  });
+  return { collaboration: next, connection: nextConnection };
+}
 export function createClient({ collaboration, trainerId, data, now, randomId }) {
   const name = text(data.name, 80);
   if (!name) throw fail('name required');
@@ -329,6 +457,145 @@ export function recordMeasurement({ collaboration, actorId, clientId, data, now,
   let next = { ...collaboration, measurements: [...collaboration.measurements, measurement] };
   next = appendAudit(next, { id: randomId(), actorId, action: 'measurement.record', entity: 'measurement', entityId: measurement.id, clientId, now });
   return { collaboration: next, measurement };
+}
+export function saveTrainingProfile({ collaboration, actorId, studentId, clientId, data, now, randomId }) {
+  if (actorId !== studentId) {
+    const client = requireTrainerAccess(collaboration, actorId, clientId, 'training-profile:write');
+    if (client.studentUserId !== studentId) throw fail('client not found', 404);
+  }
+  const existing = collaboration.trainingProfiles.find(item => item.studentId === studentId);
+  const profile = {
+    studentId,
+    ...trainingProfilePayload(data),
+    createdAt: existing?.createdAt || now,
+    updatedAt: now
+  };
+  let next = {
+    ...collaboration,
+    trainingProfiles: existing
+      ? collaboration.trainingProfiles.map(item => item.studentId === studentId ? profile : item)
+      : [...collaboration.trainingProfiles, profile]
+  };
+  next = appendAudit(next, {
+    id: randomId(), actorId, action: 'training-profile.update', entity: 'trainingProfile',
+    entityId: studentId, clientId, now
+  });
+  if (actorId !== studentId) {
+    next = notify(next, randomId, studentId, 'Perfil de treino atualizado', 'Seu Personal atualizou seu perfil de treino.', studentId, now);
+  }
+  return { collaboration: next, profile };
+}
+export function saveGymProfile({ collaboration, actorId, studentId, clientId, data, now, randomId }) {
+  if (actorId !== studentId) {
+    const client = requireTrainerAccess(collaboration, actorId, clientId, 'training-profile:write');
+    if (client.studentUserId !== studentId) throw fail('client not found', 404);
+  }
+  const existing = collaboration.gymProfiles.find(item => item.studentId === studentId);
+  const gym = {
+    studentId,
+    ...gymProfilePayload(data),
+    createdAt: existing?.createdAt || now,
+    updatedAt: now
+  };
+  let next = {
+    ...collaboration,
+    gymProfiles: existing
+      ? collaboration.gymProfiles.map(item => item.studentId === studentId ? gym : item)
+      : [...collaboration.gymProfiles, gym]
+  };
+  next = appendAudit(next, {
+    id: randomId(), actorId, action: 'gym-profile.update', entity: 'gymProfile',
+    entityId: studentId, clientId, now
+  });
+  if (actorId !== studentId) {
+    next = notify(next, randomId, studentId, 'Academia atualizada', 'Seu Personal atualizou os equipamentos da sua academia.', studentId, now);
+  }
+  return { collaboration: next, gym };
+}
+export function recordStudentMeasurement({ collaboration, studentId, data, now, randomId }) {
+  const client = collaboration.clients.find(item => item.studentUserId === studentId && activeConnection(collaboration, item));
+  const measurement = {
+    id: randomId(),
+    clientId: client?.id || null,
+    studentUserId: studentId,
+    ...normalizeMeasurement(data, now),
+    recordedBy: studentId,
+    createdAt: now,
+    correctedAt: null
+  };
+  let next = { ...collaboration, measurements: [...collaboration.measurements, measurement] };
+  next = appendAudit(next, {
+    id: randomId(), actorId: studentId, action: 'measurement.record', entity: 'measurement',
+    entityId: measurement.id, clientId: client?.id || null, now
+  });
+  return { collaboration: next, measurement };
+}
+function latestByVersion(values) {
+  return values.slice().sort((a, b) => (Number(b.version) || 0) - (Number(a.version) || 0) ||
+    String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')))[0] || null;
+}
+function currentMeasurements(collaboration, studentId) {
+  const clientIds = new Set(collaboration.clients.filter(item => item.studentUserId === studentId).map(item => item.id));
+  const measurements = collaboration.measurements.filter(item =>
+    item.studentUserId === studentId || (item.studentUserId == null && clientIds.has(item.clientId))
+  ).slice().sort((a, b) => String(b.observedAt).localeCompare(String(a.observedAt)) ||
+    String(b.createdAt).localeCompare(String(a.createdAt)));
+  const result = {};
+  for (const measurement of measurements) {
+    const key = measurement.side ? `${measurement.kind}:${measurement.side}` : measurement.kind;
+    if (!(key in result)) result[key] = { ...measurement };
+  }
+  return result;
+}
+function contextCompleteness(profile, gym, measurements) {
+  const missing = [];
+  if (!profile) missing.push('profile');
+  else {
+    if (!profile.heightCm) missing.push('heightCm');
+    if (!profile.goal) missing.push('goal');
+    if (!profile.availableDays?.length) missing.push('availableDays');
+    if (!profile.minutesPerSession) missing.push('minutesPerSession');
+    if (!profile.consent) missing.push('consent');
+    if (profile.ageBand !== 'adult' && profile.guardianConsent !== true) missing.push('guardianConsent');
+  }
+  if (!gym) missing.push('gym');
+  else if (!gym.genericEquipment?.length && !gym.specificMachines?.length) missing.push('equipment');
+  if (!measurements.weight) missing.push('weight');
+  const blockers = [
+    ...(profile?.acuteRisk ? ['acuteRisk'] : []),
+    ...(profile?.medicalRestriction ? ['medicalRestriction'] : [])
+  ];
+  return {
+    eligible: missing.length === 0 && blockers.length === 0,
+    missing,
+    blockers,
+    conservative: profile?.ageBand === 'under14'
+  };
+}
+export function buildAiContext({ collaboration, studentId }) {
+  const profile = projectTrainingProfile(collaboration.trainingProfiles.find(item => item.studentId === studentId));
+  const gym = projectGymProfile(collaboration.gymProfiles.find(item => item.studentId === studentId));
+  const measurements = currentMeasurements(collaboration, studentId);
+  const plan = latestByVersion(collaboration.aiPlans.filter(item => item.studentId === studentId && item.status === 'applied'));
+  const job = collaboration.aiJobs.filter(item => item.studentId === studentId).slice()
+    .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')))[0] || null;
+  return {
+    rev: collaboration.rev,
+    profile,
+    gym,
+    measurements,
+    completeness: contextCompleteness(profile, gym, measurements),
+    plan: projectAiPlan(plan),
+    job: projectAiJob(job)
+  };
+}
+export function notifyAiPlanApplied({ collaboration, studentId, planId, now, randomId }) {
+  return collaboration.connections
+    .filter(item => item.studentId === studentId && item.status === 'active' && item.grants?.aiPlanRead === true)
+    .reduce((next, connection) => notify(
+      next, randomId, connection.trainerId, 'Novo treino IA aplicado',
+      'O aluno aplicou uma nova versao de treino gerada por IA.', planId, now
+    ), collaboration);
 }
 function timezoneFor(collaboration, trainerId) {
   const timezone = collaboration.profiles.find(item => item.userId === trainerId)?.timezone || 'America/Fortaleza';
@@ -579,6 +846,8 @@ export function buildWorkspace({ collaboration, trainerId, now, readState }) {
     const connection = activeConnection(collaboration, client);
     const workoutsRead = !client.studentUserId || !!connection?.grants?.workoutsRead;
     const progressRead = !client.studentUserId || !!connection?.grants?.progressRead;
+    const trainingProfileWrite = !!(client.studentUserId && connection?.grants?.trainingProfileWrite);
+    const aiPlanRead = !!(client.studentUserId && connection?.grants?.aiPlanRead);
     const studentState = client.studentUserId && (workoutsRead || progressRead) ? readState(client.studentUserId) : null;
     const fullProgress = summarizeProgress(client, studentState, now);
     const progress = !client.studentUserId ? fullProgress : {
@@ -597,6 +866,15 @@ export function buildWorkspace({ collaboration, trainerId, now, readState }) {
     return {
       ...client,
       ...(client.studentUserId && !workoutsRead && !progressRead ? {} : { progress }),
+      ...(trainingProfileWrite ? {
+        trainingProfile: projectTrainingProfile(collaboration.trainingProfiles.find(item => item.studentId === client.studentUserId)),
+        gymProfile: projectGymProfile(collaboration.gymProfiles.find(item => item.studentId === client.studentUserId))
+      } : {}),
+      ...(aiPlanRead ? {
+        aiPlan: projectAiPlan(latestByVersion(collaboration.aiPlans.filter(item =>
+          item.studentId === client.studentUserId && item.status === 'applied'
+        )))
+      } : {}),
       latestMeasurement,
       program,
       nextAppointment: clientAppointments.filter(item => ACTIVE_APPOINTMENT.has(item.status) && item.startsAt >= now).sort((a, b) => a.startsAt.localeCompare(b.startsAt))[0] || null,
@@ -740,10 +1018,56 @@ export function createPersonalRoutes({ dataDir, origin, readSession, readBody, j
       const result = writeAndPush(req, body, state => endConnection({ collaboration: state, actorId: user.id, connectionId: body.connectionId, now: now(), randomId }).collaboration);
       json(res, 200, { rev: result.rev });
     }),
+    'PUT /api/connections/grants': async (req, res) => withUser(req, res, async user => {
+      const body = await readBody(req, COMMON_BODY);
+      const result = write(req, body, state => updateConnectionGrants({
+        collaboration: state, actorId: user.id, connectionId: body.connectionId,
+        grants: body.grants || {}, now: now(), randomId
+      }).collaboration);
+      json(res, 200, {
+        rev: result.rev,
+        connection: result.connections.find(item => item.id === body.connectionId && item.studentId === user.id)
+      });
+    }),
     'POST /api/notifications/read': async (req, res) => withUser(req, res, async user => {
       const body = await readBody(req, COMMON_BODY);
       const result = write(req, body, state => ({ ...state, notifications: state.notifications.map(item => item.userId === user.id ? { ...item, readAt: item.readAt || now() } : item) }));
       json(res, 200, { rev: result.rev });
+    }),
+    'GET /api/ai/context': (req, res) => withUser(req, res, user => {
+      json(res, 200, buildAiContext({ collaboration: ensure(user), studentId: user.id }));
+    }),
+    'PUT /api/ai/profile': async (req, res) => withUser(req, res, async user => {
+      const body = await readBody(req, COMMON_BODY);
+      const result = write(req, body, state => saveTrainingProfile({
+        collaboration: state, actorId: user.id, studentId: user.id, clientId: null,
+        data: body, now: now(), randomId
+      }).collaboration);
+      json(res, 200, {
+        rev: result.rev,
+        profile: projectTrainingProfile(result.trainingProfiles.find(item => item.studentId === user.id))
+      });
+    }),
+    'PUT /api/ai/gym': async (req, res) => withUser(req, res, async user => {
+      const body = await readBody(req, COMMON_BODY);
+      const result = write(req, body, state => saveGymProfile({
+        collaboration: state, actorId: user.id, studentId: user.id, clientId: null,
+        data: body, now: now(), randomId
+      }).collaboration);
+      json(res, 200, {
+        rev: result.rev,
+        gym: projectGymProfile(result.gymProfiles.find(item => item.studentId === user.id))
+      });
+    }),
+    'POST /api/ai/measurements': async (req, res) => withUser(req, res, async user => {
+      const body = await readBody(req, COMMON_BODY);
+      let measurement;
+      const result = write(req, body, state => {
+        const saved = recordStudentMeasurement({ collaboration: state, studentId: user.id, data: body, now: now(), randomId });
+        measurement = saved.measurement;
+        return saved.collaboration;
+      });
+      json(res, 200, { rev: result.rev, measurement });
     }),
     'GET /api/personal/workspace': (req, res) => withUser(req, res, user => json(res, 200, trainerWorkspace(user))),
     'GET /api/personal/client': (req, res) => withUser(req, res, user => {
@@ -764,6 +1088,28 @@ export function createPersonalRoutes({ dataDir, origin, readSession, readBody, j
     'PUT /api/personal/program': async (req, res) => withUser(req, res, async user => {
       const body = await readTrainerBody(user, req, PROGRAM_BODY);
       const result = writeAndPush(req, body, state => saveProgram({ collaboration: state, actorId: user.id, clientId: body.clientId, data: body, now: now(), randomId }).collaboration);
+      json(res, 200, buildClientDetail({ collaboration: result, trainerId: user.id, clientId: body.clientId, now: now(), readState }));
+    }),
+    'PUT /api/personal/training-profile': async (req, res) => withUser(req, res, async user => {
+      const body = await readTrainerBody(user, req);
+      const result = writeAndPush(req, body, state => {
+        const client = clientFor(state, body.clientId);
+        return saveTrainingProfile({
+          collaboration: state, actorId: user.id, studentId: client.studentUserId,
+          clientId: body.clientId, data: body, now: now(), randomId
+        }).collaboration;
+      });
+      json(res, 200, buildClientDetail({ collaboration: result, trainerId: user.id, clientId: body.clientId, now: now(), readState }));
+    }),
+    'PUT /api/personal/gym': async (req, res) => withUser(req, res, async user => {
+      const body = await readTrainerBody(user, req);
+      const result = writeAndPush(req, body, state => {
+        const client = clientFor(state, body.clientId);
+        return saveGymProfile({
+          collaboration: state, actorId: user.id, studentId: client.studentUserId,
+          clientId: body.clientId, data: body, now: now(), randomId
+        }).collaboration;
+      });
       json(res, 200, buildClientDetail({ collaboration: result, trainerId: user.id, clientId: body.clientId, now: now(), readState }));
     }),
     'POST /api/personal/measurements': async (req, res) => withUser(req, res, async user => {
