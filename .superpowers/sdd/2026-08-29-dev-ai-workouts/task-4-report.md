@@ -13,10 +13,12 @@
 
 - RED: `d029022`, `99bf109`, `cebf39f` reproduzem migração/coexistência, cópia/roteamento e seleção/múltiplas sessões.
 - GREEN: `84aa089 feat: support coexisting workout schedules`.
+- Review fix 1/5 RED: `54eb995` reproduz a contagem duplicada de adesão e a preferência `rest` ocultando uma sessão gerenciada.
+- Review fix 1/5 GREEN: `548de30` reutiliza `trainedDates` para contar datas únicas e deriva o cartão de hoje das opções reais do resolvedor; Home/history/schedule passaram 68/68.
 
 ## Verificação
 
-- Frontend, excluindo o teste do WIP externo de `ai-plan`: 30 arquivos e 370 testes aprovados.
+- Frontend, excluindo o teste do WIP externo de `ai-plan`: 31 arquivos e 372 testes aprovados após a rodada de correção.
 - API: 155 testes aprovados.
 - Build Vite: aprovado.
 - Playwright de coexistência/cópia: 2 projetos aprovados (390x844 e 1280x900), com teclado e ausência de erros de página.
