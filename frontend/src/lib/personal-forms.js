@@ -179,7 +179,7 @@ export function fortalezaFields(iso) {
 }
 
 export function timeZoneFields(iso, timeZone = 'UTC') {
-  const timestamp = Date.parse(iso)
+  const timestamp = iso instanceof Date ? iso.getTime() : typeof iso === 'number' ? iso : Date.parse(iso)
   if (!Number.isFinite(timestamp)) return { date: '', time: '' }
   const parts = timeZoneParts(timestamp, timeZone)
   const pad = value => String(value).padStart(2, '0')
