@@ -181,6 +181,63 @@ test('only the counterpart to requestedBy can accept or refuse a connection', ()
   assert.equal(accepted.connection.status, 'active');
 });
 
+test('malformed pending connection cannot be accepted when requestedBy is not a participant', () => {
+  const pending = {
+    id: 'connection-malformed',
+    studentId: 'student-a',
+    trainerId: 'trainer-a',
+    requestedBy: 'stranger-a',
+    status: 'pending',
+    grants: { plansWrite: true },
+    createdAt: NOW,
+    respondedAt: null,
+    endedAt: null
+  };
+  const state = collaboration({ connections: [pending] });
+
+  assert.throws(() => respondConnection({
+    collaboration: state,
+    actorId: 'student-a',
+    connectionId: pending.id,
+    accept: true,
+    grants: { plansWrite: true },
+    now: NOW,
+    randomId: () => 'id-a'
+  }), error => error.status === 409 && error.message === 'invalid connection state');
+  assert.equal(state.connections[0].status, 'pending');
+});
+
+test('connection response route does not persist a malformed pending transition', async t => {
+  const pending = {
+    id: 'connection-malformed',
+    studentId: 'student-a',
+    trainerId: 'trainer-a',
+    requestedBy: 'stranger-a',
+    status: 'pending',
+    grants: { plansWrite: true },
+    createdAt: NOW,
+    respondedAt: null,
+    endedAt: null
+  };
+  const fixture = routeFixture(t, collaboration({
+    profiles: [profile('student-a'), profile('trainer-a', ['student', 'trainer'])],
+    connections: [pending]
+  }));
+
+  const res = await invoke(fixture, 'POST /api/connections/respond', {
+    user: { id: 'student-a' },
+    body: { rev: 0, connectionId: pending.id, accept: true, grants: { plansWrite: true } }
+  });
+
+  assert.deepEqual({ status: res.status, body: res.body }, {
+    status: 409,
+    body: { error: 'invalid connection state' }
+  });
+  assert.equal(fixture.read().rev, 0);
+  assert.equal(fixture.read().connections[0].status, 'pending');
+  assert.equal(fixture.read().clients.length, 0);
+});
+
 test('dual-role actor can request as student with explicit grants that trainer cannot widen', async t => {
   const fixture = routeFixture(t, collaboration({
     profiles: [
