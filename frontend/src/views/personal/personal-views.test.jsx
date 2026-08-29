@@ -35,7 +35,7 @@ beforeAll(async () => {
 })
 
 const client = {
-  id: 'client-1', name: 'Ana Souza', goal: 'Hipertrofia', priority: 'urgent',
+  id: 'client-1', studentUserId: 'student-1', name: 'Ana Souza', goal: 'Hipertrofia', priority: 'urgent',
   reasons: ['Pagamento vencido'], targetSessionsPerWeek: 3,
   progress: { adherence: 58, workouts28d: 7, volume28d: 12500, recentWorkouts: [] },
   finance: { expectedCents: 30000, receivedCents: 0, openCents: 30000, overdueCents: 30000, months: [] },
@@ -56,6 +56,10 @@ const workspace = {
 beforeEach(() => {
   useCollaboration.setState({
     ownerId: 'trainer-1', rev: 4, profile: { userId: 'trainer-1', roles: ['trainer'] },
+    connections: [{
+      id: 'connection-1', trainerId: 'trainer-1', studentId: 'student-1', status: 'active',
+      grants: { trainingProfileWrite: false, aiPlanRead: false },
+    }],
     workspace, selected: 'client-1', loading: false, error: null, message: null,
     detail: {
       rev: 4, client,
@@ -108,6 +112,42 @@ describe('professional Personal views SSR', () => {
     expect(markup).toContain('Measurements')
     expect(markup).toContain('Schedule')
     expect(markup).toContain('Finances')
+    expect(markup).toContain('AI and gym')
+  })
+
+  it('does not reveal AI profile or plan fields without the corresponding grants', () => {
+    const markup = render(
+      <Routes><Route path="/personal/alunos/:id/:tab?" element={<StudentDetail />} /></Routes>,
+      ['/personal/alunos/client-1/ia'],
+    )
+    expect(markup).toContain('Permission required')
+    expect(markup).not.toContain('Academia sigilosa')
+    expect(markup).not.toContain('Justificativa sigilosa')
+  })
+
+  it('shows canonical profile, gym and applied plan when both grants are projected', () => {
+    useCollaboration.setState({
+      connections: [{
+        id: 'connection-1', trainerId: 'trainer-1', studentId: 'student-1', status: 'active',
+        grants: { trainingProfileWrite: true, aiPlanRead: true },
+      }],
+      detail: {
+        ...collaborationState.detail,
+        client: {
+          ...client,
+          trainingProfile: { ageBand: 'adult', heightCm: 170, goal: 'Força', experience: 'intermediario', availableDays: [1, 3, 5], minutesPerSession: 50, focusAreas: ['back'], favoriteExerciseIds: [], avoidedExerciseIds: [], limitations: '', acuteRisk: false, medicalRestriction: false, consent: true, guardianConsent: null },
+          gymProfile: { name: 'Academia sigilosa', genericEquipment: ['dumbbell'], specificMachines: [] },
+          aiPlan: { id: 'plan-1', version: 3, provider: 'openai', model: 'gpt-5', contextHash: 'abc', justification: 'Justificativa sigilosa', appliedAt: '2026-08-29T12:00:00Z' },
+        },
+      },
+    })
+    const markup = render(
+      <Routes><Route path="/personal/alunos/:id/:tab?" element={<StudentDetail />} /></Routes>,
+      ['/personal/alunos/client-1/ia'],
+    )
+    expect(markup).toContain('Academia sigilosa')
+    expect(markup).toContain('Justificativa sigilosa')
+    expect(markup).toContain('Version 3')
   })
 
   it('renders only today plus next classes on the global schedule', () => {
