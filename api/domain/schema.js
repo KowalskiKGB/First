@@ -3,9 +3,20 @@ const EXPERIENCES = new Set(['iniciante', 'intermediario', 'avancado']);
 export const AI_PLAN_SOURCES = Object.freeze(['ai', 'personal']);
 export const AI_PLAN_STATUSES = Object.freeze(['applied', 'superseded']);
 export const AI_JOB_STATUSES = Object.freeze(['queued', 'running', 'applied', 'failed']);
+export const AI_JOB_STAGES = Object.freeze(['organizing', 'generating', 'validating', 'applying']);
 const PLAN_SOURCES = new Set(AI_PLAN_SOURCES);
 const PLAN_STATUSES = new Set(AI_PLAN_STATUSES);
 const JOB_STATUSES = new Set(AI_JOB_STATUSES);
+const JOB_STAGES = new Set(AI_JOB_STAGES);
+const LEGACY_JOB_STAGES = Object.freeze({
+  queued: 'organizing',
+  context: 'organizing',
+  preparing: 'organizing',
+  provider: 'generating',
+  validation: 'validating',
+  done: 'applying',
+  completed: 'applying'
+});
 const USAGE_STATUSES = new Set(['success', 'failed']);
 const CONNECTION_GRANTS = [
   'plansWrite', 'workoutsRead', 'progressRead', 'measurementsWrite',
@@ -158,12 +169,14 @@ function normalizeAiJob(value) {
   const idempotencyKey = text(value?.idempotencyKey, 160);
   const legacyStatus = value?.status === 'completed' ? 'applied' : value?.status === 'cancelled' ? 'failed' : value?.status;
   if (!id || !studentId || !idempotencyKey || !JOB_STATUSES.has(legacyStatus)) return null;
+  const legacyStage = text(value.stage, 80);
+  const stage = LEGACY_JOB_STAGES[legacyStage] || legacyStage;
   return {
     id,
     idempotencyKey,
     studentId,
     status: legacyStatus,
-    stage: text(value.stage, 80),
+    stage: JOB_STAGES.has(stage) ? stage : legacyStatus === 'applied' ? 'applying' : 'organizing',
     publicError: text(value.publicError, 240) || null,
     contextHash: text(value.contextHash, 128),
     planVersion: Number.isInteger(value.planVersion) && value.planVersion > 0 ? value.planVersion : null,
