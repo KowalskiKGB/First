@@ -46,7 +46,7 @@ function routeFixture(t, state, options = {}) {
     },
     json: (res, status, body) => Object.assign(res, { status, body }),
     readState: options.readState || (() => null),
-    sendPush: async () => {}
+    sendPush: options.sendPush || (async () => {})
   });
   writeFileSync(file, JSON.stringify(state));
 
@@ -284,6 +284,132 @@ test('dual-role actor can request as student with explicit grants that trainer c
   });
   assert.deepEqual({ status: ended.status, body: ended.body }, { status: 200, body: { rev: 3 } });
   assert.equal(fixture.read().connections[0].status, 'ended');
+});
+
+test('relationship inbox events also push only to the counterpart', async t => {
+  const pushes = [];
+  const fixture = routeFixture(t, collaboration({
+    profiles: [
+      profile('student-a'),
+      profile('trainer-a', ['student', 'trainer'], { shareCode: 'A'.repeat(32) })
+    ]
+  }), {
+    sendPush: async (userId, payload) => pushes.push({ userId, payload })
+  });
+
+  const requested = await invoke(fixture, 'POST /api/connections/request', {
+    user: { id: 'student-a' },
+    body: {
+      rev: 0,
+      actorRole: 'student',
+      shareCode: 'A'.repeat(32),
+      grants: { plansWrite: true }
+    }
+  });
+  const connectionId = requested.body.connections[0].id;
+
+  await invoke(fixture, 'POST /api/connections/respond', {
+    user: { id: 'trainer-a' },
+    body: { rev: 1, connectionId, accept: true }
+  });
+  await invoke(fixture, 'POST /api/connections/end', {
+    user: { id: 'student-a' },
+    body: { rev: 2, connectionId }
+  });
+
+  assert.deepEqual(fixture.read().notifications.map(item => ({
+    userId: item.userId,
+    title: item.title,
+    resourceId: item.resourceId
+  })), [
+    { userId: 'trainer-a', title: 'Solicitação de vínculo', resourceId: connectionId },
+    { userId: 'student-a', title: 'Vínculo aceito', resourceId: connectionId },
+    { userId: 'trainer-a', title: 'Vínculo encerrado', resourceId: connectionId }
+  ]);
+  assert.deepEqual(pushes, [
+    {
+      userId: 'trainer-a',
+      payload: { title: 'Solicitação de vínculo', body: 'Um novo vínculo com Personal aguarda resposta.', tag: 'personal' }
+    },
+    {
+      userId: 'student-a',
+      payload: { title: 'Vínculo aceito', body: 'O aluno agora aparece no painel do Personal.', tag: 'personal' }
+    },
+    {
+      userId: 'trainer-a',
+      payload: { title: 'Vínculo encerrado', body: 'As permissões compartilhadas foram revogadas.', tag: 'personal' }
+    }
+  ]);
+});
+
+test('program publishing and updates persist generic student alerts and push them', async t => {
+  const pushes = [];
+  const fixture = routeFixture(t, collaboration({
+    profiles: [profile('student-a'), profile('trainer-a', ['student', 'trainer'])],
+    connections: [{
+      id: 'connection-a', studentId: 'student-a', trainerId: 'trainer-a', requestedBy: 'student-a',
+      status: 'active', grants: { plansWrite: true }, createdAt: NOW, respondedAt: NOW, endedAt: null
+    }],
+    clients: [{
+      id: 'client-a', trainerId: 'trainer-a', studentUserId: 'student-a', name: 'Nome privado',
+      targetSessionsPerWeek: 3, inactiveAfterDays: 7, createdAt: NOW, updatedAt: NOW, archivedAt: null
+    }]
+  }), {
+    sendPush: async (userId, payload) => pushes.push({ userId, payload })
+  });
+
+  await invoke(fixture, 'PUT /api/personal/program', {
+    user: { id: 'trainer-a' },
+    body: { rev: 0, clientId: 'client-a', name: 'Treino privado', routines: [] }
+  });
+  await invoke(fixture, 'PUT /api/personal/program', {
+    user: { id: 'trainer-a' },
+    body: { rev: 1, clientId: 'client-a', name: 'Treino privado alterado', routines: [] }
+  });
+
+  const state = fixture.read();
+  assert.deepEqual(state.notifications.map(item => ({ userId: item.userId, title: item.title, resourceId: item.resourceId })), [
+    { userId: 'student-a', title: 'Treino publicado', resourceId: state.programs[0].id },
+    { userId: 'student-a', title: 'Treino atualizado', resourceId: state.programs[0].id }
+  ]);
+  assert.deepEqual(pushes, [
+    {
+      userId: 'student-a',
+      payload: { title: 'Treino publicado', body: 'Seu Personal publicou um novo treino para você.', tag: 'personal' }
+    },
+    {
+      userId: 'student-a',
+      payload: { title: 'Treino atualizado', body: 'Seu Personal atualizou seu treino.', tag: 'personal' }
+    }
+  ]);
+  assert.equal(JSON.stringify(pushes).includes('Nome privado'), false);
+  assert.equal(JSON.stringify(pushes).includes('Treino privado'), false);
+});
+
+test('push failure never rolls back a persisted Personal mutation', async t => {
+  let attempts = 0;
+  const fixture = routeFixture(t, collaboration({
+    profiles: [
+      profile('student-a'),
+      profile('trainer-a', ['student', 'trainer'], { shareCode: 'A'.repeat(32) })
+    ]
+  }), {
+    sendPush: async () => {
+      attempts += 1;
+      throw new Error('provider unavailable');
+    }
+  });
+
+  const response = await invoke(fixture, 'POST /api/connections/request', {
+    user: { id: 'student-a' },
+    body: { rev: 0, actorRole: 'student', shareCode: 'A'.repeat(32) }
+  });
+
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(response.status, 200);
+  assert.equal(attempts, 1);
+  assert.equal(fixture.read().rev, 1);
+  assert.equal(fixture.read().notifications.length, 1);
 });
 
 test('dual-role actor can request as trainer and receives only student consent on accept', async t => {
