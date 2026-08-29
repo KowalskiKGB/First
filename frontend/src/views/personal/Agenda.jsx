@@ -93,7 +93,7 @@ export default function Agenda() {
                   </div>
                   <StatusBadge status={appointment.status}>{t(appointmentStatusLabel(appointment.status))}</StatusBadge>
                   <div className="row-actions">
-                    <Button onClick={() => openAppointment(appointment, clients)}>{t('Reschedule')}</Button>
+                    <Button onClick={() => openAppointment(appointment, clients, timeZone)}>{t('Reschedule')}</Button>
                     {appointment.status !== 'cancelled' ? (
                       <PersonalMutation path="/api/personal/appointment" method="PUT" success="Class cancelled">
                         {({ submit, busy }) => (
