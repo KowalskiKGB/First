@@ -11,7 +11,13 @@ test('the deployment template is complete and builds only this repository', () =
 
   const compose = read('docker-compose.yml')
   assert.doesNotMatch(compose, /ghcr\.io\/duartesantos8/i)
-  assert.doesNotMatch(compose, /hasaneyldrm\/exercises-dataset/i)
+  assert.match(compose, /hasaneyldrm\/exercises-dataset/i)
+  assert.match(compose, /7455efae41b330c265e7cd4b78dfa848e7ce5ebd/)
+  assert.match(compose, /first-media:/)
+  assert.match(compose, /VITE_EXERCISE_MEDIA:\s*["']?1/)
+  assert.match(compose, /media\/img\//)
+  assert.match(compose, /media\/gif\//)
+  assert.match(compose, /\/usr\/share\/nginx\/html\/media:ro/)
   assert.match(compose, /dockerfile:\s*Dockerfile/)
   assert.match(compose, /FIRST_BASIC_AUTH_USERS/)
   assert.match(compose, /FIRST_BOOTSTRAP_MIDDLEWARE/)
@@ -26,6 +32,8 @@ test('the deployment template is complete and builds only this repository', () =
 
   const frontendPackage = JSON.parse(read('frontend/package.json'))
   assert.equal(frontendPackage.name, 'first-frontend')
+  assert.match(frontendPackage.scripts['build:mobile'], /copy-exercise-media\.mjs/)
+  assert.match(read('frontend/.env.mobile'), /VITE_EXERCISE_MEDIA=1/)
   const apiPackage = JSON.parse(read('api/package.json'))
   assert.equal(apiPackage.name, 'first-api')
 

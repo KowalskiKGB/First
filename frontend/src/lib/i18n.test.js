@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest'
+import namesPt from '../exercise-names/pt.js'
+import instructionsPt from '../instr/pt.js'
 import pt from '../locales/pt.js'
+import { EXDB } from './exercises-data.js'
 import {
   dateLocale,
   DATE_LOCALES,
   DEFAULT_LANG,
+  exerciseName,
   getLang,
+  INSTR_LANGS,
   instrFor,
   LANGS,
   setLang,
@@ -34,7 +39,30 @@ describe('Brazilian Portuguese defaults', () => {
     expect(t('{0} exercises', 3)).toBe('3 exercícios')
   })
 
-  it('falls back safely for unknown languages and missing instruction packs', async () => {
+  it('loads complete pt-BR exercise names and instructions by stable id', async () => {
+    await setLang('pt')
+    const exercise = EXDB.find(ex => ex.id === '0001')
+
+    expect(INSTR_LANGS).toContain('pt')
+    expect(Object.keys(namesPt)).toHaveLength(EXDB.length)
+    expect(Object.keys(instructionsPt)).toHaveLength(EXDB.length)
+    expect(Object.keys(namesPt).toSorted()).toEqual(EXDB.map(ex => ex.id).toSorted())
+    expect(Object.keys(instructionsPt).toSorted()).toEqual(EXDB.map(ex => ex.id).toSorted())
+    expect(Object.values(namesPt).every(name => typeof name === 'string' && name.trim())).toBe(true)
+    expect(Object.values(instructionsPt).reduce((total, steps) => total + steps.length, 0)).toBe(7710)
+    expect(exerciseName(exercise)).toBe('Abdominal 3/4')
+    expect(instrFor(exercise)[0]).toBe('Deite-se de costas, com os joelhos dobrados e os pés apoiados no chão.')
+  })
+
+  it('keeps user-created and untranslated names as safe fallbacks', async () => {
+    await setLang('pt')
+    expect(exerciseName({ id: 'custom-own', n: 'Meu exercício' })).toBe('Meu exercício')
+
+    await setLang('en')
+    expect(exerciseName({ id: '0001', n: '3/4 sit-up' })).toBe('3/4 sit-up')
+  })
+
+  it('falls back safely for unknown languages and missing exercise ids', async () => {
     await setLang('not-a-language')
     expect(getLang()).toBe('en')
     expect(dateLocale()).toBe('en-GB')

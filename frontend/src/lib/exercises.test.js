@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import { setLang } from './i18n.js'
 import {
   allExercises,
   equipmentOf,
+  exerciseSearchText,
   exOr,
   EXIDX,
   gifSrc,
@@ -56,5 +58,15 @@ describe('exercise catalogue helpers', () => {
       id: 'missing-exercise-id',
       missing: true,
     })
+  })
+
+  it('searches the catalogue by Portuguese and English vocabulary', async () => {
+    await setLang('pt')
+    const exercise = EXIDX['0025']
+    const haystack = exerciseSearchText(exercise)
+
+    expect(haystack).toContain(exercise.n.toLowerCase())
+    expect(haystack).toContain('supino')
+    expect(haystack).toContain('barra')
   })
 })
