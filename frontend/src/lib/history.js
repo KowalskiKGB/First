@@ -2,6 +2,7 @@
 import { todayISO, isoOf, weekKey, fmtNum } from './format.js'
 import { isCardio, isBodyweightEq } from './exercises.js'
 import { t } from './i18n.js'
+import { scheduledRoutineOptions } from './schedule.js'
 
 // How an exercise is logged (issue #16). This used to be derived from the body part alone,
 // which meant a plank or a farmer's carry could only be timed by filing it under cardio.
@@ -160,15 +161,13 @@ export function bestWeightFor(S, exId) {
   return best
 }
 export function effectiveRoutineId(S, iso) {
-  const ov = S.dayPlan[iso]
+  const ov = S.dayPlan?.[iso]
   if (ov === 'rest') return null
-  if (ov && S.routines.some(r => r.id === ov)) return ov
-  const wd = new Date(iso + 'T12:00:00').getDay()
-  return S.week[wd] || null
+  return scheduledRoutineOptions(S, iso)[0]?.routineId || null
 }
 export function effectiveRoutine(S, iso) {
-  const id = effectiveRoutineId(S, iso)
-  return id ? S.routines.find(r => r.id === id) || null : null
+  if (S.dayPlan?.[iso] === 'rest') return null
+  return scheduledRoutineOptions(S, iso)[0]?.routine || null
 }
 export function buildSets(S, cfg) {
   const last = lastEntryFor(S, cfg.id)
@@ -222,6 +221,19 @@ export function setsDoneActive(A) {
   return n
 }
 export const lastBW = S => (S.bodyweight.length ? S.bodyweight[S.bodyweight.length - 1] : null)
+export const trainedDates = workouts => new Set((workouts || []).map(workout => workout.d).filter(Boolean))
+
+export function completedWorkoutFromActive(active, end, prs = []) {
+  return {
+    id: active.id, d: active.d, start: active.start, end,
+    routineId: active.routineId, name: active.name, bw: active.bw,
+    sourceType: active.sourceType || 'manual', planId: active.planId || null, version: active.version || null,
+    entries: active.entries
+      .map(entry => ({ id: entry.id, sets: entry.sets, topW: entry.topW || null, target: entry.target || null }))
+      .filter(entry => entry.sets.some(set => set.done)),
+    prs,
+  }
+}
 
 // Group consecutive items sharing a superset id (sg) into "units" of indices.
 // items may be routine exercises ({sg}) or active-workout entries ({sg}).

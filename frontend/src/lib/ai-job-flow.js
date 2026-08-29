@@ -128,12 +128,29 @@ export function applyAiPlanToState(state, plan) {
     ...routine,
     ex: (routine.exercises || []).map(frontendExercise),
     _aiGenerated: true,
+    _aiPlanId: plan.id,
+    _aiVersion: plan.version,
     _aiGeneratedAt: plan.appliedAt
   }))
+  const aiSchedule = structuredClone(plan.schedule || [])
+  const week = aiSchedule.reduce((result, item) => {
+    const current = result[item.day]
+    const routines = current == null ? [] : Array.isArray(current) ? current : [current]
+    const next = routines.includes(item.routineId) ? routines : [...routines, item.routineId]
+    return { ...result, [item.day]: next.length === 1 ? next[0] : next }
+  }, {})
   return {
     ...state,
     routines: [...manualRoutines, ...aiRoutines],
-    aiSchedule: structuredClone(plan.schedule || []),
+    aiSchedule,
+    sourceSchedules: {
+      ...(state.sourceSchedules || {}),
+      ai: [{
+        sourceType: 'ai', planId: plan.id, version: plan.version,
+        label: `Plano IA v${plan.version}`, active: true, updatedAt: plan.appliedAt,
+        week,
+      }],
+    },
     aiLastGeneration: {
       planId: plan.id,
       version: plan.version,

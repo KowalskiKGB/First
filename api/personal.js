@@ -798,7 +798,8 @@ function summarizeProgress(client, state, now) {
   since.setDate(since.getDate() - 28);
   const recent = workouts.filter(workout => new Date(workout.d + 'T12:00:00.000Z') >= since);
   const target = Math.max(1, (client.targetSessionsPerWeek || 3) * 4);
-  const adherence = Math.min(100, Math.round((recent.length / target) * 100));
+  const adherenceDays = new Set(recent.map(workout => workout.d).filter(Boolean)).size;
+  const adherence = Math.min(100, Math.round((adherenceDays / target) * 100));
   const last = workouts.slice().sort((a, b) => String(b.d).localeCompare(String(a.d)))[0] || null;
   return {
     adherence,

@@ -127,7 +127,7 @@ describe('RoutineEdit prescribed routine', () => {
     const markup = renderToStaticMarkup(<RoutineEdit />)
 
     expect(markup).toContain('Plano da IA')
-    expect(markup).toContain('VersÃ£o 3')
+    expect(markup).toContain('Versão 3')
     expect(markup).toContain('Copiar e personalizar')
     expect(markup).not.toContain('<input')
     const copyButton = harness.buttons.find(button => button.children === 'Copiar e personalizar')

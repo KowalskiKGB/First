@@ -15,6 +15,7 @@ self.addEventListener('push', e => {
     icon: 'icon-512.png',
     badge: 'icon-180.png',
     tag: data.tag || 'first',
+    data: data.data || {},
     renotify: true
   }))
 })
@@ -22,7 +23,9 @@ self.addEventListener('notificationclick', e => {
   e.notification.close()
   e.waitUntil(self.clients.matchAll({ type: 'window' }).then(clients => {
     const c = clients.find(c => 'focus' in c)
-    return c ? c.focus() : self.clients.openWindow('./')
+    const target = e.notification.data?.url || './'
+    if (c) return c.focus().then(() => 'navigate' in c ? c.navigate(target) : c)
+    return self.clients.openWindow(target)
   }))
 })
 

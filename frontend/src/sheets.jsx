@@ -3,7 +3,7 @@ import { useStore } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
 import { EXDB, EXIDX, BODYPARTS, isCardio, isBodyweightEq, allExercises, equipmentOf, exerciseMatchesQuery, searchKey } from './lib/exercises.js'
 import { fmtDate, fmtNum, fmtVol, fmtDur, durPart, todayISO, uid, exCount, DAYN, MONTHS_LONG, ACCENTS } from './lib/format.js'
-import { lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, workoutVolume, setsDone, setsDoneActive, lastBW, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf, isBw, isPerSide, sideReps } from './lib/history.js'
+import { lastEntryFor, bestWeightFor, buildSets, completedWorkoutFromActive, effectiveRoutineId, workoutVolume, setsDone, setsDoneActive, lastBW, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf, isBw, isPerSide, sideReps } from './lib/history.js'
 import { beep, vibrate } from './lib/sound.js'
 import { exerciseName, t, instrFor, getLang, INSTR_LANGS } from './lib/i18n.js'
 import { nav } from './lib/nav.js'
@@ -19,8 +19,10 @@ import { parseImport, mergeImport } from './lib/import-csv.js'
 import { buildPlanBundle, parsePlan, mergePlan, printPlan } from './lib/plan-share.js'
 import { estimate1RM, best1RM, is1RMRecord, REP_CAP } from './lib/onerm.js'
 import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLICIES_FOR, POLICY_NAME, POLICY_DESC, MAX_BW_SETS } from './lib/progression.js'
+import { activeSourceMetadata, schedulePreference, scheduledRoutineOptions } from './lib/schedule.js'
 import { MOBILE, shareExport } from './lib/mobile.js'
 import { APP_NAME, APP_SLUG } from './lib/demo.js'
+import SessionOptions from './components/SessionOptions.jsx'
 
 const S = () => useStore.getState().S
 const update = (...a) => useStore.getState().update(...a)
@@ -739,7 +741,7 @@ function DayAssign({ day, close }) {
     <h3>{t(DAYN[day])}</h3>
     <div className="list">
       <div className="item" onClick={() => set('')}><span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="moon" /></span><div className="grow"><div className="tt">{t('Rest day')}</div></div>{!st.week[day] && <Icon name="check" className="accent" />}</div>
-      {st.routines.map(r => <div key={r.id} className="item" onClick={() => set(r.id)}>
+      {st.routines.filter(r => !r._personalProgramId && r._aiGenerated !== true).map(r => <div key={r.id} className="item" onClick={() => set(r.id)}>
         <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
         <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
         {st.week[day] === r.id && <Icon name="check" className="accent" />}</div>)}
@@ -823,12 +825,40 @@ export function WorkoutRow({ w, onClick }) {
 }
 
 /* ============================ workout lifecycle ============================ */
-export function startFlow(routineId) {
-  bwSheet({ required: true, onDone: bw => beginWorkout(routineId, bw) })
+export function SessionPicker({ options, iso = todayISO(), close }) {
+  const choose = option => {
+    update(state => { state.dayPlan = { ...(state.dayPlan || {}), [iso]: schedulePreference(option) } })
+    close()
+    startFlow(option)
+  }
+  return <>
+    <h3>Escolha a sessão</h3>
+    <div className="muted small" style={{ marginBottom: 12 }}>Você tem {options.length} sessões disponíveis.</div>
+    <SessionOptions options={options} onSelect={choose} />
+  </>
 }
-export function beginWorkout(routineId, bw) {
+export const sessionOptionsSheet = (options, iso = todayISO()) => ui().openSheet(close => <SessionPicker options={options} iso={iso} close={close} />)
+
+export function startFlow(selection) {
+  if (selection === undefined) {
+    const options = scheduledRoutineOptions(S(), todayISO())
+    if (options.length > 1) { sessionOptionsSheet(options); return }
+    if (!options.length) { nav('/workout'); return }
+    selection = options[0]
+  }
+  bwSheet({ required: true, onDone: bw => beginWorkout(selection, bw) })
+}
+export function beginWorkout(selection, bw) {
   const st = S()
+  const routineId = typeof selection === 'object' && selection ? selection.routineId : selection
   const r = routineId ? st.routines.find(x => x.id === routineId) : null
+  const source = typeof selection === 'object'
+    ? activeSourceMetadata(selection)
+    : activeSourceMetadata(r?._personalProgramId
+        ? { sourceType: 'personal', planId: r._personalProgramId, version: r._personalVersion }
+        : r?._aiGenerated
+          ? { sourceType: 'ai', planId: r._aiPlanId, version: r._aiVersion }
+          : selection)
   // The prescription is applied as the session is built, so you walk up to the bar with the
   // right weight already on the screen instead of being told about it afterwards. `plan` is
   // kept on the entry purely so the workout can explain the number it chose.
@@ -837,7 +867,7 @@ export function beginWorkout(routineId, bw) {
     return { id: cfg.id, sg: cfg.sg, target: { ...cfg }, plan, sets: applyPrescription(buildSets(st, cfg), plan) }
   })
   update(s => {
-    s.active = { id: uid(), d: todayISO(), start: Date.now(), routineId, name: r ? r.name : t('Freestyle'), bw: bw || null, cur: 0, entries }
+    s.active = { id: uid(), d: todayISO(), start: Date.now(), routineId, name: r ? r.name : t('Freestyle'), bw: bw || null, cur: 0, entries, ...source }
   })
   useUI.getState().stopRest()
   nav('/workout')
@@ -949,14 +979,7 @@ function doFinishWorkout() {
     const rec = is1RMRecord(st, e.id, e)
     if (rec && !prs.includes(e.id)) e1prs.push({ id: e.id, ...rec })
   })
-  const w = {
-    id: A.id, d: A.d, start: A.start, end: Date.now(), routineId: A.routineId, name: A.name, bw: A.bw,
-    // `target` (what the session prescribed) is kept alongside the sets: without it a
-    // finished workout cannot say whether it hit its reps, and a timed session reads back
-    // as "0 reps". It is what the progression engine works from.
-    entries: A.entries.map(e => ({ id: e.id, sets: e.sets, topW: e.topW || null, target: e.target || null })).filter(e => e.sets.some(s => s.done)),
-    prs
-  }
+  const w = completedWorkoutFromActive(A, Date.now(), prs)
   w.vol = workoutVolume(w)
   update(s => {
     w.entries.forEach(e => {

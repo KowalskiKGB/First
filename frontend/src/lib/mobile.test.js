@@ -21,7 +21,7 @@ describe('reminderNotifications', () => {
     expect(notifications).toHaveLength(1)
     expect(notifications[0]).toMatchObject({
       id: 101,
-      body: 'VocÃª tem 3 sessÃµes disponÃ­veis',
+      body: 'Você tem 3 sessões disponíveis',
       extra: { url: '#/workout', optionCount: 3 },
       schedule: { on: { weekday: 2, hour: 8, minute: 30 }, allowWhileIdle: true },
     })

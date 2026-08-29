@@ -106,9 +106,9 @@ function prescribedExercise(exercise) {
 }
 
 export function copyPersonalRoutine(routine, id) {
-  if (!routine?._personalProgramId || !id) return null
-  const local = Object.fromEntries(Object.entries(routine).filter(([key]) => !key.startsWith('_personal')))
-  return { ...local, id, ex: (routine.ex || []).map(exercise => ({ ...exercise })) }
+  if ((!routine?._personalProgramId && routine?._aiGenerated !== true) || !id) return null
+  const unmanaged = value => Object.fromEntries(Object.entries(value || {}).filter(([key]) => !key.startsWith('_personal') && !key.startsWith('_ai')))
+  return { ...unmanaged(routine), id, ex: (routine.ex || []).map(unmanaged) }
 }
 
 export function mergePublishedPrograms(state = {}, programs = []) {
@@ -116,6 +116,7 @@ export function mergePublishedPrograms(state = {}, programs = []) {
   const managedIds = new Set(currentRoutines.filter(routine => routine?._personalProgramId).map(routine => routine.id))
   const routines = currentRoutines.filter(routine => !routine?._personalProgramId)
   const week = Object.fromEntries(Object.entries(state.week || {}).filter(([, routineId]) => !managedIds.has(routineId)))
+  const personal = []
 
   for (const source of Array.isArray(programs) ? programs : []) {
     if (!source?.id) continue
@@ -130,10 +131,23 @@ export function mergePublishedPrograms(state = {}, programs = []) {
       _personalVersion: Number(source.version) || 1,
       ex: routine.ex.map(prescribedExercise),
     })))
-    Object.entries(program.week).forEach(([day, routineId]) => { week[day] = ids.get(routineId) })
+    personal.push({
+      sourceType: 'personal',
+      planId: program.id,
+      version: Number(source.version) || 1,
+      label: program.name,
+      active: true,
+      ...(source.updatedAt || source.publishedAt ? { updatedAt: source.updatedAt || source.publishedAt } : {}),
+      week: Object.fromEntries(Object.entries(program.week).map(([day, routineId]) => [day, ids.get(routineId)])),
+    })
   }
 
-  return { ...state, routines, week }
+  return {
+    ...state,
+    routines,
+    week,
+    sourceSchedules: { ...(state.sourceSchedules || {}), personal },
+  }
 }
 
 export function reorderItem(items, from, to) {

@@ -13,7 +13,7 @@ const coexistenceState = dayPlan => ({
   week: { 1: 'manual' },
   dayPlan: dayPlan || {},
   sourceSchedules: {
-    personal: [{ sourceType: 'personal', planId: 'personal-plan', version: 2, label: 'ForÃ§a', active: true, week: { 1: 'personal-a' } }],
+    personal: [{ sourceType: 'personal', planId: 'personal-plan', version: 2, label: 'Força', active: true, week: { 1: 'personal-a' } }],
     ai: [{ sourceType: 'ai', planId: 'ai-plan', version: 3, label: 'Plano IA v3', active: true, week: { 1: 'ai-a' } }],
   },
 })
@@ -52,6 +52,19 @@ describe('scheduledRoutineOptions', () => {
     expect(options).toHaveLength(3)
     expect(options.filter(option => option.routineId === 'personal-a')).toHaveLength(1)
   })
+
+  it('supports multiple routines per managed weekday and ignores inactive or missing routines', () => {
+    const state = coexistenceState({ '2026-08-31': { routineId: 'personal-b', sourceType: 'personal', planId: 'personal-plan', version: 2 } })
+    state.routines = [...state.routines, { id: 'personal-b', name: 'Personal B', ex: [] }]
+    state.sourceSchedules.personal = [
+      { ...state.sourceSchedules.personal[0], week: { 1: ['personal-a', 'personal-b', 'missing'] } },
+      { sourceType: 'personal', planId: 'inactive', version: 1, active: false, week: { 1: 'personal-b' } },
+    ]
+
+    expect(scheduledRoutineOptions(state, '2026-08-31').map(option => option.routineId)).toEqual([
+      'personal-b', 'manual', 'personal-a', 'ai-a',
+    ])
+  })
 })
 
 describe('activeSourceMetadata', () => {
@@ -81,5 +94,22 @@ describe('normalizeScheduleState', () => {
     expect(normalized.sourceSchedules.ai[0]).toMatchObject({ planId: 'ai-plan', version: 3, week: { 2: 'ai-a', 4: 'ai-a' } })
     expect(legacy.week).toEqual({ 1: 'personal-a', 2: 'ai-a', 3: 'manual' })
     expect(normalizeScheduleState(normalized)).toEqual(normalized)
+  })
+
+  it('normalizes empty, invalid and array-valued schedules without inventing options', () => {
+    const normalized = normalizeScheduleState({
+      routines: [], week: { 7: 'missing' }, dayPlan: null,
+      sourceSchedules: {
+        personal: [{ sourceType: 'wrong', planId: '', version: 0, active: false, week: { 1: ['', null], 9: 'missing' } }],
+        ai: 'invalid',
+      },
+      aiSchedule: [{ day: 'bad', routineId: 'missing' }],
+    })
+
+    expect(normalized).toMatchObject({
+      week: { 7: 'missing' }, dayPlan: {},
+      sourceSchedules: { personal: [{ sourceType: 'personal', planId: 'legacy-personal', version: 1, active: false, week: {} }], ai: [] },
+    })
+    expect(scheduledRoutineOptions(normalized, '2026-08-31')).toEqual([])
   })
 })

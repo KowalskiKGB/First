@@ -71,6 +71,19 @@ describe('AI job flow', () => {
     expect(next.sourceSchedules.ai[0]).toMatchObject({ planId: 'new-plan', version: 2, week: { 4: 'new-ai' } })
   })
 
+  it('keeps two distinct AI sessions scheduled on the same day', () => {
+    const next = applyAiPlanToState({ week: {}, routines: [] }, {
+      id: 'double-plan', version: 1, appliedAt: '2026-08-29T12:00:00.000Z', justification: 'Duas sessões',
+      routines: [
+        { id: 'ai-am', name: 'Manhã', exercises: [] },
+        { id: 'ai-pm', name: 'Tarde', exercises: [] },
+      ],
+      schedule: [{ day: 1, routineId: 'ai-am' }, { day: 1, routineId: 'ai-pm' }],
+    })
+
+    expect(next.sourceSchedules.ai[0].week).toEqual({ 1: ['ai-am', 'ai-pm'] })
+  })
+
   it('surfaces a failed job public error without refreshing context', async () => {
     const calls = []
     const request = async path => {

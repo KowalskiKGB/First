@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, exLine, workoutVolume, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, trainedDates } from './history.js'
+import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, completedWorkoutFromActive, exLine, workoutVolume, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, trainedDates } from './history.js'
 import { EXDB } from './exercises.js'
 
 // Real ids out of the shipped catalogue, so the body-part fallback is exercised for real.
@@ -412,5 +412,25 @@ describe('trainedDates', () => {
     expect(workouts).toHaveLength(2)
     expect(workouts.reduce((sum, workout) => sum + workout.vol, 0)).toBe(2500)
     expect([...trainedDates(workouts)]).toEqual(['2026-08-31'])
+  })
+})
+
+describe('completedWorkoutFromActive', () => {
+  it('inherits source metadata and keeps only completed entries', () => {
+    const active = {
+      id: 'session-1', d: '2026-08-31', start: 100, routineId: 'ai-a', name: 'IA A', bw: 70,
+      sourceType: 'ai', planId: 'ai-plan', version: 3,
+      entries: [
+        { id: LIFT, topW: 60, target: { reps: 10 }, sets: [{ w: 60, r: 10, done: true }] },
+        { id: BW, target: { reps: 10 }, sets: [{ w: 0, r: 10, done: false }] },
+      ],
+    }
+
+    expect(completedWorkoutFromActive(active, 200, [LIFT])).toEqual({
+      id: 'session-1', d: '2026-08-31', start: 100, end: 200, routineId: 'ai-a', name: 'IA A', bw: 70,
+      sourceType: 'ai', planId: 'ai-plan', version: 3,
+      entries: [{ id: LIFT, sets: [{ w: 60, r: 10, done: true }], topW: 60, target: { reps: 10 } }],
+      prs: [LIFT],
+    })
   })
 })

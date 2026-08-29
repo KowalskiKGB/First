@@ -11,6 +11,7 @@
 // web bundles; the Capacitor plugins are only ever imported behind it.
 import { t } from './i18n.js'
 import { APP_SLUG } from './demo.js'
+import { scheduledRoutineOptionsForWeekday } from './schedule.js'
 
 export const MOBILE = import.meta.env.VITE_MOBILE === '1'
 
@@ -31,6 +32,22 @@ export async function nativeSave(state) {
   } catch (e) { /* keep the localStorage copy */ }
 }
 
+export function reminderNotifications(S, hour, minute) {
+  return Array.from({ length: 7 }, (_, day) => {
+    const options = scheduledRoutineOptionsForWeekday(S, day)
+    if (!options.length) return null
+    return {
+      id: 100 + day,
+      title: t('Workout day'),
+      body: options.length > 1
+        ? `Você tem ${options.length} sessões disponíveis`
+        : t('{0} is on the plan today — let’s go!', options[0].routine.name),
+      extra: { url: '#/workout', optionCount: options.length },
+      schedule: { on: { weekday: day + 1, hour, minute }, allowWhileIdle: true },
+    }
+  }).filter(Boolean)
+}
+
 // (Re)schedule the workout-day reminder: one repeating notification per weekday that has a
 // routine in the weekly plan. Cheap enough to run after any state change — the plan or the
 // reminder time may just have been edited. `interactive` gates the OS permission prompt to
@@ -45,15 +62,7 @@ export async function syncReminder(S, interactive = false) {
     if (perm.display !== 'granted' && interactive) perm = await LocalNotifications.requestPermissions()
     if (perm.display !== 'granted') return false
     const [hour, minute] = (r.time || '08:00').split(':').map(Number)
-    const notifications = Object.entries(S.week || {})
-      .filter(([, rid]) => rid && (S.routines || []).some(x => x.id === rid))
-      .map(([day, rid]) => ({
-        id: 100 + Number(day),
-        title: t('Workout day'),
-        body: t('{0} is on the plan today — let’s go!', S.routines.find(x => x.id === rid).name),
-        // Capacitor weekdays are 1 (Sunday) … 7 (Saturday); S.week uses getDay() 0…6.
-        schedule: { on: { weekday: Number(day) + 1, hour, minute }, allowWhileIdle: true },
-      }))
+    const notifications = reminderNotifications(S, hour, minute)
     if (notifications.length) await LocalNotifications.schedule({ notifications })
     return true
   } catch (e) { return false }

@@ -1,8 +1,6 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useCollaboration } from '../store/useCollaboration.js'
-import { effectiveRoutine } from '../lib/history.js'
-import { todayISO } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
 import { MOBILE } from '../lib/mobile.js'
 import { canEnterPersonal, personalTabs } from '../lib/personal.js'
@@ -23,11 +21,8 @@ export default function TabBar({ onStart }) {
   const on = k => cur === k || (cur === 'history' && k === 'stats') || (cur === 'settings' && k === 'home')
 
   const startWorkout = () => {
-    if (!S.active) {
-      const r = effectiveRoutine(S, todayISO())
-      if (r && r.ex.length) { onStart(r.id); return }
-    }
-    nav('/workout')
+    if (S.active) { nav('/workout'); return }
+    onStart()
   }
   const Tab = ({ k, icon, to, label, active = on(k) }) => (
     <button type="button" className={active ? 'on' : ''} aria-current={active ? 'page' : undefined} onClick={() => nav(to)}>

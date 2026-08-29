@@ -25,5 +25,10 @@ describe('SessionOptions', () => {
     expect(markup).toContain('Personal')
     expect(markup).toContain('IA')
     expect(markup).toContain('Preferido')
+
+    const onSelect = vi.fn()
+    const tree = SessionOptions({ options, onSelect })
+    tree.props.children[0].props.onClick()
+    expect(onSelect).toHaveBeenCalledWith(options[0])
   })
 })

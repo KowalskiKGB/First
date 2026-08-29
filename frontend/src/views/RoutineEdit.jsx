@@ -23,7 +23,7 @@ export default function RoutineEdit() {
   const r = S.routines.find(x => x.id === id)
   useEffect(() => { if (!r) nav('/plan') }, [!!r])
   if (!r) return null
-  const prescribed = !!r._personalProgramId
+  const prescribed = !!r._personalProgramId || r._aiGenerated === true
 
   const edit = fn => update(s => { fn(s.routines.find(x => x.id === id).ex) })
   const move = (i, dir) => edit(ex => { const j = i + dir; if (j < 0 || j >= ex.length) return;[ex[i], ex[j]] = [ex[j], ex[i]]; cleanupSg(ex) })
@@ -66,12 +66,12 @@ export default function RoutineEdit() {
     </div>
 
     {prescribed ? <div className="card" style={{ marginBottom: 16 }}>
-      <div className="small dim">Programa do Personal</div>
+      <div className="small dim">{r._aiGenerated ? 'Plano da IA' : 'Programa do Personal'}</div>
       <div className="row between" style={{ margin: '4px 0 12px' }}>
-        <strong>{r._personalProgramName || 'Treino prescrito'}</strong>
-        <span className="tag">Versão {r._personalVersion || 1}</span>
+        <strong>{r._aiGenerated ? 'Treino gerenciado pela IA' : (r._personalProgramName || 'Treino prescrito')}</strong>
+        <span className="tag">Versão {r._aiGenerated ? (r._aiVersion || 1) : (r._personalVersion || 1)}</span>
       </div>
-      <Button variant="primary" icon="clipboard" onClick={copyToPlan}>Copiar para meu plano</Button>
+      <Button variant="primary" icon="clipboard" onClick={copyToPlan}>{r._aiGenerated ? 'Copiar e personalizar' : 'Copiar para meu plano'}</Button>
     </div> : <>
       <div className="sect-b" style={{ marginBottom: 16 }}>
         <SelectRow icon="chartLine" title={t('Progression')} sheetTitle={t('Progression')}
@@ -130,7 +130,7 @@ export default function RoutineEdit() {
           update(s => {
             s.routines = s.routines.filter(x => x.id !== id)
             Object.keys(s.week).forEach(k => { if (s.week[k] === id) delete s.week[k] })
-            Object.keys(s.dayPlan).forEach(k => { if (s.dayPlan[k] === id) delete s.dayPlan[k] })
+            Object.keys(s.dayPlan).forEach(k => { if (s.dayPlan[k] === id || s.dayPlan[k]?.routineId === id) delete s.dayPlan[k] })
           })
           nav('/plan')
         }

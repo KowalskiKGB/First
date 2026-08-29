@@ -6,16 +6,18 @@ import { DEFAULT_LANG } from '../lib/i18n.js'
 import { DEMO, DEMO_SEEDED } from '../lib/demo.js'
 import { MOBILE, nativeLoad, nativeSave, syncReminder } from '../lib/mobile.js'
 import { mergePublishedPrograms } from '../lib/personal-forms.js'
+import { normalizeScheduleState } from '../lib/schedule.js'
 import { useCollaboration } from './useCollaboration.js'
 
 const KEY = 'gym_state_v1'
 export const DEF = {
   unit: 'kg', restSec: 90, sound: true, keepAwake: true, lang: DEFAULT_LANG,
   theme: 'dark', accent: 'lime', body: 'male', targetW: null,
-  bodyweight: [], routines: [], week: {}, dayPlan: {},
+  bodyweight: [], routines: [], week: {}, dayPlan: {}, sourceSchedules: { ai: [], personal: [] },
   aiProfile: {
     heightCm: '', goal: '', experience: 'intermediario', sessionsPerWeek: 4, minutesPerSession: 60,
-    limitations: '', preferences: '', equipment: [], favoriteEquipment: []
+    gymName: '', measurements: {}, targetAreas: [],
+    limitations: '', preferences: '', equipment: [], favoriteEquipment: [], favoriteExerciseIds: [], blockedExerciseIds: []
   },
   exWeights: {}, workouts: [], active: null, customEx: [], gifSize: 'full',
   // effort: which per-set effort scale is logged — 'none' | 'rir' | 'rpe'. null, not 'none', so
@@ -29,9 +31,9 @@ const clone = o => JSON.parse(JSON.stringify(o))
 function loadState() {
   try {
     const raw = localStorage.getItem(KEY)
-    if (raw) return Object.assign(clone(DEF), JSON.parse(raw))
+    if (raw) return normalizeScheduleState(Object.assign(clone(DEF), JSON.parse(raw)))
   } catch (e) { /* ignore */ }
-  return clone(DEF)
+  return normalizeScheduleState(clone(DEF))
 }
 
 const hasData = st => !!((st.workouts || []).length || (st.routines || []).length || (st.bodyweight || []).length)
@@ -48,10 +50,10 @@ export const useStore = create((set, get) => {
   }
 
   const persist = (S, push = true) => {
-    S._ts = Date.now()
-    registerCustom(S.customEx)
-    localStorage.setItem(KEY, JSON.stringify(S))
-    set({ S })
+    const next = normalizeScheduleState({ ...S, _ts: Date.now() })
+    registerCustom(next.customEx)
+    localStorage.setItem(KEY, JSON.stringify(next))
+    set({ S: next })
     if (MOBILE) nativePersist()
     if (push && get().user) {
       clearTimeout(pushTm)
@@ -103,7 +105,7 @@ export const useStore = create((set, get) => {
     syncPersonalPrograms(programs) {
       const current = get().S
       const next = mergePublishedPrograms(current, programs)
-      if (JSON.stringify([current.routines, current.week]) !== JSON.stringify([next.routines, next.week])) persist(next, false)
+      if (JSON.stringify([current.routines, current.week, current.sourceSchedules]) !== JSON.stringify([next.routines, next.week, next.sourceSchedules])) persist(next, false)
     },
 
     isGuest: () => localStorage.getItem('gym_guest') === '1',
