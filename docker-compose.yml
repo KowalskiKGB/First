@@ -57,11 +57,12 @@ services:
       ORIGIN: ${ORIGIN:?ORIGIN must be the public HTTPS URL}
       RP_NAME: ${RP_NAME:-First}
       ADMIN_UIDS: ${ADMIN_UIDS:-}
-      INVITE_ONLY: ${INVITE_ONLY:-0}
+      INVITE_ONLY: ${INVITE_ONLY:?INVITE_ONLY must be explicitly 0 or 1}
       SESSION_DAYS: ${SESSION_DAYS:-30}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-https://example.invalid}
       DEV_PANEL_USER: ${DEV_PANEL_USER:?DEV_PANEL_USER must begin with first_dev_}
       DEV_PANEL_PASSWORD_HASH: ${DEV_PANEL_PASSWORD_HASH:?DEV_PANEL_PASSWORD_HASH must be an scrypt hash}
+      # Optional: the core health endpoint works without AI; provider operations fail closed.
       AI_CONFIG_MASTER_KEY: ${AI_CONFIG_MASTER_KEY:-}
     volumes:
       - first-data:/data

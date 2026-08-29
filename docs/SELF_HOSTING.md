@@ -15,6 +15,7 @@ compila `web` e `api` a partir deste checkout; não depende de uma imagem First 
 git clone https://github.com/KowalskiKGB/First
 cd First
 cp .env.example .env
+# Preencha as variáveis obrigatórias antes de continuar.
 docker compose -f docker-compose.yml up -d --build
 ```
 
@@ -74,31 +75,9 @@ processos ou hosts.
 
 ## Backup e atualização
 
-Antes de atualizar, faça snapshot do volume `first-data` no provedor ou no Coolify. Para uma cópia
-local consistente, pause a API e exporte o conteúdo do volume:
-
-```bash
-docker compose stop api
-docker compose run --rm --no-deps --entrypoint tar api -C /data -czf - . > first-data-backup.tgz
-docker compose start api
-```
-
-Guarde o arquivo fora do servidor. Teste a restauração em uma instância separada antes de usá-la em
-produção; ela deve repor o volume inteiro, não somente `db.json`, pois os vínculos do personal ficam
-em `collaboration.json`.
-
-Depois do backup:
-
-```bash
-git pull --ff-only
-docker compose -f docker-compose.yml up -d --build
-curl https://first.rocketxsistemas.com.br/api/health
-```
-
-Para rollback, volte o checkout para o commit aprovado anterior — ou fixe a imagem anterior, se o
-deploy usar registry — e reconstrua o Compose. Se a entrega alterou dados persistidos, restaure
-também o snapshot compatível de `first-data`, sempre com a API parada; não reverta somente o código
-contra arquivos JSON de uma versão incompatível.
+Toda atualização começa com snapshot consistente do volume inteiro `first-data`, nunca somente
+`db.json`. O procedimento verificável de backup, restore, deploy e rollback está em
+[Backup, restore e deploy](#backup-restore-e-deploy).
 
 ## Primeira conta e acesso nativo
 
@@ -109,6 +88,8 @@ INVITE_ONLY=0
 ADMIN_UIDS=
 FIRST_BASIC_AUTH_USERS=first-bootstrap:{SHA}<hash-gerado>
 FIRST_BOOTSTRAP_MIDDLEWARE=
+DEV_PANEL_USER=<first_dev_mais_sufixo_aleatorio>
+DEV_PANEL_PASSWORD_HASH=<hash-scrypt>
 ```
 
 `FIRST_BASIC_AUTH_USERS` protege exclusivamente `/media/`. Mantenha
@@ -165,3 +146,116 @@ os arquivos é responsabilidade do deployer. A interface exibe **© Gym visual**
 
 First permanece sob GNU AGPL v3.0 e preserva a atribuição ao openGym. Quem operar uma versão
 modificada em rede deve oferecer o código correspondente conforme a seção 13 da AGPL.
+
+## Painel Dev e arquitetura de IA
+
+O Painel Dev usa duas camadas: sessão normal de uma conta administradora por passkey e uma segunda
+credencial exclusiva. Em produção, o processo exige `DEV_PANEL_USER` iniciado por `first_dev_` e
+`DEV_PANEL_PASSWORD_HASH` no formato aceito por `api/dev-auth.js`:
+
+```text
+scrypt:<salt-base64url>:<hash-base64url-de-32-bytes>
+```
+
+A senha em texto puro nunca entra no ambiente. `AI_CONFIG_MASTER_KEY` é opcional para o núcleo do
+First e deve conter exatamente 32 bytes aleatórios codificados em 64 caracteres hexadecimais. Sem
+ela, `/api/health`, planos manuais e planos do Personal continuam funcionando; cadastro, teste,
+listagem de modelos e ativação de provedor falham fechados.
+
+As chaves BYOK ficam em três slots fixos (`openai`, `gemini` e `anthropic`) e são cifradas em
+AES-256-GCM antes de entrar em `db.json`. O navegador recebe somente modelo selecionado,
+fingerprint parcial, estado/data do teste, ativação e métricas. Base URL customizada não é aceita.
+Somente um slot testado pode ficar ativo e não existe fallback automático.
+
+O documento `collaboration.json` usa schema v2 e guarda `trainingProfiles`, `gymProfiles`,
+`aiPlans`, `aiJobs` e `aiUsage` junto do domínio colaborativo. Os grants
+`trainingProfileWrite` e `aiPlanRead` são verificados no servidor para cada vínculo ativo. Jobs são
+idempotentes, persistem `queued|running|applied|failed` e as etapas públicas fechadas
+`organizing|generating|validating|applying`; um job encontrado em `running` após reinício passa
+para falha, sem retry nem troca de provedor.
+
+Antes da chamada, o servidor forma uma shortlist determinística de até 120 exercícios do catálogo
+pt-BR de 1.324 itens. O prompt contém perfil anonimizado, medidas atuais, objetivo,
+disponibilidade, limitações como texto não confiável, resumo agregado de 28 dias e os IDs
+permitidos. Nome, telefone, e-mail, financeiro, notas privadas e histórico bruto não são enviados.
+A resposta fechada `AIWorkoutPlanV1` é filtrada novamente antes de receber IDs do servidor e ser
+aplicada.
+
+Planos manuais, do Personal e de IA mantêm agendas independentes. `S.week` é somente manual;
+`dayPlan` registra preferência, não apaga opções. O armazenamento conserva no máximo dez versões
+de plano IA por aluno e dois mil registros de uso sem prompt ou resposta completos.
+
+Limites desta fase: uma única réplica da API e armazenamento JSON; sem cobrança, checkout,
+fallback de provedor ou chave comercial embutida. Não aumente réplicas da API até migrar o store
+para um banco com coordenação entre processos.
+
+## Variáveis de release no Coolify
+
+Revise no recurso Compose, sem registrar valores em logs:
+
+- `RP_ID`, `ORIGIN` e `RP_NAME`;
+- `ADMIN_UIDS`, `INVITE_ONLY`, `SESSION_DAYS` e `VAPID_SUBJECT`;
+- `DEV_PANEL_USER` e `DEV_PANEL_PASSWORD_HASH`;
+- `AI_CONFIG_MASTER_KEY` (pode ficar vazio enquanto nenhum provedor for configurado);
+- `FIRST_BASIC_AUTH_USERS` e `FIRST_BOOTSTRAP_MIDDLEWARE`.
+
+`INVITE_ONLY` deve ser informado explicitamente. Use `0` apenas durante um bootstrap controlado e
+volte para `1` antes de expor o host. `FIRST_BASIC_AUTH_USERS` protege `/media/`; mantenha
+`FIRST_BOOTSTRAP_MIDDLEWARE` vazio para o app Capacitor alcançar shell, API e Digital Asset Links.
+
+Para criar a credencial Dev fora do Git, gere um sufixo aleatório para
+`first_dev_<sufixo>`, uma senha a partir de 32 bytes aleatórios, o hash com
+`hashDevPassword()` de `api/dev-auth.js` e uma master key independente com outros 32 bytes
+aleatórios em hexadecimal. Não imprima esses valores em CI ou logs de deploy. O Coolify recebe
+somente usuário, hash e master key; o arquivo local ignorado `CREDENCIAIS_TESTE.md` recebe somente
+URL, usuário, senha, data e instruções de troca — nunca chaves de IA, Coolify ou Cloudflare.
+
+## Backup, restore e deploy
+
+Pare a API para obter um backup consistente do volume lógico `first-data`. Grave primeiro em um
+arquivo parcial, valide o tar e só então publique o nome final:
+
+```bash
+release_backup_dir=./backups
+release_stamp=$(date -u +%Y%m%dT%H%M%SZ)
+release_backup="$release_backup_dir/first-data-$release_stamp.tgz"
+mkdir -p "$release_backup_dir"
+docker compose stop api
+docker compose run --rm --no-deps --entrypoint tar api -C /data -czf - . > "$release_backup.part"
+tar -tzf "$release_backup.part" >/dev/null
+mv "$release_backup.part" "$release_backup"
+docker compose start api
+```
+
+Guarde a cópia fora do host. Antes de produção, teste-a em uma instância separada. Para restore,
+confirme o arquivo e o destino, pare a API e substitua o conteúdo completo de `/data` no volume do
+serviço; não restaure somente `db.json`:
+
+```bash
+release_backup=./backups/first-data-AAAAmmddTHHMMSSZ.tgz
+tar -tzf "$release_backup" >/dev/null
+docker compose stop api
+docker compose run --rm --no-deps --entrypoint sh api -c \
+  'find /data -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; tar -C /data -xzf -' \
+  < "$release_backup"
+docker compose start api
+curl --fail --silent --show-error https://first.rocketxsistemas.com.br/api/health
+```
+
+Checklist de deploy:
+
+1. Confirme o backup íntegro e registre o commit anterior e o novo.
+2. Instale/rotacione as variáveis necessárias e faça deploy do SHA aprovado.
+3. Verifique `/api/health`, carregamento do shell, hash dos bundles, `sw.js` com revalidação e
+   ausência de assets antigos no cache; se necessário, remova o service worker antigo e recarregue.
+4. Entre como admin, destrave `/dev`, confirme três slots sem chave exposta e mantenha geração
+   indisponível enquanto não houver chave comercial cadastrada e testada.
+5. Verifique console/rede no navegador e os fluxos de Plano, Personal, rollback e seletor de
+   sessões em celular, tablet e desktop.
+6. Gere o APK conforme [MOBILE.md](MOBILE.md), instale com `adb install -r` e faça o smoke móvel.
+
+Rollback de código não reverte dados. Se o schema persistido não for compatível com o commit
+anterior, restaure também o backup completo com a API parada. Para revogar imediatamente uma
+sessão Dev sem derrubar todas as sessões do app, troque **usuário e hash** (novo sufixo), faça
+redeploy e encerre a sessão normal do admin; trocar somente a senha não invalida um cookie Dev já
+emitido até o limite de quatro horas.

@@ -30,6 +30,9 @@ atribuição ao openGym, os avisos de terceiros e o histórico da cópia indepen
 - Catálogo de 1.324 exercícios com nomes e instruções pt-BR e busca bilíngue.
 - Tela de conexões para solicitar, aceitar, recusar ou encerrar o vínculo com um personal.
 - Programas publicados pelo personal sincronizados como rotinas executáveis, sem apagar planos manuais.
+- Wizard de IA em quatro etapas, geração assíncrona validada, versões e rollback, limitado aos
+  aparelhos cadastrados na academia do aluno.
+- Agendas manual, do Personal e de IA coexistem; o aluno escolhe a sessão quando houver mais de uma.
 
 ### Painel do personal
 
@@ -39,6 +42,15 @@ atribuição ao openGym, os avisos de terceiros e o histórico da cópia indepen
 - Agenda por disponibilidade, horários livres e detecção de conflito.
 - Recebíveis por cliente, situação de pagamento, totais e gráficos operacionais.
 - Vínculos por consentimento, permissões explícitas, inbox, Web Push e trilha de auditoria.
+- Área “IA e academia” por aluno, condicionada aos grants de perfil e leitura do plano IA.
+
+### Painel Dev de IA
+
+- Segunda credencial protegendo `/dev` depois do login de uma conta administradora por passkey.
+- Slots BYOK para OpenAI, Gemini e Anthropic, chave cifrada, teste de saída estruturada e somente um
+  provedor/modelo ativo.
+- Métricas de 7/30 dias sem persistir prompt ou resposta completos. Não há fallback nem cobrança
+  nesta fase e nenhuma chave comercial é incluída no projeto.
 
 O financeiro registra cobranças e recebimentos para organização; não processa pagamentos. O
 programa publicado pelo personal já entra na agenda semanal do aluno como treino executável e uma
@@ -55,6 +67,7 @@ Requer Docker com Compose e um proxy HTTPS para o domínio público:
 git clone https://github.com/KowalskiKGB/First
 cd First
 cp .env.example .env
+# Preencha as variáveis obrigatórias e mantenha INVITE_ONLY=1 em produção.
 docker compose -f docker-compose.yml up -d --build
 ```
 
@@ -117,9 +130,13 @@ Use [.env.example](.env.example) como base.
 | `ORIGIN` | Origem pública autorizada | `https://first.rocketxsistemas.com.br` |
 | `RP_NAME` | Nome exibido pelo autenticador | `First` |
 | `ADMIN_UIDS` | IDs administrativos separados por vírgula | vazio |
-| `INVITE_ONLY` | `1` exige convite para novos perfis | `0` |
+| `INVITE_ONLY` | `1` exige convite para novos perfis; deve ser explícito | `1` |
 | `SESSION_DAYS` | Duração de novas sessões | `30` |
 | `VAPID_SUBJECT` | Contato usado pelo Web Push | URL pública |
+| `DEV_PANEL_USER` | Usuário Dev aleatório iniciado por `first_dev_` | obrigatório em produção |
+| `DEV_PANEL_PASSWORD_HASH` | Hash scrypt da senha Dev; nunca a senha | obrigatório em produção |
+| `AI_CONFIG_MASTER_KEY` | 32 bytes/64 hex para cifrar chaves BYOK | vazio desabilita IA |
+| `FIRST_BASIC_AUTH_USERS` | Hash Basic Auth que protege `/media/` | obrigatório no Compose |
 | `WEB_PORT` | Porta do override local | `8080` |
 
 Trocar `RP_ID` invalida as passkeys registradas para o hostname anterior.

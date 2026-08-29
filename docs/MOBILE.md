@@ -78,3 +78,12 @@ MIT do dataset nem a AGPL do First concede direitos sobre a mídia.
 
 O código continua sob GNU AGPL v3.0. Preserve a atribuição ao openGym e disponibilize o código
 correspondente ao distribuir o app. Veja [NOTICE.md](../NOTICE.md).
+
+## Smoke da IA no Android
+
+O plano de IA usa a mesma API do servidor. Sem provedor ativo, sem sessão ou sem servidor, o treino
+local continua disponível como guest e recursos colaborativos/IA aguardam a próxima conexão.
+
+Depois de instalar o APK, valide: shell sem tela branca, login por passkey, Plano com card de IA,
+rotina manual preservada, seletor de sessão quando houver plano manual/IA ou Personal no mesmo dia,
+e ausência de erro visível ao voltar para Home.

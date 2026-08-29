@@ -69,6 +69,77 @@ publicly, coordinate that disclosure in the advisory thread first.
 
 Read this before hosting First for anyone other than yourself.
 
+### Dev panel and AI providers
+
+- **Two gates protect `/dev`.** The browser must already be signed in as an app admin, and the
+  Dev area then requires `DEV_PANEL_USER` plus a password verified against
+  `DEV_PANEL_PASSWORD_HASH`. The second session is a signed `HttpOnly`, `SameSite=Strict` cookie,
+  expires after four hours and has an explicit logout route. Login is limited to eight attempts
+  per remote-address/username pair in fifteen minutes, in addition to reverse-proxy limits.
+- **Dev credentials are environment-only.** Production stores only `DEV_PANEL_USER` and a scrypt
+  password hash in the form `scrypt:<base64url salt>:<base64url 32-byte hash>`.
+  `DEV_PANEL_USER` must begin with `first_dev_`. Plaintext test credentials belong only in the ignored local
+  `CREDENCIAIS_TESTE.md` file and must not contain Coolify, Cloudflare or commercial AI keys.
+- **AI keys are encrypted at rest.** Provider keys are stored only after AES-256-GCM encryption
+  with an independent `AI_CONFIG_MASTER_KEY` containing exactly 32 random bytes represented by
+  64 hexadecimal characters. If that key is missing or malformed, the core app still starts, but
+  provider save/test/model-list/activation fails closed and generation remains unavailable.
+- **Only one tested provider is active.** OpenAI, Gemini and Anthropic each have a fixed slot with
+  selected model, fingerprint, test status and metrics. A provider can be activated only after a
+  successful structured-output test for the saved model/key. Custom provider hosts are rejected;
+  there is no automatic fallback or embedded commercial key.
+- **Origin checks protect Dev, AI and collaboration mutations.** Browser writes on those surfaces
+  must match the configured `ORIGIN`. The Capacitor client may omit `Origin` only with the native
+  marker expected by the API; the marker never overrides a conflicting header. Legacy core writes
+  still rely on `SameSite=Lax`, as documented below, and there are no CSRF tokens.
+
+### AI workout privacy and safety
+
+- **The AI prompt is intentionally narrow.** Generation sends an anonymized training profile,
+  current measurements, goal, availability, untrusted limitation text, a compact 28-day summary and
+  a deterministic shortlist of allowed exercise IDs. It does not send name, phone, email,
+  financial data, private Personal notes or raw workout history.
+- **The server is the authority.** Exercise shortlist filtering runs before the provider call and
+  semantic validation runs again after the response. Unknown IDs, duplicated IDs, unavailable
+  equipment, invalid days, absolute loads, refusals and truncated responses are rejected before any
+  plan is applied.
+- **Minors require guardian confirmation.** Under 14 uses technique, supervision and conservative
+  loading rules. Ages 14 to 17 require guardian confirmation and conservative rules. Acute risk or
+  medical restriction blocks the call and preserves the existing plan.
+- **Plans coexist.** Manual, Personal and AI schedules are separate. AI rollback restores a prior
+  AI version without deleting manual routines or Personal programs.
+- **Personal access is grant-bound.** An active link plus `trainingProfileWrite` is required to
+  change a student's training profile or gym. Reading the AI plan separately requires
+  `aiPlanRead`; admin status alone does not imply Personal access.
+- **Jobs do not silently retry.** One active job is allowed per student, requests are idempotent,
+  and an interrupted `running` job is marked failed after restart. Provider failure never triggers
+  another provider or changes the current plan.
+
+### Retention, logging and incidents
+
+- **Retention is bounded.** The collaboration store keeps at most ten AI plan versions per student
+  and two thousand AI usage records. Usage records keep provider/model/status/tokens/latency, not
+  full prompts or full model responses. Public job stages are normalized to
+  `organizing|generating|validating|applying` before projection.
+- **Logs are metadata-only for AI.** Prompts, full responses, plaintext provider keys and decrypted
+  key material are not logged. Upstream failures are normalized before they reach HTTP responses
+  or server error logs.
+- **Backups must cover the full volume.** Before any deploy that changes schema or provider
+  configuration, snapshot the whole `first-data` volume. Restoring only `db.json` can desynchronize
+  sessions, collaboration data, AI jobs and plan versions. Stop the API during tar backup/restore,
+  validate the archive, test restore separately and restore the full compatible volume for a data
+  rollback.
+- **Provider-key incident response:** remove or rotate the affected key at the provider, clear that
+  slot in `/dev`, set a fresh key, run structured-output test again and reactivate only after the
+  test succeeds. If `AI_CONFIG_MASTER_KEY` is suspected exposed, rotate it and re-enter every
+  provider key because existing encrypted blobs cannot be trusted.
+- **Dev-credential incident response:** replace both `DEV_PANEL_USER` (with a new random suffix)
+  and `DEV_PANEL_PASSWORD_HASH`, redeploy, explicitly log out and use `/api/logout/all` for any
+  affected admin account. Rotating only the password hash does not invalidate an already-issued
+  Dev cookie before its four-hour expiry because the cookie is bound to the username.
+- **No billing in this phase.** Usage counters and a feature gate exist, but checkout, quotas tied
+  to payment and paid-plan enforcement do not. Do not market the current gate as a billing control.
+
 ### What it does
 
 - **Passkeys only.** No passwords, no email addresses, no reset flow. Registration and login are
@@ -110,7 +181,9 @@ Read this before hosting First for anyone other than yourself.
   was issued with, so changing the setting doesn't reach cookies that are already out. Deleting
   `/data/secret` from the Docker volume and restarting still works as the instance-wide reset, and disabling an account
   still locks out one user completely.
-- **CSRF protection is `SameSite=Lax` and nothing else.** There are no CSRF tokens.
+- **Legacy core CSRF protection is `SameSite=Lax`.** Dev, AI and Personal/collaboration mutations
+  additionally check exact `Origin`, but older core routes such as `/api/data` have no CSRF token
+  or explicit Origin check.
 - **User verification is preferred, not required.** Both handshakes pass
   `requireUserVerification: false` (`api/server.js:297`, `api/server.js:343`), so a passkey
   released without a biometric or PIN is still accepted. In practice: unlocked device ≈ account

@@ -407,3 +407,53 @@ export function prescribeTrainingMaxSession({ week, trainingMax, increment, plat
 ## Critério de conclusão do roadmap
 
 O roadmap termina somente quando todos os fluxos E2E passam, código novo mantém 80% de cobertura, nenhum acesso cruzado indevido é possível, o aluno sem personal mantém a experiência atual e a versão publicada oferece seu código correspondente sob AGPL.
+
+## Fase IA/Dev entregue neste ciclo
+
+- [x] Painel Dev em `/dev` com passkey admin, credencial Dev adicional, logout, limite de sessão e
+  erros seguros.
+- [x] Slots BYOK para OpenAI, Gemini e Anthropic com chave criptografada por `AI_CONFIG_MASTER_KEY`,
+  fingerprint, teste obrigatório de saída estruturada, ativação global única e métricas 7/30 dias.
+- [x] Contexto de treino colaborativo: perfil, medidas, academia, aparelhos genéricos, máquinas
+  específicas com IDs canônicos, consentimentos e grants `trainingProfileWrite`/`aiPlanRead`.
+- [x] Geração IA assíncrona e persistente com idempotência, shortlist de até 120 exercícios,
+  prompt Markdown anonimizado, validação semântica, aplicação automática, histórico de dez versões
+  e rollback.
+- [x] Agendas independentes para `Meu treino`, `Personal` e `IA`; `S.week` permanece manual e
+  `dayPlan` define apenas preferência diária.
+- [x] Wizard do aluno em quatro etapas, retomada de job, aviso de contexto desatualizado sem gasto
+  automático de tokens, cópia de rotina gerenciada e badges exatos.
+- [x] Aba “IA e academia” no Personal com projeção por grant, edição autorizada de perfil/academia
+  e leitura autorizada do plano IA.
+- [ ] Billing/plano pago de IA: estrutura de uso existe, mas cobrança, limite comercial e checkout
+  ficam para fase futura.
+
+### Arquitetura consolidada
+
+- Slots globais `openai`, `gemini` e `anthropic` persistem somente chave AES-256-GCM, modelo,
+  fingerprint, teste e ativação; exatamente um slot testado pode ficar ativo e não há fallback.
+- `AI_CONFIG_MASTER_KEY` é independente da credencial Dev. Sem ela, o core permanece saudável e
+  toda operação que precise cifrar/decifrar chave de provedor falha fechada.
+- `collaboration.json` schema v2 é a fonte única para perfil de treino, academia, planos/versionamento,
+  jobs, uso e grants. Retenção: dez versões IA por aluno e dois mil usos sem prompt/resposta.
+- O job persistente é idempotente, tem estados `queued|running|applied|failed`, etapas públicas
+  fechadas e não repete chamadas depois de falha ou reinício.
+- O contrato `AIWorkoutPlanV1` recebe contexto anonimizado e shortlist determinística de até 120
+  IDs; o servidor valida catálogo/equipamento/valores antes e depois do provedor e cria os IDs finais.
+- `S.week` continua manual. Agenda de IA e agenda do Personal são independentes; `dayPlan` somente
+  ordena preferência e o histórico conserva origem, plano e versão.
+- `trainingProfileWrite` e `aiPlanRead` são grants separados, exigem vínculo ativo e são aplicados
+  pelo servidor, não apenas escondidos na interface.
+
+### Próximos módulos priorizados
+
+1. Programação por percentual/training max estilo 5/3/1 sobre o motor de progressão atual.
+2. Planos iniciais upper/lower, full-body e 5×5 sem sobrescrever rotinas existentes.
+3. Evolução conjunta de peso e medidas corporais (cintura, braços, peito, quadril, coxas e
+   panturrilhas) nas visões de aluno e Personal.
+4. Notas persistentes por exercício e calculadora de anilhas em kg/lb.
+5. Billing real da IA somente depois de limites comerciais, checkout, reconciliação e suporte.
+
+O teto atual continua deliberado: uma única réplica Node com JSON, sem billing, sem fallback e sem
+qualquer chave comercial embutida. Migração de store ou nova infraestrutura só entra quando escala
+ou contenção observada exigir.

@@ -10,6 +10,7 @@ test('the deployment template is complete and builds only this repository', () =
   assert.equal(existsSync(new URL('.env.example', root)), true, '.env.example must exist')
 
   const compose = read('docker-compose.yml')
+  const envExample = read('.env.example')
   assert.doesNotMatch(compose, /ghcr\.io\/duartesantos8/i)
   assert.match(compose, /hasaneyldrm\/exercises-dataset/i)
   assert.match(compose, /7455efae41b330c265e7cd4b78dfa848e7ce5ebd/)
@@ -23,6 +24,14 @@ test('the deployment template is complete and builds only this repository', () =
   assert.match(compose, /dockerfile:\s*Dockerfile/)
   assert.match(compose, /FIRST_BASIC_AUTH_USERS/)
   assert.match(compose, /FIRST_BOOTSTRAP_MIDDLEWARE/)
+  assert.match(compose, /INVITE_ONLY:\s*\$\{INVITE_ONLY:\?/)
+  assert.match(compose, /DEV_PANEL_USER:\s*\$\{DEV_PANEL_USER:\?/)
+  assert.match(compose, /DEV_PANEL_PASSWORD_HASH:\s*\$\{DEV_PANEL_PASSWORD_HASH:\?/)
+  assert.match(compose, /AI_CONFIG_MASTER_KEY:\s*\$\{AI_CONFIG_MASTER_KEY:-\}/)
+  assert.match(envExample, /^INVITE_ONLY=1$/m)
+  assert.match(envExample, /^DEV_PANEL_USER=\s*$/m)
+  assert.match(envExample, /^DEV_PANEL_PASSWORD_HASH=\s*$/m)
+  assert.match(envExample, /^AI_CONFIG_MASTER_KEY=\s*$/m)
   assert.match(compose, /PathPrefix\(`\/media\/`\)/)
   assert.match(compose, /first-media-\$\{COOLIFY_RESOURCE_UUID/)
   assert.match(compose, /first-assetlinks-\$\{COOLIFY_RESOURCE_UUID/)
@@ -116,7 +125,13 @@ test('docker compose accepts the documented production-safe environment', () => 
     {
       cwd: new URL('.', root),
       encoding: 'utf8',
-      env: { ...process.env, FIRST_BASIC_AUTH_USERS: 'first-test:{SHA}not-a-production-credential' },
+      env: {
+        ...process.env,
+        INVITE_ONLY: '1',
+        DEV_PANEL_USER: 'first_dev_test_only',
+        DEV_PANEL_PASSWORD_HASH: 'scrypt:test-only-salt:test-only-hash-material',
+        FIRST_BASIC_AUTH_USERS: 'first-test:{SHA}not-a-production-credential',
+      },
     },
   )
 
