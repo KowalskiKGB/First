@@ -1,12 +1,19 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   buildDayTimeline,
+  clientFinanceStatus,
+  dateInTimeZone,
   filterAndSortClients,
+  formatTimeInZone,
   measurementTrend,
+  mutationErrorMessage,
   normalizeStudentTab,
   receivableDisplayStatus,
+  upcomingFromClients,
 } from './personal-view.js'
+
+afterEach(() => vi.useRealTimers())
 
 describe('personal workspace view derivations', () => {
   it('combines occupied and open slots in chronological order without inventing future entries', () => {
@@ -62,5 +69,32 @@ describe('personal workspace view derivations', () => {
     expect(receivableDisplayStatus({ status: 'open', dueOn: '2026-08-28' }, '2026-08-29')).toBe('overdue')
     expect(receivableDisplayStatus({ status: 'paid', dueOn: '2026-08-20' }, '2026-08-29')).toBe('paid')
     expect(receivableDisplayStatus({ status: 'waived', dueOn: '2026-08-20' }, '2026-08-29')).toBe('waived')
+  })
+
+  it('uses the professional timezone for class time and the Fortaleza business date', () => {
+    expect(formatTimeInZone('2026-08-29T01:00:00.000Z', 'en-GB', 'America/Fortaleza')).toBe('22:00')
+    expect(dateInTimeZone('2026-08-29T01:00:00.000Z', 'America/Fortaleza')).toBe('2026-08-28')
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-30T01:00:00.000Z'))
+    expect(receivableDisplayStatus({ status: 'open', dueOn: '2026-08-29' })).toBe('open')
+  })
+
+  it('provides an explicit explanation when professional permission is revoked', () => {
+    expect(mutationErrorMessage(Object.assign(new Error('forbidden'), { status: 403 }))).toBe('Permission revoked')
+    expect(mutationErrorMessage(Object.assign(new Error('conflict'), { status: 409 }))).toContain('keep this form open')
+    expect(mutationErrorMessage(new Error('offline'))).toBe('offline')
+  })
+
+  it('fails safely for invalid dates, timezones and optional finance data', () => {
+    expect(formatTimeInZone('invalid', 'pt-BR')).toBe('—')
+    expect(formatTimeInZone('2026-08-29T01:00:00.000Z', 'en-GB', 'Invalid/Zone')).toBe('22:00')
+    expect(dateInTimeZone('invalid')).toBe('')
+    expect(dateInTimeZone('2026-08-29T01:00:00.000Z', 'Invalid/Zone')).toBe('2026-08-28')
+    expect(clientFinanceStatus({ expectedCents: 100, receivedCents: 100 })).toBe('paid')
+    expect(clientFinanceStatus({ expectedCents: 100 })).toBe('waived')
+    expect(clientFinanceStatus()).toBe('none')
+    expect(upcomingFromClients([{ name: 'Ana' }, { name: 'Bia', nextAppointment: { startsAt: '2026-08-30T12:00:00Z' } }])).toEqual([
+      { clientName: 'Bia', startsAt: '2026-08-30T12:00:00Z' },
+    ])
   })
 })

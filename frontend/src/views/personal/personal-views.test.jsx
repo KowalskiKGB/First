@@ -3,22 +3,28 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import pt from '../../locales/pt.js'
+
 const values = new Map()
 vi.stubGlobal('localStorage', {
   getItem: key => values.get(key) ?? null,
   setItem: (key, value) => values.set(key, String(value)),
   removeItem: key => values.delete(key),
 })
+vi.stubGlobal('document', { addEventListener: vi.fn(), visibilityState: 'visible' })
 
 let Agenda
 let Finance
 let PersonalHome
 let StudentDetail
 let Students
-let useCollaboration
+let collaborationState = {}
+const useCollaboration = selector => selector(collaborationState)
+useCollaboration.getState = () => collaborationState
+useCollaboration.setState = state => { collaborationState = { ...collaborationState, ...state } }
+vi.doMock('../../store/useCollaboration.js', () => ({ useCollaboration }))
 
 beforeAll(async () => {
-  ;({ useCollaboration } = await import('../../store/useCollaboration.js'))
   ;({ default: Agenda } = await import('./Agenda.jsx'))
   ;({ default: Finance } = await import('./Finance.jsx'))
   ;({ default: PersonalHome } = await import('./PersonalHome.jsx'))
@@ -59,14 +65,17 @@ beforeEach(() => {
   })
 })
 
-const render = element => renderToStaticMarkup(<MemoryRouter>{element}</MemoryRouter>)
+const render = (element, initialEntries = ['/']) => renderToStaticMarkup(<MemoryRouter initialEntries={initialEntries}>{element}</MemoryRouter>)
 
 describe('professional Personal views SSR', () => {
   it('renders the operational dashboard and priority reason', () => {
     const markup = render(<PersonalHome />)
     expect(markup).toContain('Today timeline')
-    expect(markup).toContain('Pagamento vencido')
+    expect(markup).toContain('Payment overdue')
     expect(markup).toContain('New student')
+    expect(markup).toContain('1 urgent')
+    expect(pt['Professional workspace']).toBe('Painel profissional')
+    expect(pt['Live workspace']).toBe('Dados em tempo real')
   })
 
   it('renders student filters with status labels', () => {
@@ -79,6 +88,7 @@ describe('professional Personal views SSR', () => {
   it('renders stable detail tabs from the URL', () => {
     const markup = render(
       <Routes><Route path="/personal/alunos/:id/:tab?" element={<StudentDetail />} /></Routes>,
+      ['/personal/alunos/client-1/evolucao'],
     )
     expect(markup).toContain('Summary')
     expect(markup).toContain('Training')

@@ -5,7 +5,7 @@ import { useCollaboration } from './store/useCollaboration.js'
 import { useUI } from './store/useUI.js'
 import { bindUI } from './components/ui.jsx'
 import { ACCENTS } from './lib/format.js'
-import { DEFAULT_LANG, setLang, t, useLang } from './lib/i18n.js'
+import { DEFAULT_LANG, setLang, useLang } from './lib/i18n.js'
 import { setNav } from './lib/nav.js'
 import { useWakeLock } from './lib/wakelock.js'
 import { startFlow } from './sheets.jsx'
@@ -28,6 +28,10 @@ import Admin from './views/Admin.jsx'
 import PersonalGuard from './views/personal/PersonalGuard.jsx'
 import PersonalHome from './views/personal/PersonalHome.jsx'
 import Students from './views/personal/Students.jsx'
+import StudentDetail from './views/personal/StudentDetail.jsx'
+import Agenda from './views/personal/Agenda.jsx'
+import Finance from './views/personal/Finance.jsx'
+import Connections from './views/student/Connections.jsx'
 
 bindUI(useUI)   // lets the shared controls open sheets without importing the store at module scope
 
@@ -37,15 +41,6 @@ function applyPrefs(theme, accent) {
   de.dataset.accent = ACCENTS[accent] ? accent : 'lime'
   const meta = document.querySelector('meta[name="theme-color"]')
   if (meta) meta.content = de.dataset.theme === 'light' ? '#f2f2f7' : '#000000'
-}
-
-function PersonalPlaceholder({ title, body }) {
-  return (
-    <div className="narrow">
-      <div className="hdr"><h1>{t(title)}</h1></div>
-      <div className="card"><p className="muted">{t(body)}</p></div>
-    </div>
-  )
 }
 
 function Shell() {
@@ -93,10 +88,11 @@ function Shell() {
               <Route path="/admin" element={user?.admin ? <Admin /> : <Navigate to="/home" replace />} />
               <Route path="/personal" element={<PersonalGuard><PersonalHome /></PersonalGuard>} />
               <Route path="/personal/alunos" element={<PersonalGuard><Students /></PersonalGuard>} />
-              <Route path="/personal/alunos/:id" element={<PersonalGuard><PersonalPlaceholder title="Student details" body="Student records will open here." /></PersonalGuard>} />
-              <Route path="/personal/agenda" element={<PersonalGuard><PersonalPlaceholder title="Schedule" body="The professional schedule will open here." /></PersonalGuard>} />
-              <Route path="/personal/financeiro" element={<PersonalGuard><PersonalPlaceholder title="Finances" body="Accounts receivable will open here." /></PersonalGuard>} />
-              <Route path="/aluno/conexoes" element={<PersonalPlaceholder title="Connections" body="Your trainer connections will open here." />} />
+              <Route path="/personal/alunos/:id" element={<PersonalGuard><StudentDetail /></PersonalGuard>} />
+              <Route path="/personal/alunos/:id/:tab" element={<PersonalGuard><StudentDetail /></PersonalGuard>} />
+              <Route path="/personal/agenda" element={<PersonalGuard><Agenda /></PersonalGuard>} />
+              <Route path="/personal/financeiro" element={<PersonalGuard><Finance /></PersonalGuard>} />
+              <Route path="/aluno/conexoes" element={<Connections />} />
               <Route path="*" element={<Navigate to="/home" replace />} />
             </Routes>
           )}
