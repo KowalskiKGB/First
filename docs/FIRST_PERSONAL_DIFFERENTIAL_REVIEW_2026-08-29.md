@@ -13,7 +13,7 @@
 **Recommendation:** APPROVE for the private/self-hosted deployment.
 
 **Key Metrics:**
-- Commit range: `origin/main..9793aca`
+- Commit range: `origin/main..5da1fa3` at final local review
 - Files changed: 64
 - Shortstat: 8,194 insertions, 273 deletions
 - Security regressions detected: 0
@@ -28,6 +28,7 @@ The release adds the Personal/instructor workspace to the isolated First repo:
 - Personal dashboard, student list, student detail, agenda and finance views;
 - controlled forms for clients, programs, measurements, appointments and receivables;
 - Playwright E2E coverage for the professional workspace across mobile, tablet and desktop.
+- final release fixes for private media cache documentation and Node 22 Docker lockfile metadata.
 
 ## High-Risk Files Reviewed
 
@@ -42,10 +43,16 @@ The release adds the Personal/instructor workspace to the isolated First repo:
 | `frontend/src/lib/connections.js` | High | Approved |
 | `frontend/src/views/student/Connections.jsx` | Medium | Approved |
 | `frontend/e2e/personal-workspace.spec.js` | Medium | Approved |
+| `web/nginx.conf` / `nginx.conf` | Medium | Approved |
+| `frontend/package-lock.json` | Low | Approved |
 
 ## Findings
 
 No blocking findings found in the reviewed differential.
+
+Final addendum: commit `5da1fa3` changes only `frontend/package-lock.json` optional/peer metadata
+so `npm ci` succeeds inside `node:22-alpine`. It adds no application code and was validated by
+frontend tests, frontend build and Docker Compose build.
 
 ## Security Notes
 
@@ -63,6 +70,8 @@ No blocking findings found in the reviewed differential.
 - `npm test` in `frontend`: 332 passed.
 - `npm run test:e2e` in `frontend`: 3 passed for 360x800, 768x1024 and 1440x900.
 - `npm run build` in `frontend`: success; expected catalogue chunk warning only.
+- `docker compose -f docker-compose.yml build api web`: success after lockfile synchronization.
+- local Compose smoke: `/api/health` 200, app shell 200 with CSP, real `/media/img/...jpg` 200 with `Cache-Control: private, no-store`.
 - `npm audit --omit=dev` in `api` and `frontend`: 0 vulnerabilities.
 - `git diff --check`: clean.
 
