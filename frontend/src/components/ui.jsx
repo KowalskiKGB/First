@@ -95,10 +95,10 @@ export function Switch({ checked, onChange, disabled }) {
 
 // options: [{ value, label, icon? }]  — the selected pill slides between cells.
 export function Segmented({ options, value, onChange, className = '' }) {
-  const i = Math.max(0, options.findIndex(o => o.value === value))
+  const i = options.findIndex(o => o.value === value)
   return (
     <div className={'seg ' + className} style={{ '--n': options.length, '--i': i }}>
-      <span className="seg-sel" aria-hidden="true" />
+      {i >= 0 ? <span className="seg-sel" aria-hidden="true" /> : null}
       {options.map(o => (
         <button
           key={o.value}
