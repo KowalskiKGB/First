@@ -80,5 +80,6 @@ describe('Home schedule summary', () => {
 
     expect(markup).toContain('AI Monday')
     expect(markup).not.toContain('Rest day')
+    expect(markup).toContain('class="dot ovr"')
   })
 })

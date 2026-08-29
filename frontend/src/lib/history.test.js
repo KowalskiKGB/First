@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, completedWorkoutFromActive, exLine, workoutVolume, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, trainedDates } from './history.js'
+import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, completedWorkoutFromActive, effectiveRoutine, effectiveRoutineId, exLine, workoutVolume, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, trainedDates } from './history.js'
 import { EXDB } from './exercises.js'
 
 // Real ids out of the shipped catalogue, so the body-part fallback is exercised for real.
@@ -412,6 +412,22 @@ describe('trainedDates', () => {
     expect(workouts).toHaveLength(2)
     expect(workouts.reduce((sum, workout) => sum + workout.vol, 0)).toBe(2500)
     expect([...trainedDates(workouts)]).toEqual(['2026-08-31'])
+  })
+})
+
+describe('effective routine', () => {
+  it('treats rest as a preference without erasing a managed session', () => {
+    const routine = { id: 'ai-monday', name: 'AI Monday', ex: [] }
+    const state = {
+      routines: [routine], week: {}, dayPlan: { '2026-08-31': 'rest' },
+      sourceSchedules: {
+        personal: [],
+        ai: [{ sourceType: 'ai', planId: 'plan-1', version: 1, active: true, week: { 1: 'ai-monday' } }],
+      },
+    }
+
+    expect(effectiveRoutineId(state, '2026-08-31')).toBe('ai-monday')
+    expect(effectiveRoutine(state, '2026-08-31')).toBe(routine)
   })
 })
 
