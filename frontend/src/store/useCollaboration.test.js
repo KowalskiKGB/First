@@ -181,6 +181,68 @@ describe('collaboration mutation recovery', () => {
     expect(store.getState().workspace.kpis.priorities.urgent).toBe(1);
   });
 
+  it('keeps an applied detail mutation successful when only the workspace refresh fails transiently', async () => {
+    const store = await collaborationStore();
+    store.setState({
+      ownerId: 'u1',
+      rev: 3,
+      profile: { userId: 'u1', roles: ['trainer'] },
+      workspace: { rev: 3, clients: [{ id: 'c1', priority: 'ok' }] },
+      selected: 'c1',
+      detail: { rev: 3, client: { id: 'c1', priority: 'ok' } },
+    });
+    const applied = { rev: 4, client: { id: 'c1', priority: 'urgent' } };
+    apiMock
+      .mockResolvedValueOnce(applied)
+      .mockRejectedValueOnce(Object.assign(new Error('offline'), { status: 500 }));
+
+    await expect(store.getState().mutate('/api/personal/measurements', { clientId: 'c1' }))
+      .resolves.toEqual(applied);
+
+    expect(apiMock.mock.calls.map(([path]) => path)).toEqual([
+      '/api/personal/measurements',
+      '/api/personal/workspace',
+    ]);
+    expect(store.getState()).toMatchObject({
+      rev: 4,
+      detail: applied,
+      profile: { userId: 'u1', roles: ['trainer'] },
+      error: null,
+      message: null,
+    });
+  });
+
+  it.each([
+    [403, 'Permissão revogada'],
+    [401, null],
+  ])('still fails closed when the post-save workspace refresh returns %s', async (status, message) => {
+    localStorage.setItem('first_context', 'trainer');
+    const store = await collaborationStore();
+    store.setState({
+      ownerId: 'u1',
+      rev: 3,
+      profile: { userId: 'u1', roles: ['trainer'] },
+      workspace: { clients: [{ id: 'private' }] },
+      detail: { client: { id: 'private' } },
+      context: 'trainer',
+    });
+    apiMock
+      .mockResolvedValueOnce({ rev: 4, client: { id: 'private' } })
+      .mockRejectedValueOnce(Object.assign(new Error('access lost'), { status }));
+
+    await expect(store.getState().mutate('/api/personal/client', { clientId: 'private' }, 'PUT'))
+      .rejects.toMatchObject({ status });
+
+    expect(store.getState()).toMatchObject({
+      profile: null,
+      workspace: null,
+      detail: null,
+      context: 'student',
+      message,
+    });
+    expect(localStorage.getItem('first_context')).toBeNull();
+  });
+
   it('reloads a safe projection and exposes the retry message after 409', async () => {
     localStorage.setItem('gym_user', JSON.stringify({ id: 'u1' }));
     const store = await collaborationStore();
