@@ -22,7 +22,7 @@ function initialDraft(receivable, clientId, fallbackClientId) {
     clientId: receivable?.clientId || clientId || fallbackClientId,
     period: receivable?.period || today.slice(0, 7),
     dueOn: receivable?.dueOn || today,
-    amount: centsToReais(receivable?.amountCents ?? 0),
+    amount: receivable?.amountCents > 0 ? centsToReais(receivable.amountCents) : '',
     status: receivable?.status || 'open',
     paidOn: fortalezaFields(receivable?.paidAt).date || today,
     paymentMethod: receivable?.paymentMethod || 'manual',
@@ -36,6 +36,14 @@ export default function ReceivableForm({ receivable, clients = [], clientId = ''
   const [error, setError] = useState('')
 
   useEffect(() => setDraft(initialDraft(receivable, clientId, fallbackClientId)), [receivable, clientId, fallbackClientId])
+
+  let amountValid = false
+  try {
+    reaisToCents(draft.amount)
+    amountValid = true
+  } catch {
+    amountValid = false
+  }
 
   const submit = event => {
     event.preventDefault()
@@ -83,8 +91,10 @@ export default function ReceivableForm({ receivable, clients = [], clientId = ''
 
         <label className="form-field">
           <span>Valor em reais</span>
-          <TextField name="receivableAmount" autoComplete="off" required inputMode="decimal" placeholder="Ex.: 150,00…" value={draft.amount} onChange={event => setDraft(current => ({ ...current, amount: event.target.value }))} aria-describedby="amount-cents-note" />
-          <small id="amount-cents-note" className="form-hint">Use vírgula para centavos. O valor é salvo em centavos inteiros.</small>
+          <TextField name="receivableAmount" autoComplete="off" required inputMode="decimal" placeholder="Ex.: 150,00…" value={draft.amount} onChange={event => setDraft(current => ({ ...current, amount: event.target.value }))} aria-describedby="amount-cents-note" aria-invalid={draft.amount !== '' && !amountValid} />
+          <small id="amount-cents-note" className={draft.amount !== '' && !amountValid ? 'form-error' : 'form-hint'}>
+            {draft.amount === '' ? 'Informe um valor maior que R$ 0,00.' : amountValid ? 'Use vírgula para centavos. O valor é salvo em centavos inteiros.' : 'Valor inválido. Use um valor maior que R$ 0,00.'}
+          </small>
         </label>
 
         <label className="form-field">
@@ -119,7 +129,7 @@ export default function ReceivableForm({ receivable, clients = [], clientId = ''
       </label>
 
       {error ? <p className="form-error" role="alert" aria-live="polite">{error}</p> : null}
-      <Button type="submit" variant="primary" disabled={busy || !draft.clientId}>
+      <Button type="submit" variant="primary" disabled={busy || !draft.clientId || !amountValid}>
         {busy ? 'Salvando…' : 'Salvar cobrança'}
       </Button>
     </form>

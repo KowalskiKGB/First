@@ -144,7 +144,17 @@ export default function ProgramEditor({ program, clientId, onPublish, busy = fal
                       </label>
                       <label className="form-field">
                         <span>Repetições</span>
-                        <NumberField name={`reps-${routine.id}-${exerciseIndex}`} autoComplete="off" decimal={false} min="1" max="999" value={exercise.reps} onChange={reps => updateExercise(routine.id, exerciseIndex, { reps })} />
+                        <TextField
+                          name={`reps-${routine.id}-${exerciseIndex}`}
+                          autoComplete="off"
+                          inputMode="text"
+                          required
+                          maxLength="7"
+                          pattern="[0-9]{1,3}(-[0-9]{1,3})?"
+                          title="Use um inteiro ou intervalo, como 8-12"
+                          value={exercise.reps}
+                          onChange={event => updateExercise(routine.id, exerciseIndex, { reps: event.target.value })}
+                        />
                       </label>
                       <label className="form-field">
                         <span>Descanso (segundos)</span>

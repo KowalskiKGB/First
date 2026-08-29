@@ -18,6 +18,17 @@ const clampInt = (value, min, max, fallback) => {
   const number = Number(value)
   return Number.isFinite(number) ? Math.min(max, Math.max(min, Math.round(number))) : fallback
 }
+const normalizeReps = value => {
+  const raw = String(value ?? '').trim()
+  const range = /^(\d+)\s*-\s*(\d+)$/.exec(raw)
+  if (range) {
+    const lower = clampInt(range[1], 1, 999, 10)
+    const upper = clampInt(range[2], 1, 999, 10)
+    return lower <= upper ? `${lower}-${upper}` : 10
+  }
+  if ((typeof value === 'number' && Number.isInteger(value)) || /^\d+$/.test(raw)) return clampInt(value, 1, 999, 10)
+  return 10
+}
 
 export { BILATERAL_KINDS, MEASUREMENTS, PROGRAM_LIMITS }
 
@@ -41,7 +52,7 @@ function normalizeExercise(exercise) {
   return {
     id,
     sets: clampInt(exercise.sets, 1, 20, 3),
-    reps: clampInt(exercise.reps, 1, 999, 10),
+    reps: normalizeReps(exercise.reps),
     rest: clampInt(exercise.rest, 0, 1800, 60),
     note: cleanText(exercise.note, PROGRAM_LIMITS.note),
   }
