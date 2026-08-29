@@ -4,4 +4,5 @@
     <string name="title_activity_main">First</string>
     <string name="package_name">com.kowalskikgb.first</string>
     <string name="custom_url_scheme">com.kowalskikgb.first</string>
+    <string name="asset_statements" translatable="false">[{\"include\": \"https://first.rocketxsistemas.com.br/.well-known/assetlinks.json\"}]</string>
 </resources>

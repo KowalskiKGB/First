@@ -1,0 +1,15 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.kowalskikgb.first",
+      "sha256_cert_fingerprints": [
+        "68:53:78:BE:95:E1:77:88:94:92:2A:A3:9E:39:81:5B:F4:93:A4:1B:40:09:1B:C7:D9:CF:F9:85:E2:E6:93:21"
+      ]
+    }
+  }
+]
