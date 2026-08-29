@@ -1,24 +1,23 @@
-# Building the Mobile App
+# App móvel do First
 
-First includes Capacitor Android and iOS projects. This short guide covers a local Android debug
-build; after `npm run build:mobile`, use Xcode on macOS for an iOS development build.
+First mantém projetos Capacitor para Android e iOS. Este guia cobre o APK Android de depuração;
+após `npm run build:mobile`, use Xcode no macOS para um build iOS de desenvolvimento.
 
-The mobile build is standalone: no passkey login, no server sync, no telemetry. Data is
-stored on the device. First does not publish a signed APK; build artifacts are local. The exercise
-catalogue contains 1,324 pt-BR names and matching pt-BR instruction sets.
+A versão 1.3.0 usa `versionCode 7` no Android. O app standalone não usa passkeys, sincronização com
+o servidor ou telemetria: seus dados permanecem no aparelho. Por isso, o painel colaborativo do
+personal funciona na web/PWA autenticada, não no APK standalone.
 
-## Android Debug Build
+## Build Android
 
-Before building, provide the separately licensed media in these untracked local directories:
+Forneça a mídia de licença separada nestes diretórios locais ignorados pelo Git:
 
 ```text
-media/img/   # 1,324 .jpg files
-media/gif/   # 1,324 .gif files
+media/img/   # 1.324 arquivos .jpg
+media/gif/   # 1.324 arquivos .gif
 ```
 
-The filenames must match the catalogue exactly. `npm run build:mobile` validates the collection and
-copies it to `frontend/dist/media/` before Capacitor synchronizes the web bundle. The resulting APK
-therefore includes all 1,324 JPG previews and 1,324 animated GIF demonstrations for offline use.
+Os nomes devem corresponder exatamente ao catálogo. `npm run build:mobile` valida os arquivos,
+copia-os para `frontend/dist/media/` e sincroniza o bundle com o Capacitor.
 
 ```bash
 cd frontend
@@ -28,35 +27,35 @@ cd android
 ./gradlew assembleDebug
 ```
 
-Debug APK:
+APK gerado:
 
 ```text
 frontend/android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-## Install on a USB Device
+## Instalação USB
 
-From the repository root:
+Com a depuração USB habilitada:
 
 ```bash
+adb devices
 adb install -r frontend/android/app/build/outputs/apk/debug/app-debug.apk
 adb shell monkey -p com.kowalskikgb.first 1
 ```
 
-## Media
+`adb devices` deve listar um aparelho como `device`. Se aparecer `unauthorized`, desbloqueie o
+telefone e aceite a chave RSA antes de repetir a instalação.
 
-Exercise metadata and instructional text derived from `hasaneyldrm/exercises-dataset` remain
-under its MIT license. The pt-BR instructions come from the `tutods` contribution at commit
-[`93475e2982117339d2cbf88eb900ad2ceb8d97d6`](https://github.com/tutods/exercises-dataset/commit/93475e2982117339d2cbf88eb900ad2ceb8d97d6).
+## Mídia e licença
 
-Images and GIFs require separate rights from their copyright holder. They remain in the local
-ignored `media/` directory and are never added to the public Git repository. The app displays the
-visible attribution **© Gym visual**. Supplying, building, or distributing an APK containing those
-files is the builder's responsibility; neither the dataset's MIT license nor First's AGPL licenses
-the media.
+Metadados e textos do `hasaneyldrm/exercises-dataset` permanecem sob licença MIT. As instruções
+pt-BR vêm da
+[`contribuição tutods`](https://github.com/tutods/exercises-dataset/commit/93475e2982117339d2cbf88eb900ad2ceb8d97d6).
 
-## License
+Imagens e GIFs exigem direitos separados, permanecem em `media/` e nunca são adicionados ao Git. O
+APK local inclui 1.324 JPGs e 1.324 GIFs para uso offline e exibe **© Gym visual**. Fornecer,
+compilar ou distribuir esses arquivos é responsabilidade de quem realiza o build; nem a licença
+MIT do dataset nem a AGPL do First concede direitos sobre a mídia.
 
-The program code remains under the GNU AGPL v3.0. Preserve the original openGym attribution and
-make corresponding source available when distributing a build. [NOTICE.md](../NOTICE.md) records
-the inherited app-store exception; it does not grant rights to exercise media.
+O código continua sob GNU AGPL v3.0. Preserve a atribuição ao openGym e disponibilize o código
+correspondente ao distribuir o app. Veja [NOTICE.md](../NOTICE.md).

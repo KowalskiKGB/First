@@ -1,16 +1,15 @@
-# Self-hosting First
+# Autohospedagem do First
 
-First runs as three Compose services:
+First usa três serviços no Docker Compose:
 
-- `web`: nginx serving the built React app and proxying `/api`.
-- `api`: Node server for passkeys, sessions, per-user state, admin tools, and push.
-- `media`: one-shot initializer that verifies or populates the persistent exercise-media volume.
+- `web`: nginx com o React estático e proxy de `/api`;
+- `api`: Node com passkeys, sessões, estado dos perfis e domínio colaborativo;
+- `media`: inicializador que valida ou popula o volume privado de mídia.
 
-The source of this independent version is <https://github.com/KowalskiKGB/First>. The standard
-deployment builds the `web` and `api` images from the checkout and pulls the small initializer
-image; no prebuilt First container image is required.
+O código desta versão independente está em <https://github.com/KowalskiKGB/First>. O deploy padrão
+compila `web` e `api` a partir deste checkout; não depende de uma imagem First pré-publicada.
 
-## Production Deployment
+## Produção
 
 ```bash
 git clone https://github.com/KowalskiKGB/First
@@ -19,16 +18,22 @@ cp .env.example .env
 docker compose -f docker-compose.yml up -d --build
 ```
 
-The base `docker-compose.yml` exposes `web:80` only to Docker networks. Attach the HTTPS reverse
-proxy for `first.rocketxsistemas.com.br` to that network and route it to the `web` service.
+O `docker-compose.yml` expõe `web:80` somente para redes Docker. Conecte o proxy HTTPS à mesma rede
+e direcione `first.rocketxsistemas.com.br` para `web:80`.
 
-## Local Smoke Test
+As passkeys exigem hostname e origem exatos:
 
-```bash
-cp .env.example .env
+```dotenv
+RP_ID=first.rocketxsistemas.com.br
+ORIGIN=https://first.rocketxsistemas.com.br
+RP_NAME=First
 ```
 
-For a passkey-capable local preview, set these values in `.env`:
+Trocar `RP_ID` invalida passkeys registradas no hostname anterior.
+
+## Prévia local
+
+Use no `.env`:
 
 ```dotenv
 RP_ID=localhost
@@ -37,40 +42,20 @@ VAPID_SUBJECT=mailto:admin@localhost
 WEB_PORT=8080
 ```
 
-Then start the base file with the local override:
-
 ```bash
 docker compose --env-file .env -f docker-compose.yml -f docker-compose.local.yml up -d --build
 curl http://localhost:8080/api/health
 ```
 
-A healthy response contains `"ok": true` and the current user count.
-
-Stop the local stack:
+Uma resposta saudável contém `"ok": true`. Para encerrar:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.local.yml down
 ```
 
-## Public HTTPS
+## Persistência e escala
 
-Passkeys are bound to a hostname. For the production domain, keep these values aligned:
-
-```bash
-RP_ID=first.rocketxsistemas.com.br
-ORIGIN=https://first.rocketxsistemas.com.br
-RP_NAME=First
-```
-
-Do not create passkeys on a temporary hostname if you plan to use another domain later.
-Changing `RP_ID` invalidates existing passkeys for the old hostname.
-
-## Reverse Proxy
-
-Use the Docker Compose build from this GitHub repository. Point the public domain to the
-`web` service on internal port `80`; do not publish host ports from the compose file.
-
-Persist data with the named Docker volume:
+Os volumes são:
 
 ```yaml
 volumes:
@@ -78,61 +63,94 @@ volumes:
   first-media:
 ```
 
-`first-data` contains application state. `first-media` contains exercise visuals and is mounted
-read-only by the `web` container.
+`first-data` guarda `db.json`, `state-<uid>.json`, `collaboration.json`, o segredo de sessão e as
+chaves VAPID. `collaboration.json` usa escrita atômica e revisão otimista para papéis, conexões,
+grants, notificações, alunos, programas, medidas, agenda e financeiro. `first-media` contém os
+visuais e é montado como somente leitura no nginx.
 
-## First Owner Account
+Mantenha **uma única réplica de `api`** enquanto o armazenamento for JSON. Controle de revisão
+evita sobrescritas silenciosas, mas não transforma o arquivo em armazenamento compartilhado entre
+processos ou hosts.
 
-The first deployment uses:
+## Backup e atualização
+
+Antes de atualizar, faça snapshot do volume `first-data` no provedor ou no Coolify. Para uma cópia
+local consistente, pause a API e exporte o conteúdo do volume:
 
 ```bash
+docker compose stop api
+docker compose run --rm --no-deps --entrypoint tar api -C /data -czf - . > first-data-backup.tgz
+docker compose start api
+```
+
+Guarde o arquivo fora do servidor. Teste a restauração em uma instância separada antes de usá-la em
+produção; ela deve repor o volume inteiro, não somente `db.json`, pois os vínculos do personal ficam
+em `collaboration.json`.
+
+Depois do backup:
+
+```bash
+git pull --ff-only
+docker compose -f docker-compose.yml up -d --build
+curl https://first.rocketxsistemas.com.br/api/health
+```
+
+Para rollback, volte o checkout para o commit aprovado anterior — ou fixe a imagem anterior, se o
+deploy usar registry — e reconstrua o Compose. Se a entrega alterou dados persistidos, restaure
+também o snapshot compatível de `first-data`, sempre com a API parada; não reverta somente o código
+contra arquivos JSON de uma versão incompatível.
+
+## Primeira conta
+
+O bootstrap inicial usa:
+
+```dotenv
 INVITE_ONLY=0
 ADMIN_UIDS=
-FIRST_BASIC_AUTH_USERS=first-bootstrap:{SHA}<generated-hash>
+FIRST_BASIC_AUTH_USERS=first-bootstrap:{SHA}<hash-gerado>
 FIRST_BOOTSTRAP_MIDDLEWARE=,first-bootstrap-auth
 ```
 
-The two values activate the temporary high-priority whole-host Basic Auth router in Coolify.
-`FIRST_BASIC_AUTH_USERS` is also permanently required for the separately licensed `/media/` paths.
-After creating your first profile, read its `id`
-from the persisted `db.json`, set it in `ADMIN_UIDS`, and switch:
+Essas variáveis ativam a proteção Basic Auth de alta prioridade no Coolify. Depois de criar o
+primeiro perfil, obtenha seu `id` no `db.json`, configure `ADMIN_UIDS`, habilite convites e remova
+somente o middleware global:
 
-```bash
+```dotenv
 INVITE_ONLY=1
-FIRST_BASIC_AUTH_USERS=first-bootstrap:{SHA}<keep-the-existing-hash>
+ADMIN_UIDS=<id-do-proprietário>
+FIRST_BASIC_AUTH_USERS=first-bootstrap:{SHA}<mantenha-o-hash>
 FIRST_BOOTSTRAP_MIDDLEWARE=
 ```
 
-Existing accounts continue working after invite-only mode is enabled. Clearing only
-`FIRST_BOOTSTRAP_MIDDLEWARE` removes the extra prompt from the application while keeping
-`/media/` private; do not clear `FIRST_BASIC_AUTH_USERS` while server media is enabled.
+`FIRST_BASIC_AUTH_USERS` continua obrigatório para proteger `/media/`; não o remova enquanto a mídia
+do servidor estiver habilitada.
 
-## Exercise Media
+## Portal do personal
 
-Exercise metadata and instructional text derived from `hasaneyldrm/exercises-dataset` remain
-under its MIT license. First has pt-BR names and instructions for all 1,324 exercises. The pt-BR
-instruction set comes from the `tutods` contribution at commit
-[`93475e2982117339d2cbf88eb900ad2ceb8d97d6`](https://github.com/tutods/exercises-dataset/commit/93475e2982117339d2cbf88eb900ad2ceb8d97d6).
+O portal colaborativo funciona para perfis web autenticados. O usuário ativa o papel de personal e
+alterna o contexto no mesmo login. Aluno e personal podem iniciar uma solicitação por código; o
+vínculo só fica ativo após aceite e os grants são validados pelo servidor.
 
-The production Compose file enables visual demonstrations. Its one-shot `media` service downloads
-exactly 1,324 JPG files and 1,324 GIF files from upstream commit
-[`7455efae41b330c265e7cd4b78dfa848e7ce5ebd`](https://github.com/hasaneyldrm/exercises-dataset/commit/7455efae41b330c265e7cd4b78dfa848e7ce5ebd),
-checks both counts, the exact sorted path list, and every file's content before writing them to the
-private named volume `first-media`. Subsequent starts repeat those checks before reusing the volume.
-The `web` service mounts the volume read-only and serves the files from the same origin.
+Os dados compartilhados são separados do estado privado de treino. Nesta versão, publicar um
+programa não o injeta automaticamente nas rotinas locais do aluno, e a evolução ainda não combina
+todo o histórico local com medidas e peso.
 
-The dedicated high-priority Traefik router keeps `/media/` behind Basic Auth even after the
-whole-host bootstrap guard is removed. The static paths intentionally do not use the application's
-passkey session, so keep `FIRST_BASIC_AUTH_USERS` configured while server media is enabled.
+## Mídia de exercícios
 
-The media binaries are intentionally excluded from the public Git repository. Images and GIFs
-require separate rights from their copyright holder, and the application shows the visible
-attribution **© Gym visual**. Operating or redistributing the files is the deployer's
-responsibility; neither the dataset's MIT license nor First's AGPL grants media rights. See
+Metadados e textos do `hasaneyldrm/exercises-dataset` permanecem sob licença MIT. First inclui
+nomes e instruções pt-BR para os 1.324 exercícios; as instruções vêm da
+[`contribuição tutods`](https://github.com/tutods/exercises-dataset/commit/93475e2982117339d2cbf88eb900ad2ceb8d97d6).
+
+O serviço `media` baixa exatamente 1.324 JPGs e 1.324 GIFs do commit upstream
+[`7455efa`](https://github.com/hasaneyldrm/exercises-dataset/commit/7455efae41b330c265e7cd4b78dfa848e7ce5ebd),
+valida contagem, caminhos e conteúdo e grava no volume privado. Reinicializações repetem a
+verificação antes de reutilizar o volume.
+
+Os binários não fazem parte do Git. Imagens e GIFs exigem direitos separados; operar ou redistribuir
+os arquivos é responsabilidade do deployer. A interface exibe **© Gym visual**. Veja
 [NOTICE.md](../NOTICE.md).
 
-## License
+## Licença
 
-First remains under the GNU AGPL v3.0 and preserves the original openGym attribution. Operators
-of a modified network version must offer its users the corresponding source as required by AGPL
-section 13.
+First permanece sob GNU AGPL v3.0 e preserva a atribuição ao openGym. Quem operar uma versão
+modificada em rede deve oferecer o código correspondente conforme a seção 13 da AGPL.

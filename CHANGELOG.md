@@ -1,5 +1,35 @@
 # Changelog
 
+## v1.3.0 — 2026-08-29
+
+### Painel profissional do personal
+
+- Novo contexto de personal no mesmo login, com painel de prioridades, métricas da carteira,
+  cronograma do dia e visão financeira.
+- Lista pesquisável de alunos e ficha individual com perfil, programa, evolução, medidas, agenda e
+  cobranças.
+- Disponibilidade semanal, horários livres, agendamento com detecção de conflito e cancelamento de
+  aulas.
+- Controle de recebíveis por aluno, estados pendente/atrasado/pago, totais e gráficos.
+
+### Colaboração e privacidade
+
+- Papéis de aluno/personal, códigos de compartilhamento, solicitações bidirecionais, aceite ou
+  recusa explícitos, encerramento do vínculo e inbox persistida.
+- Grants por vínculo para programa, progresso, medidas e atividade; autorização verificada na API.
+- Armazenamento `collaboration.json` versionado, com escrita atômica, conflito de revisão e auditoria
+  sem valores sensíveis de saúde.
+- Programas publicados e medidas corporais autorizadas por aluno.
+
+### Interface e release
+
+- Painel responsivo validado em 1440×900, 768×1024 e 360×800, com navegação e textos pt-BR.
+- Android atualizado para 1.3.0 (`versionCode 7`). O APK standalone permanece local; o painel do
+  personal é acessado pela web/PWA autenticada.
+- O programa do personal ainda não alimenta automaticamente o motor local de treinos, e a evolução
+  ainda não agrega todo o histórico local. 5/3/1-style, novos starters, notas e calculadora de
+  anilhas continuam no roadmap.
+
 ## v1.2.5 — 2026-08-29
 
 - Catálogo completo com 1.324 nomes e instruções de exercícios em português do Brasil.

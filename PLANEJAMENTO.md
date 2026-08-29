@@ -1,4 +1,4 @@
-# Expansão do First — Implementation Plan
+# Plano de expansão do First
 
 > **Para agentes de implementação:** subskill obrigatória: use `superpowers:subagent-driven-development` (recomendado) ou `superpowers:executing-plans` para executar uma tarefa por vez. Os checkboxes são o registro de progresso.
 
@@ -26,14 +26,37 @@
 - A UI permanece sem gradientes; acessibilidade por teclado, contraste, viewport móvel e redução de movimento são critérios de aceite.
 - `LICENSE`, `NOTICE.md`, a oferta do código correspondente e as atribuições de terceiros permanecem.
 
-## Estado da primeira entrega
+## Estado até a versão 1.3.0
 
 - [x] Código importado em histórico Git independente, sem remote ou relação de fork.
 - [x] Segredos e dados de runtime removidos do versionamento.
 - [x] Interface padrão convertida para português do Brasil.
-- [x] Imagens e animações sem licença separada removidas do build e do deploy padrão.
+- [x] Catálogo com 1.324 exercícios traduzido; mídia visual mantida fora do Git e tratada como conteúdo de licença separada.
 - [x] Compose preparado para build local, volume persistente e variáveis obrigatórias.
-- [ ] Módulos abaixo ainda não implementados.
+- [x] Armazenamento colaborativo JSON versionado, com escrita atômica e conflito de revisão.
+- [x] Papéis de aluno/personal, conexões com consentimento, grants explícitos, inbox e auditoria.
+- [x] Alternância de contexto e tela de conexões do aluno.
+- [x] Painel profissional do personal com carteira de alunos, prioridades, métricas operacionais e cronograma.
+- [x] Agenda com disponibilidade, horários livres, criação e cancelamento de atendimentos.
+- [x] Financeiro com cobranças por aluno, recebimentos, pendências e gráficos.
+- [x] Cadastro e edição de aluno, programa publicado e medidas corporais autorizadas.
+
+### Entregue, parcial e futuro
+
+| Área | Situação em 1.3.0 | Limite atual |
+|---|---|---|
+| T1 — armazenamento e revisões | Entregue | O JSON exige uma única réplica da API. |
+| T2 — papéis, vínculo, grants e inbox | Entregue | Web Push continua opcional; a inbox persistida é a fonte da verdade. |
+| T3 — portais aluno/personal | Entregue | O portal colaborativo requer perfil web autenticado; o app móvel standalone continua local. |
+| T4 — programas do personal | Parcial | O personal cria e publica o programa, mas a sincronização automática com o treino local do aluno ainda não foi concluída. |
+| T5 — evolução | Parcial | Há visão operacional e endpoints autorizados; a integração ampliada com todo o histórico local de treinos permanece no roadmap. |
+| T6 — medidas corporais | Parcial | O personal registra e consulta medidas autorizadas; a evolução combinada de medidas e peso ainda será ampliada. |
+| T7 — novos starters, notas e anilhas | Planejado | Upper/lower, full-body, 5×5, notas por exercício e calculadora de anilhas ainda não foram implementados. |
+| T8 — percentage/training-max | Planejado | A programação 5/3/1-style sobre o motor de progressão ainda não foi implementada. |
+| T9 — tradução, segurança e release | Parcial | pt-BR, hardening e release web estão cobertos; os E2E completos de integração local ainda são pendentes. |
+
+Os checklists abaixo preservam o plano técnico original. A tabela acima é o registro factual da
+entrega; itens marcados como parciais ou planejados não devem ser interpretados como concluídos.
 
 ## Modelo de dados alvo
 
@@ -389,4 +412,3 @@ export function prescribeTrainingMaxSession({ week, trainingMax, increment, plat
 ## Critério de conclusão do roadmap
 
 O roadmap termina somente quando todos os fluxos E2E passam, código novo mantém 80% de cobertura, nenhum acesso cruzado indevido é possível, o aluno sem personal mantém a experiência atual e a versão publicada oferece seu código correspondente sob AGPL.
-
