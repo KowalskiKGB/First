@@ -210,6 +210,42 @@ test('provider HTTP errors are sanitized and never include the complete key', as
   }), error => !error.message.includes(completeKey) && /401/.test(error.message));
 });
 
+test('HTTP 200 structured failures carry normalized usage without retaining raw output', async () => {
+  const cases = [
+    {
+      provider: 'openai', model: 'gpt-usage', key: 'key-a',
+      body: { status: 'incomplete', output_text: 'SENTINEL_RAW_OPENAI', usage: { input_tokens: 11, output_tokens: 2, total_tokens: 13 } },
+      usage: { provider: 'openai', model: 'gpt-usage', inputTokens: 11, outputTokens: 2, totalTokens: 13 }
+    },
+    {
+      provider: 'gemini', model: 'gemini-usage', key: 'key-b',
+      body: { candidates: [{ finishReason: 'SAFETY', content: { parts: [{ text: 'SENTINEL_RAW_GEMINI' }] } }], usageMetadata: { promptTokenCount: 7, candidatesTokenCount: 1, totalTokenCount: 8 } },
+      usage: { provider: 'gemini', model: 'gemini-usage', inputTokens: 7, outputTokens: 1, totalTokens: 8 }
+    },
+    {
+      provider: 'anthropic', model: 'claude-usage', key: 'key-c',
+      body: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'SENTINEL_RAW_ANTHROPIC not-json' }], usage: { input_tokens: 5, output_tokens: 3 } },
+      usage: { provider: 'anthropic', model: 'claude-usage', inputTokens: 5, outputTokens: 3, totalTokens: 8 }
+    }
+  ];
+
+  for (const item of cases) {
+    const slot = upsertProvider([], {
+      provider: item.provider, selectedModel: item.model, apiKey: item.key
+    }, masterKey, 'now').records[0];
+    await assert.rejects(() => runStructuredOutput(slot, {
+      masterKey,
+      schema,
+      prompt: 'private',
+      fetchImpl: async () => new Response(JSON.stringify(item.body), { status: 200 })
+    }), error => {
+      assert.deepEqual(error.usage, item.usage);
+      assert.doesNotMatch(JSON.stringify(error), /SENTINEL_RAW/);
+      return true;
+    });
+  }
+});
+
 test('malformed provider output never leaks response content through parse or test DTO errors', async () => {
   const sentinel = 'SENTINEL_PROVIDER_SECRET_PROMPT_RESPONSE';
   const slot = upsertProvider([], {

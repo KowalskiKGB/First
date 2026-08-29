@@ -64,3 +64,10 @@ test('generation failure wiring retains provider usage captured before normaliza
 test('startup fails interrupted running jobs and resumes only work that remained queued', () => {
   assert.match(source, /aiJobs\.recoverInterrupted\(\);\s*aiJobs\.drain\(\)/);
 });
+
+test('AI status uses the same canonical collaboration context as generation', () => {
+  const body = routeBody('GET /api/ai/status');
+  assert.match(body, /buildAiGenerationStatus/);
+  assert.match(body, /collaborationStore\.read\(\)/);
+  assert.doesNotMatch(body, /readState|missingAiFields/);
+});

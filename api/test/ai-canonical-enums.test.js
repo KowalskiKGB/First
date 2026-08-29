@@ -24,3 +24,20 @@ test('AIPlan and AIJob migrations close legacy source/status values into canonic
   assert.equal(migrated.aiPlans[0].status, 'applied');
   assert.equal(migrated.aiJobs[0].status, 'applied');
 });
+
+test('AI retention caps only generated history and preserves every Personal or legacy manual plan', () => {
+  const plan = (id, version, source) => ({
+    id, studentId: 'student-a', version, provider: 'openai', model: 'test', contextHash: `hash-${id}`,
+    justification: id, routines: [], schedule: [], source, status: 'superseded', createdAt: NOW, updatedAt: NOW
+  });
+  const migrated = migrateCollaboration({
+    aiPlans: [
+      ...Array.from({ length: 12 }, (_, index) => plan(`ai-${index + 1}`, index + 1, 'ai')),
+      plan('personal-1', 1, 'personal'),
+      plan('manual-legacy', 2, 'manual')
+    ]
+  });
+
+  assert.equal(migrated.aiPlans.filter(item => item.source === 'ai').length, 10);
+  assert.deepEqual(migrated.aiPlans.filter(item => item.source === 'personal').map(item => item.id), ['personal-1', 'manual-legacy']);
+});

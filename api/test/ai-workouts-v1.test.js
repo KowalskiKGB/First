@@ -227,11 +227,19 @@ test('validator rejects duplicates, forbidden ids/equipment, invalid schedule/ra
     [{ ...validResponse(), schedule: [{ day: 2, routineRef: 'model-routine-a' }] }, /dia indisponível/i],
     [{ ...validResponse(), routines: [{ ...validResponse().routines[0], exercises: [{ ...validResponse().routines[0].exercises[0], repMin: 20, repMax: 8 }] }] }, /faixa/i],
     [{ ...validResponse(), routines: [{ ...validResponse().routines[0], exercises: [{ ...validResponse().routines[0].exercises[0], weight: 40 }] }] }, /campo não permitido|carga absoluta/i],
+    [{ ...validResponse(), routines: [{ ...validResponse().routines[0], exercises: [{ ...validResponse().routines[0].exercises[0], progression: 'Aumente para 40 kg na próxima semana.' }] }] }, /carga absoluta/i],
+    [{ ...validResponse(), routines: [{ ...validResponse().routines[0], exercises: [{ ...validResponse().routines[0].exercises[0], note: 'Use halteres de 25 lbs.' }] }] }, /carga absoluta/i],
     [{ ...validResponse(), schedule: [] }, /agenda/i],
     [{ refusal: 'Não posso ajudar' }, /recusada/i],
     [{ ...validResponse(), _completion: { truncated: true } }, /truncada/i]
   ];
   for (const [value, expected] of invalidCases) assert.throws(() => validateAiWorkoutPlan(value, options), expected);
+
+  const relativeEffort = validResponse();
+  Object.assign(relativeEffort.routines[0].exercises[0], {
+    progression: 'Progrida mantendo RPE 8 e 2 RIR.', note: 'Finalize entre 8 e 12 reps.'
+  });
+  assert.doesNotThrow(() => validateAiWorkoutPlan(relativeEffort, options));
 });
 
 test('under14 conservative ranges reject adult-sized prescriptions', () => {
@@ -243,6 +251,21 @@ test('under14 conservative ranges reject adult-sized prescriptions', () => {
     studentId: profile.studentId, version: 1, contextHash: 'c'.repeat(64), profile, gym: GYM,
     candidates, provider: 'anthropic', model: 'test', now: NOW
   }), /faixa etária/i);
+});
+
+test('under14 cardio respects the conservative time ceiling', () => {
+  const profile = { ...PROFILE, ageBand: 'under14', guardianConsent: true };
+  const candidates = shortlistExercises({ profile, gym: GYM, recentExerciseIds: [], catalogue: CATALOGUE });
+  const options = {
+    studentId: profile.studentId, version: 1, contextHash: 'e'.repeat(64), profile, gym: GYM,
+    candidates, provider: 'anthropic', model: 'test', now: NOW
+  };
+  const allowed = validResponse();
+  Object.assign(allowed.routines[0].exercises[0], { mode: 'cardio', repMin: null, repMax: null, seconds: 120 });
+  assert.doesNotThrow(() => validateAiWorkoutPlan(allowed, options));
+  const excessive = structuredClone(allowed);
+  excessive.routines[0].exercises[0].seconds = 121;
+  assert.throws(() => validateAiWorkoutPlan(excessive, options), /tempo/i);
 });
 
 test('validator accepts closed time/cardio modes and rejects rest, progression and note violations', () => {

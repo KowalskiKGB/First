@@ -4,6 +4,7 @@ import test from 'node:test';
 import { INITIAL_COLLABORATION, migrateCollaboration } from '../domain/schema.js';
 import {
   buildAiContext,
+  buildAiGenerationStatus,
   buildWorkspace,
   notifyAiPlanApplied,
   saveGymProfile,
@@ -408,6 +409,41 @@ test('student AI context is isolated, safe, complete-aware and exposes current m
     studentId: 'student-a'
   });
   assert.equal(under14.completeness.conservative, true);
+});
+
+test('AI generation status derives eligibility from canonical collaboration context and active provider', () => {
+  const empty = buildAiGenerationStatus({
+    collaboration: migrateCollaboration({}),
+    studentId: 'student-a',
+    provider: { provider: 'openai', selectedModel: 'gpt-test' },
+    configured: true
+  });
+  assert.equal(empty.configured, true);
+  assert.equal(empty.eligible, false);
+  assert.deepEqual(empty.missing, ['profile', 'gym', 'weight']);
+
+  const collaboration = migrateCollaboration({
+    trainingProfiles: [{ studentId: 'student-a', ...profileData, createdAt: NOW, updatedAt: NOW }],
+    gymProfiles: [{ studentId: 'student-a', ...gymData, createdAt: NOW, updatedAt: NOW }],
+    measurements: [{
+      id: 'weight', clientId: null, studentUserId: 'student-a', kind: 'weight', side: null,
+      value: 70, unit: 'kg', observedAt: '2026-08-29', recordedBy: 'student-a', createdAt: NOW
+    }]
+  });
+  const ready = buildAiGenerationStatus({
+    collaboration,
+    studentId: 'student-a',
+    provider: { provider: 'openai', selectedModel: 'gpt-test' },
+    configured: true
+  });
+  assert.equal(ready.eligible, true);
+  assert.deepEqual(ready.missing, []);
+  assert.deepEqual(ready.blockers, []);
+  assert.deepEqual(ready.provider, { provider: 'openai', selectedModel: 'gpt-test' });
+
+  const disabled = buildAiGenerationStatus({ collaboration, studentId: 'student-a', provider: null, configured: false });
+  assert.equal(disabled.configured, false);
+  assert.equal(disabled.eligible, false);
 });
 
 test('AI plan notifications target only active trainers with aiPlanRead', () => {

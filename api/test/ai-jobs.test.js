@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { createAiJobService, createAiJobRoutes } from '../ai-jobs.js';
+import { runStructuredOutput, upsertProvider } from '../ai-providers.js';
 import { INITIAL_COLLABORATION, migrateCollaboration } from '../domain/schema.js';
 import { createJsonStore } from '../lib/json-store.js';
 
@@ -73,6 +74,50 @@ test('enqueue is idempotent and permits only one active job per student', () => 
   assert.equal(first.stage, 'organizing');
 });
 
+test('enqueue revalidates a competing active job inside a revision-conflict retry', async () => {
+  const fx = fixture();
+  const competing = {
+    id: 'competing-job', idempotencyKey: 'competing-key', studentId: 'student-a', status: 'queued', stage: 'organizing',
+    publicError: null, contextHash: '', planVersion: null, createdAt: NOW, updatedAt: NOW
+  };
+  let injected = false;
+  const conflictStore = {
+    read: () => fx.store.read(),
+    update(expectedRev, reducer) {
+      if (!injected) {
+        injected = true;
+        const current = fx.store.read();
+        fx.store.update(current.rev, state => ({ ...state, aiJobs: [...state.aiJobs, competing] }));
+      }
+      return fx.store.update(expectedRev, reducer);
+    }
+  };
+  let calls = 0;
+  const service = createAiJobService({
+    store: conflictStore,
+    readState: () => ({ workouts: [] }),
+    getActiveProvider: () => ({ provider: 'openai', selectedModel: 'gpt-test' }),
+    runStructured: async () => {
+      calls += 1;
+      return { value: response(), usage: { provider: 'openai', model: 'gpt-test', inputTokens: 1, outputTokens: 1, totalTokens: 2 } };
+    },
+    appendUsage: () => {},
+    now: () => NOW,
+    randomId: () => 'new-job',
+    defer: () => {}
+  });
+
+  const selected = service.enqueue({ studentId: 'student-a', idempotencyKey: 'other-key' });
+  await service.drain();
+
+  const state = fx.store.read();
+  assert.equal(selected.id, competing.id);
+  assert.equal(state.aiJobs.length, 1);
+  assert.equal(state.aiJobs.filter(job => ['queued', 'running'].includes(job.status)).length, 0);
+  assert.equal(state.aiPlans.length, 1);
+  assert.equal(calls, 1);
+});
+
 test('enqueue preserves the six-per-hour generation limit after idempotency checks', () => {
   const aiJobs = Array.from({ length: 6 }, (_, index) => ({
     id: `recent-${index}`, idempotencyKey: `key-${index}`, studentId: 'student-a', status: 'failed', stage: 'generating',
@@ -132,6 +177,42 @@ test('provider failure is recorded once without retry/fallback and preserves the
   assert.deepEqual(state.aiPlans, [current]);
   assert.equal(fx.usage.length, 1);
   assert.equal(fx.usage[0].details.status, 'failed');
+});
+
+test('real structured adapter failures retain billed usage for the failed job', async () => {
+  const masterKey = '44'.repeat(32);
+  const slot = upsertProvider([], {
+    provider: 'openai', selectedModel: 'gpt-usage', apiKey: 'complete-test-key'
+  }, masterKey, NOW).records[0];
+  let calls = 0;
+  const fx = fixture({}, {
+    getActiveProvider: () => slot,
+    runStructured: (provider, input) => runStructuredOutput(provider, {
+      ...input,
+      masterKey,
+      fetchImpl: async () => {
+        calls += 1;
+        return new Response(JSON.stringify({
+          status: 'completed',
+          output_text: 'SENTINEL_RAW_PROVIDER_RESPONSE not-json',
+          usage: { input_tokens: 17, output_tokens: 4, total_tokens: 21 }
+        }), { status: 200 });
+      }
+    })
+  });
+
+  const job = fx.service.enqueue({ studentId: 'student-a', idempotencyKey: 'real-adapter-failure' });
+  await fx.service.drain();
+
+  assert.equal(calls, 1);
+  assert.equal(fx.store.read().aiJobs.find(item => item.id === job.id).status, 'failed');
+  assert.equal(fx.usage.length, 1);
+  assert.deepEqual(fx.usage[0].entry, {
+    provider: 'openai', model: 'gpt-usage', inputTokens: 17, outputTokens: 4, totalTokens: 21
+  });
+  assert.equal(fx.usage[0].details.studentId, 'student-a');
+  assert.ok(Number.isInteger(fx.usage[0].details.latencyMs));
+  assert.equal(JSON.stringify(fx.store.read()).includes('SENTINEL_RAW_PROVIDER_RESPONSE'), false);
 });
 
 test('startup recovery fails stale running jobs without repeating provider calls', () => {
