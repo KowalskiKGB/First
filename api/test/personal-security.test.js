@@ -20,7 +20,7 @@ const profile = (userId, roles = ['student'], extra = {}) => ({
   userId,
   roles,
   name: userId,
-  shareCode: `${userId}0000000000000000000000000000`.slice(0, 32).toUpperCase(),
+  shareCode: (userId.startsWith('trainer') ? 'A' : userId.startsWith('student') ? 'B' : 'C').repeat(32),
   shareCodeExpiresAt: FUTURE,
   timezone: 'America/Fortaleza',
   createdAt: NOW,
@@ -342,7 +342,7 @@ test('share codes carry 128 bits and expired codes renew without exposing lookup
   assert.equal(renewed.profile.shareCode, '0123456789ABCDEF0123456789ABCDEF');
 });
 
-test('invalid and expired share codes return the same non-enumerating response', async t => {
+test('invalid, expired and legacy share codes return the same non-enumerating response', async t => {
   const base = collaboration({
     profiles: [
       profile('trainer-a', ['student', 'trainer']),
@@ -351,6 +351,12 @@ test('invalid and expired share codes return the same non-enumerating response',
   });
   const missingFixture = routeFixture(t, base);
   const expiredFixture = routeFixture(t, base);
+  const legacyFixture = routeFixture(t, collaboration({
+    profiles: [
+      profile('trainer-a', ['student', 'trainer']),
+      profile('student-a', ['student'], { shareCode: 'ABCD1234', shareCodeExpiresAt: FUTURE })
+    ]
+  }));
 
   const missing = await invoke(missingFixture, 'POST /api/connections/request', {
     user: { id: 'trainer-a' }, body: { rev: 0, shareCode: 'MISSING' }
@@ -358,7 +364,11 @@ test('invalid and expired share codes return the same non-enumerating response',
   const expired = await invoke(expiredFixture, 'POST /api/connections/request', {
     user: { id: 'trainer-a' }, body: { rev: 0, shareCode: 'EXPIRED' }
   });
+  const legacy = await invoke(legacyFixture, 'POST /api/connections/request', {
+    user: { id: 'trainer-a' }, body: { rev: 0, shareCode: 'ABCD1234' }
+  });
 
   assert.deepEqual({ status: missing.status, body: missing.body }, { status: 400, body: { error: 'invalid share code' } });
   assert.deepEqual({ status: expired.status, body: expired.body }, { status: 400, body: { error: 'invalid share code' } });
+  assert.deepEqual({ status: legacy.status, body: legacy.body }, { status: 400, body: { error: 'invalid share code' } });
 });
