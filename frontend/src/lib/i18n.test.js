@@ -30,6 +30,33 @@ describe('Brazilian Portuguese defaults', () => {
     expect(pt['Log body weight']).toBe('Registrar peso corporal')
   })
 
+  it('translates the complete AI product workspace without falling back to English', () => {
+    const aiWorkspaceKeys = [
+      'Data and measurements',
+      'Goal and availability',
+      'Gym and preferences',
+      'Review and consent',
+      'Generate and apply',
+      'Your workout can be updated',
+      'Copy and customize',
+      'Undo generation',
+      'Weekly intelligence',
+      'My workout',
+      'Prefer rest for this day',
+      'Dev credential',
+      'AI providers',
+      'Test structured output',
+      'The saved key is never displayed again.',
+      'Permission required',
+      'Training profile and priorities',
+      'Gym and equipment',
+      'Applied AI plan',
+    ]
+
+    expect(aiWorkspaceKeys.every(key => typeof pt[key] === 'string' && pt[key].trim() && pt[key] !== key)).toBe(true)
+    expect(aiWorkspaceKeys.map(key => pt[key]).join(' ')).not.toMatch(/Ã|Â|�/)
+  })
+
   it('covers every equipment label used by the catalogue', () => {
     const equipment = [...new Set(EXDB.map(ex => ex.eq).filter(Boolean))]
 
