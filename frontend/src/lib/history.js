@@ -161,12 +161,9 @@ export function bestWeightFor(S, exId) {
   return best
 }
 export function effectiveRoutineId(S, iso) {
-  const ov = S.dayPlan?.[iso]
-  if (ov === 'rest') return null
   return scheduledRoutineOptions(S, iso)[0]?.routineId || null
 }
 export function effectiveRoutine(S, iso) {
-  if (S.dayPlan?.[iso] === 'rest') return null
   return scheduledRoutineOptions(S, iso)[0]?.routine || null
 }
 export function buildSets(S, cfg) {
