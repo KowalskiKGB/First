@@ -69,6 +69,7 @@ test('the deployment template is complete and builds only this repository', () =
   assert.match(androidManifest, /android:allowBackup="false"/)
   assert.match(androidManifest, /android:name="asset_statements"/)
   assert.match(androidManifest, /android:autoVerify="true"/)
+  assert.match(androidManifest, /SCHEDULE_EXACT_ALARM[\s\S]*tools:ignore="ProtectedPermissions"/)
   assert.match(androidStrings, /https:\/\/first\.rocketxsistemas\.com\.br\/\.well-known\/assetlinks\.json/)
 
   const assetLinks = JSON.parse(read('frontend/public/.well-known/assetlinks.json'))
