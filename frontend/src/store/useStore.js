@@ -13,6 +13,10 @@ export const DEF = {
   unit: 'kg', restSec: 90, sound: true, keepAwake: true, lang: DEFAULT_LANG,
   theme: 'dark', accent: 'lime', body: 'male', targetW: null,
   bodyweight: [], routines: [], week: {}, dayPlan: {},
+  aiProfile: {
+    heightCm: '', goal: '', experience: 'intermediario', sessionsPerWeek: 4, minutesPerSession: 60,
+    limitations: '', preferences: '', equipment: [], favoriteEquipment: []
+  },
   exWeights: {}, workouts: [], active: null, customEx: [], gifSize: 'full',
   // effort: which per-set effort scale is logged — 'none' | 'rir' | 'rpe'. null, not 'none', so
   // that a profile which never chose (loaded state is overlaid on DEF, on every path: local,

@@ -21,6 +21,7 @@ frontend/android/app/build/
 
 # Local tooling
 graphify-out/
+CREDENCIAIS_TESTE.md
 .codex/
 tmp-playwright/
 tmp-device/

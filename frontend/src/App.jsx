@@ -25,6 +25,7 @@ import History from './views/History.jsx'
 import Library from './views/Library.jsx'
 import Settings from './views/Settings.jsx'
 import Admin from './views/Admin.jsx'
+import DevPanel from './views/DevPanel.jsx'
 import PersonalGuard from './views/personal/PersonalGuard.jsx'
 import PersonalHome from './views/personal/PersonalHome.jsx'
 import Students from './views/personal/Students.jsx'
@@ -89,6 +90,7 @@ function Shell() {
               <Route path="/library" element={<Library />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/admin" element={user?.admin ? <Admin /> : <Navigate to="/home" replace />} />
+              <Route path="/dev" element={user?.admin ? <DevPanel /> : <Navigate to="/home" replace />} />
               <Route path="/personal" element={<PersonalGuard><PersonalHome /></PersonalGuard>} />
               <Route path="/personal/alunos" element={<PersonalGuard><Students /></PersonalGuard>} />
               <Route path="/personal/alunos/:id" element={<PersonalGuard><StudentDetail /></PersonalGuard>} />

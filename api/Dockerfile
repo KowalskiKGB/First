@@ -4,7 +4,7 @@ COPY package.json package-lock.json ./
 RUN apk add --no-cache su-exec \
   && npm ci --omit=dev \
   && npm cache clean --force
-COPY server.js personal.js ./
+COPY server.js personal.js ai.js ./
 COPY domain ./domain
 COPY lib ./lib
 RUN mkdir -p /data && chown node:node /data
