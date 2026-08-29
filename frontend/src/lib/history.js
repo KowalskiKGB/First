@@ -128,7 +128,8 @@ export function exLine(cfg, unit) {
   if (mode === 'time') return `${n} × ${fmtSec(cfg.sec || 45)}${load}`
   // This is the line with room for it, so the split is spelled out: "3 × 16 · 8/side".
   const split = isPerSide(cfg) ? ' · ' + t('{0}/side', fmtNum(sideReps(cfg.reps))) : ''
-  return `${n} × ${cfg.reps}${load}${split}`
+  const reps = cfg.prescribedRepsLabel || (cfg.repsMin > 0 && cfg.repsMax > 0 ? `${cfg.repsMin}-${cfg.repsMax}` : cfg.reps)
+  return `${n} × ${reps}${load}${split}`
 }
 
 // Drop superset ids that no longer have an adjacent partner (after unlink/reorder/remove).

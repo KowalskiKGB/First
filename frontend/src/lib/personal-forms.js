@@ -88,7 +88,28 @@ export function normalizeProgram(program = {}) {
 }
 
 const personalRoutineId = (programId, routineId) => `personal-${programId}-${routineId}`
-const prescribedReps = reps => Number(String(reps).split('-')[0]) || 10
+
+function prescribedExercise(exercise) {
+  const range = /^(\d+)-(\d+)$/.exec(String(exercise.reps))
+  if (!range) return { ...exercise, reps: Number(exercise.reps) || 10, weight: 0 }
+  const repsMin = Number(range[1])
+  const repsMax = Number(range[2])
+  return {
+    ...exercise,
+    reps: repsMax,
+    repsMin,
+    repsMax,
+    prog: 'double',
+    prescribedRepsLabel: `${repsMin}-${repsMax}`,
+    weight: 0,
+  }
+}
+
+export function copyPersonalRoutine(routine, id) {
+  if (!routine?._personalProgramId || !id) return null
+  const local = Object.fromEntries(Object.entries(routine).filter(([key]) => !key.startsWith('_personal')))
+  return { ...local, id, ex: (routine.ex || []).map(exercise => ({ ...exercise })) }
+}
 
 export function mergePublishedPrograms(state = {}, programs = []) {
   const currentRoutines = Array.isArray(state.routines) ? state.routines : []
@@ -105,8 +126,9 @@ export function mergePublishedPrograms(state = {}, programs = []) {
       id: ids.get(routine.id),
       emoji: 'clipboard',
       _personalProgramId: program.id,
+      _personalProgramName: program.name,
       _personalVersion: Number(source.version) || 1,
-      ex: routine.ex.map(exercise => ({ ...exercise, reps: prescribedReps(exercise.reps), weight: 0 })),
+      ex: routine.ex.map(prescribedExercise),
     })))
     Object.entries(program.week).forEach(([day, routineId]) => { week[day] = ids.get(routineId) })
   }

@@ -53,6 +53,12 @@ function Elapsed({ start }) {
   return <span>{t}</span>
 }
 
+export function PrescribedNote({ target }) {
+  const note = String(target?.note || '').trim()
+  if (!note) return null
+  return <div className="progline"><Icon name="clipboard" /><span><strong>Orientação do Personal:</strong> {note}</span></div>
+}
+
 /* ---------- one exercise block (reps: weight×reps · time: a held duration · cardio: duration+speed) ---------- */
 function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemoveSet, onStartTimed }) {
   const S = useStore(s => s.S)
@@ -124,6 +130,7 @@ function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemov
       {best > 0 && <span className="tag nocap">{t('Best:')} {fmtNum(best)} {S.unit}</span>}
     </div>
     {last && <div className="small dim" style={{ marginBottom: 4 }}>{t('Last time')} ({fmtDate(last.d)}): {last.sets.map(s => setLabel(entry.id, s, last.target)).join(', ')}</div>}
+    <PrescribedNote target={entry.target} />
     {plan && plan.why && plan.kind !== 'off' && <div className={'progline' + (plan.kind === 'deload' ? ' warn' : '')}>
       <Icon name={plan.kind === 'up' ? 'arrowUp' : plan.kind === 'deload' ? 'arrowDown' : 'lightbulb'} />
       <span>{t(...plan.why)}</span>
