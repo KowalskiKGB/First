@@ -181,10 +181,10 @@ test('only the counterpart to requestedBy can accept or refuse a connection', ()
   assert.equal(accepted.connection.status, 'active');
 });
 
-test('student request captures only explicit boolean grants and trainer cannot widen them', async t => {
+test('dual-role actor can request as student with explicit grants that trainer cannot widen', async t => {
   const fixture = routeFixture(t, collaboration({
     profiles: [
-      profile('student-a'),
+      profile('student-a', ['student', 'trainer']),
       profile('trainer-a', ['student', 'trainer'], { shareCode: 'A'.repeat(32) })
     ]
   }));
@@ -193,11 +193,14 @@ test('student request captures only explicit boolean grants and trainer cannot w
     user: { id: 'student-a' },
     body: {
       rev: 0,
+      actorRole: 'student',
       shareCode: 'A'.repeat(32),
       grants: { plansWrite: false, workoutsRead: true, measurementsWrite: 'yes', unknown: true }
     }
   });
   assert.equal(requested.status, 200);
+  assert.equal(requested.body.connections[0].studentId, 'student-a');
+  assert.equal(requested.body.connections[0].trainerId, 'trainer-a');
   assert.deepEqual(requested.body.connections[0].grants, {
     plansWrite: false,
     workoutsRead: true,
@@ -226,7 +229,7 @@ test('student request captures only explicit boolean grants and trainer cannot w
   assert.equal(fixture.read().connections[0].status, 'ended');
 });
 
-test('trainer request receives only grants explicitly consented by the student on accept', async t => {
+test('dual-role actor can request as trainer and receives only student consent on accept', async t => {
   const fixture = routeFixture(t, collaboration({
     profiles: [
       profile('student-a', ['student'], { shareCode: 'B'.repeat(32) }),
@@ -238,11 +241,14 @@ test('trainer request receives only grants explicitly consented by the student o
     user: { id: 'trainer-a' },
     body: {
       rev: 0,
+      actorRole: 'trainer',
       shareCode: 'B'.repeat(32),
       grants: { plansWrite: true, workoutsRead: true, measurementsWrite: true }
     }
   });
   assert.equal(requested.status, 200);
+  assert.equal(requested.body.connections[0].studentId, 'student-a');
+  assert.equal(requested.body.connections[0].trainerId, 'trainer-a');
   assert.deepEqual(requested.body.connections[0].grants, {
     plansWrite: false,
     workoutsRead: false,
@@ -268,6 +274,52 @@ test('trainer request receives only grants explicitly consented by the student o
     measurementsWrite: false,
     liveActivityRead: false
   });
+});
+
+test('connection request rejects ambiguous, unowned, invalid and unmatched actor roles', async t => {
+  const cases = [
+    {
+      name: 'dual-role actor omits actorRole',
+      actor: profile('actor-a', ['student', 'trainer']),
+      target: profile('target-a', ['student'], { shareCode: 'D'.repeat(32) }),
+      body: { shareCode: 'D'.repeat(32) },
+      error: 'actor role required'
+    },
+    {
+      name: 'actorRole is not a collaboration role',
+      actor: profile('actor-b', ['student', 'trainer']),
+      target: profile('target-b', ['student'], { shareCode: 'E'.repeat(32) }),
+      body: { actorRole: 'admin', shareCode: 'E'.repeat(32) },
+      error: 'actor role required'
+    },
+    {
+      name: 'actor does not own requested role',
+      actor: profile('actor-c', ['student']),
+      target: profile('target-c', ['student', 'trainer'], { shareCode: 'F'.repeat(32) }),
+      body: { actorRole: 'trainer', shareCode: 'F'.repeat(32) },
+      error: 'actor role required'
+    },
+    {
+      name: 'target does not own counterpart role',
+      actor: profile('actor-d', ['student', 'trainer']),
+      target: profile('target-d', ['trainer'], { shareCode: '1'.repeat(32) }),
+      body: { actorRole: 'trainer', shareCode: '1'.repeat(32) },
+      error: 'invalid share code'
+    }
+  ];
+
+  for (const item of cases) {
+    await t.test(item.name, async t2 => {
+      const fixture = routeFixture(t2, collaboration({ profiles: [item.actor, item.target] }));
+      const res = await invoke(fixture, 'POST /api/connections/request', {
+        user: { id: item.actor.userId },
+        body: { rev: 0, ...item.body }
+      });
+
+      assert.deepEqual({ status: res.status, body: res.body }, { status: 400, body: { error: item.error } });
+      assert.equal(fixture.read().connections.length, 0);
+    });
+  }
 });
 
 test('accept revalidates that the student has no other active trainer', async t => {
@@ -489,13 +541,13 @@ test('invalid, expired and legacy share codes return the same non-enumerating re
   }));
 
   const missing = await invoke(missingFixture, 'POST /api/connections/request', {
-    user: { id: 'trainer-a' }, body: { rev: 0, shareCode: 'MISSING' }
+    user: { id: 'trainer-a' }, body: { rev: 0, actorRole: 'trainer', shareCode: 'MISSING' }
   });
   const expired = await invoke(expiredFixture, 'POST /api/connections/request', {
-    user: { id: 'trainer-a' }, body: { rev: 0, shareCode: 'EXPIRED' }
+    user: { id: 'trainer-a' }, body: { rev: 0, actorRole: 'trainer', shareCode: 'EXPIRED' }
   });
   const legacy = await invoke(legacyFixture, 'POST /api/connections/request', {
-    user: { id: 'trainer-a' }, body: { rev: 0, shareCode: 'ABCD1234' }
+    user: { id: 'trainer-a' }, body: { rev: 0, actorRole: 'trainer', shareCode: 'ABCD1234' }
   });
 
   assert.deepEqual({ status: missing.status, body: missing.body }, { status: 400, body: { error: 'invalid share code' } });

@@ -32,6 +32,7 @@ test('connection grants allow plans and deny revoked cross access immediately', 
   const requested = requestConnection({
     collaboration,
     actorId: 'trainer1',
+    actorRole: 'trainer',
     shareCode: collaboration.profiles[0].shareCode,
     now,
     randomId
