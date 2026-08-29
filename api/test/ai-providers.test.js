@@ -209,6 +209,24 @@ test('provider HTTP errors are sanitized and never include the complete key', as
   }), error => !error.message.includes(completeKey) && /401/.test(error.message));
 });
 
+test('malformed provider output never leaks response content through parse or test DTO errors', async () => {
+  const sentinel = 'SENTINEL_PROVIDER_SECRET_PROMPT_RESPONSE';
+  const slot = upsertProvider([], {
+    provider: 'openai', selectedModel: 'gpt-test', apiKey: 'key-a'
+  }, masterKey, 'now').records[0];
+  const fetchImpl = async () => new Response(JSON.stringify({ output_text: `${sentinel} not-json` }), { status: 200 });
+
+  await assert.rejects(
+    () => runStructuredOutput(slot, { masterKey, schema, prompt: 'private', fetchImpl }),
+    error => /invalid structured output/i.test(error.message) && !error.message.includes(sentinel)
+  );
+
+  const tested = await testProvider([slot], 'openai', { masterKey, fetchImpl, now: () => 'later' });
+  assert.equal(tested.provider.testStatus, 'failed');
+  assert.doesNotMatch(tested.error, new RegExp(sentinel));
+  assert.match(tested.error, /provider test failed/i);
+});
+
 test('model listing follows Gemini and Anthropic pagination without keys in URLs', async () => {
   const calls = [];
   const fetchImpl = async (url, options) => {

@@ -37,3 +37,11 @@ test('server source contains neither persisted initial passwords nor provider ke
   assert.doesNotMatch(source, /initialPassword|dev-panel\.json/);
   assert.doesNotMatch(source, /[?&]key=/);
 });
+
+test('activation fails closed when the AI master key is unavailable', () => {
+  assert.match(routeBody('PUT /api/dev/ai/active'), /aiConfigurationEnabled\(\)/);
+});
+
+test('generation never forwards raw provider error messages to DTOs or 5xx logs', () => {
+  assert.doesNotMatch(routeBody('POST /api/ai/workout/generate'), /requestError\(error\.message/);
+});
