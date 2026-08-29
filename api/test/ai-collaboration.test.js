@@ -107,6 +107,67 @@ test('collaboration migration preserves legacy data, is idempotent and enforces 
   assert.deepEqual(migrateCollaboration(migrated), migrated);
 });
 
+test('collaboration migration normalizes or ignores malformed canonical records within bounds', () => {
+  const migrated = migrateCollaboration({
+    rev: -1,
+    profiles: 'invalid',
+    trainingProfiles: [
+      null,
+      { studentId: '', ageBand: 'adult' },
+      { studentId: 'invalid-band', ageBand: 'senior' },
+      {
+        studentId: 'student-a', ageBand: 'adult', heightCm: 'invalid', goal: 42,
+        experience: 'unknown', availableDays: [6, 6, -1, 9, 1], minutesPerSession: 500,
+        focusAreas: ['back', '', 9], favoriteExerciseIds: 'invalid', avoidedExerciseIds: [],
+        limitations: 8, acuteRisk: 'yes', medicalRestriction: true, consent: 1,
+        guardianConsent: 'yes', createdAt: 9, updatedAt: NOW
+      }
+    ],
+    gymProfiles: [{
+      studentId: 'student-a', name: 'Gym', genericEquipment: ['barbell', 'barbell'],
+      specificMachines: [null, { name: '' }, { name: 'Hack', category: 8, exerciseIds: ['hack', '', 9] }]
+    }],
+    aiPlans: [
+      null,
+      { id: 'invalid', studentId: 'student-a', version: 0 },
+      {
+        id: 'plan-array', studentId: 'student-a', version: 1, provider: 'openai', model: 'model',
+        routines: [null, { id: 'r1', name: 'R1', ex: [null, { id: 'exercise', sets: 99, reps: 12, rest: -1, note: 4 }] }],
+        schedule: [{ day: -1, routineId: 'r1' }, { day: 1, routineId: 'r1' }], status: 'applied'
+      },
+      {
+        id: 'plan-object', studentId: 'student-a', version: 2, provider: 'openai', model: 'model',
+        routines: [], schedule: { 1: 'r1', 8: 'invalid', bad: 9 }, status: 'applied'
+      }
+    ],
+    aiJobs: [
+      null,
+      { id: 'bad-job', studentId: 'student-a', idempotencyKey: 'key', status: 'unknown' },
+      { id: 'job', studentId: 'student-a', idempotencyKey: 'key', status: 'failed', stage: 'provider', publicError: '', contextHash: 'hash', planVersion: 0, createdAt: NOW, updatedAt: NOW }
+    ],
+    aiUsage: [
+      null,
+      { provider: '', model: 'model', status: 'success' },
+      { provider: 'openai', model: 'model', status: 'failed', inputTokens: -1, outputTokens: 2, totalTokens: 2, latencyMs: -5, studentId: '', timestamp: NOW }
+    ]
+  });
+
+  assert.equal(migrated.rev, 0);
+  assert.deepEqual(migrated.profiles, []);
+  assert.deepEqual(migrated.trainingProfiles[0].availableDays, [1, 6]);
+  assert.equal(migrated.trainingProfiles[0].heightCm, null);
+  assert.equal(migrated.trainingProfiles[0].experience, 'intermediario');
+  assert.equal(migrated.trainingProfiles[0].guardianConsent, null);
+  assert.deepEqual(migrated.gymProfiles[0].specificMachines, [{ name: 'Hack', category: '', exerciseIds: ['hack'] }]);
+  assert.equal(migrated.aiPlans.length, 2);
+  assert.deepEqual(migrated.aiPlans[0].schedule, [{ day: 1, routineId: 'r1' }]);
+  assert.deepEqual(migrated.aiPlans[1].schedule, { 1: 'r1' });
+  assert.deepEqual(migrated.aiJobs.map(job => job.id), ['job']);
+  assert.deepEqual(migrated.aiUsage[0].inputTokens, 0);
+  assert.equal('studentId' in migrated.aiUsage[0], false);
+  assert.deepEqual(migrateCollaboration(null), INITIAL_COLLABORATION);
+});
+
 test('only the student can change grants on an active relationship', () => {
   const randomId = idSource();
   const state = linked({ trainingProfileWrite: false, aiPlanRead: false });

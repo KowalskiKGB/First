@@ -284,7 +284,9 @@ test('dual-role actor can request as student with explicit grants that trainer c
     workoutsRead: true,
     progressRead: false,
     measurementsWrite: false,
-    liveActivityRead: false
+    liveActivityRead: false,
+    trainingProfileWrite: false,
+    aiPlanRead: false
   });
 
   const accepted = await invoke(fixture, 'POST /api/connections/respond', {
@@ -458,7 +460,9 @@ test('dual-role actor can request as trainer and receives only student consent o
     workoutsRead: false,
     progressRead: false,
     measurementsWrite: false,
-    liveActivityRead: false
+    liveActivityRead: false,
+    trainingProfileWrite: false,
+    aiPlanRead: false
   });
 
   const accepted = await invoke(fixture, 'POST /api/connections/respond', {
@@ -476,7 +480,9 @@ test('dual-role actor can request as trainer and receives only student consent o
     workoutsRead: false,
     progressRead: false,
     measurementsWrite: false,
-    liveActivityRead: false
+    liveActivityRead: false,
+    trainingProfileWrite: false,
+    aiPlanRead: false
   });
 });
 
