@@ -10,20 +10,23 @@ export const normalizePriority = client =>
 export const priorityCopy = client => {
   const priority = normalizePriority(client);
   const reasons = (client?.reasons || []).filter(Boolean);
-  if (priority === 'ok') return 'Em dia';
-  return reasons.length ? reasons.join(' · ') : priority === 'urgent' ? 'Precisa de acao' : 'Acompanhar';
+  if (priority === 'ok') return 'Up to date';
+  return reasons.length ? reasons.join(' · ') : priority === 'urgent' ? 'Needs action' : 'Watch';
 };
 
 export const priorityLabel = priority =>
-  priority === 'urgent' ? 'Urgente' : priority === 'attention' ? 'Atencao' : 'Em dia';
+  priority === 'urgent' ? 'Urgent' : priority === 'attention' ? 'Attention' : 'Up to date';
 
 export const personalTabs = () => [
-  { k: 'personal', icon: 'chart', to: '/personal', label: 'Painel' },
-  { k: 'personal/alunos', icon: 'person', to: '/personal/alunos', label: 'Alunos' },
-  { k: 'personal/agenda', icon: 'calendar', to: '/personal/agenda', label: 'Agenda' },
-  { k: 'personal/financeiro', icon: 'scale', to: '/personal/financeiro', label: 'Financeiro' },
-  { k: 'settings', icon: 'gear', to: '/settings', label: 'Ajustes' }
+  { icon: 'chart', to: '/personal', label: 'Overview' },
+  { icon: 'person', to: '/personal/alunos', label: 'Students' },
+  { icon: 'calendar', to: '/personal/agenda', label: 'Schedule' },
+  { icon: 'scale', to: '/personal/financeiro', label: 'Finances' },
+  { icon: 'gear', to: '/settings', label: 'Adjustments' }
 ];
+
+export const canEnterPersonal = ({ user, isGuest, mobile, profile, ownerId }) =>
+  !!user?.id && !isGuest && !mobile && ownerId === user.id && profile?.userId === user.id && profile.roles?.includes('trainer');
 
 export const todayInputValue = () => new Date().toISOString().slice(0, 10);
 

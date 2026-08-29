@@ -1,0 +1,31 @@
+import { useEffect } from 'react';
+import { Navigate } from 'react-router-dom';
+
+import { MOBILE } from '../../lib/mobile.js';
+import { canEnterPersonal } from '../../lib/personal.js';
+import { t } from '../../lib/i18n.js';
+import { useCollaboration } from '../../store/useCollaboration.js';
+import { useStore } from '../../store/useStore.js';
+
+export default function PersonalGuard({ children }) {
+  const user = useStore(state => state.user);
+  const isGuest = useStore(state => state.isGuest());
+  const profile = useCollaboration(state => state.profile);
+  const ownerId = useCollaboration(state => state.ownerId);
+  const loading = useCollaboration(state => state.loading);
+  const error = useCollaboration(state => state.error);
+  const context = useCollaboration(state => state.context);
+  const setContext = useCollaboration(state => state.setContext);
+  const allowed = canEnterPersonal({ user, isGuest, mobile: MOBILE, profile, ownerId });
+
+  useEffect(() => {
+    if (allowed && context !== 'trainer') setContext('trainer', user);
+  }, [allowed, context, setContext, user]);
+
+  if (allowed) return children;
+  if (user?.id && !isGuest && !MOBILE && ownerId === user.id && error) return children;
+  if (user?.id && !isGuest && !MOBILE && (!ownerId || (ownerId === user.id && loading))) {
+    return <div className="empty" role="status">{t('Loading Personal…')}</div>;
+  }
+  return <Navigate to="/home" replace />;
+}

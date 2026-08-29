@@ -8,6 +8,7 @@ const access = vi.hoisted(() => ({
   guest: false,
   profile: { userId: 'u1', roles: ['trainer'] },
   ownerId: 'u1',
+  error: null,
 }));
 
 vi.mock('../../store/useStore.js', () => ({
@@ -17,6 +18,7 @@ vi.mock('../../store/useCollaboration.js', () => ({
   useCollaboration: selector => selector({
     profile: access.profile,
     ownerId: access.ownerId,
+    error: access.error,
     setContext: vi.fn(),
   }),
 }));
@@ -34,6 +36,7 @@ beforeEach(() => {
     guest: false,
     profile: { userId: 'u1', roles: ['trainer'] },
     ownerId: 'u1',
+    error: null,
   });
 });
 
@@ -53,5 +56,11 @@ describe('PersonalGuard', () => {
   ])('does not render privileged content for %s', (_label, arrange) => {
     arrange();
     expect(renderGuard()).not.toContain('privileged');
+  });
+
+  it('renders the empty retry surface after an initial load error', () => {
+    access.profile = null;
+    access.error = 'network failed';
+    expect(renderGuard()).toContain('privileged');
   });
 });

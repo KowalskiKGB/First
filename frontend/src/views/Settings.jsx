@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore, DEF, hasData } from '../store/useStore.js'
+import { useCollaboration } from '../store/useCollaboration.js'
 import { useUI } from '../store/useUI.js'
 import { ACCENTS, todayISO, localTZ } from '../lib/format.js'
 import { effortOf } from '../lib/history.js'
@@ -20,6 +21,13 @@ export default function Settings() {
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
   const { update, replaceState, setUser, pullState, pushState, signOut, signOutAll, resetDemo } = useStore()
+  const profile = useCollaboration(s => s.profile)
+  const profileOwnerId = useCollaboration(s => s.ownerId)
+  const context = useCollaboration(s => s.context)
+  const setContext = useCollaboration(s => s.setContext)
+  const activateTrainer = useCollaboration(s => s.activateTrainer)
+  const loadCollaboration = useCollaboration(s => s.load)
+  const resetCollaboration = useCollaboration(s => s.reset)
   const toast = useUI(s => s.toast)
   const fileRef = useRef(null)
   const importRef = useRef(null)
@@ -54,6 +62,19 @@ export default function Settings() {
     catch (e) { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') toast(e.message || t('Sign-in failed')) }
   }
   const registerHere = () => useUI.getState().openSheet(close => <RegisterInline close={close} setUser={setUser} pushState={pushState} pullState={pullState} toast={toast} />)
+  const choosePortal = next => {
+    setContext(next, user)
+    nav(next === 'trainer' ? '/personal' : '/home')
+  }
+  const activatePersonal = async () => {
+    try {
+      await activateTrainer()
+      await loadCollaboration(user)
+      setContext('trainer', user)
+      nav('/personal')
+      toast(t('Personal profile activated'))
+    } catch (error) { toast(error.message || t('Could not activate Personal')) }
+  }
   // Ends the profile's sessions on every device — this one included, so on success it lands in
   // the same place as the plain sign-out above (home, local data cleared). On failure nothing
   // local is touched: still signed in here, and say so rather than leaving a half-signed-out app.
@@ -98,6 +119,24 @@ export default function Settings() {
       )}
     </Section>
     {!user && !DEMO && !MOBILE && <p className="sect-f" style={{ marginTop: -18, marginBottom: 22 }}>{t('Guest mode — data lives only in this browser.')}</p>}
+
+    {user && profileOwnerId === user.id && profile && <Section title={t('Portal')}>
+      {profile.roles?.includes('trainer') ? (
+        profile.roles.includes('student') ? (
+          <Row icon="person" iconTint="var(--acc)" title={t('Use First as')}>
+            <Segmented className="seg-inline"
+              options={[{ value: 'student', label: t('Student') }, { value: 'trainer', label: t('Personal') }]}
+              value={context === 'trainer' ? 'trainer' : 'student'} onChange={choosePortal} />
+          </Row>
+        ) : (
+          <Row icon="chart" iconTint="var(--acc)" title={t('Open Personal portal')} accessory="chevron" onClick={() => choosePortal('trainer')} />
+        )
+      ) : (
+        <Row icon="chart" iconTint="var(--acc)" title={t('Activate Personal profile')}
+          subtitle={t('Organize students, schedules and receivables without mixing them with your own training.')}
+          accessory="chevron" onClick={activatePersonal} />
+      )}
+    </Section>}
 
     {/* ---------- general ---------- */}
     <Section title={t('General')} footer={t('Note: switching units only changes the label — logged numbers are not converted.')}>
@@ -181,7 +220,7 @@ export default function Settings() {
         accessory="chevron" onClick={() => importRef.current.click()} />
       <Row icon="upload" iconTint="var(--blue)" title={t('Import backup')} accessory="chevron" onClick={() => fileRef.current.click()} />
       <Row icon="download" iconTint="var(--blue)" title={t('Export backup (JSON)')} accessory="chevron" onClick={doExport} />
-      <Row icon="trash" iconTint="var(--red)" title={t('Reset everything')} danger onClick={() => confirmSheet({ title: t('Reset everything?'), message: t('Deletes your plan, workouts and body weight on this device. This cannot be undone.'), confirmText: t('Delete everything'), danger: true, onConfirm: () => { replaceState(JSON.parse(JSON.stringify(DEF)), true); nav('/home'); toast(t('All data reset')) } })} />
+      <Row icon="trash" iconTint="var(--red)" title={t('Reset everything')} danger onClick={() => confirmSheet({ title: t('Reset everything?'), message: t('Deletes your plan, workouts and body weight on this device. This cannot be undone.'), confirmText: t('Delete everything'), danger: true, onConfirm: () => { resetCollaboration(); replaceState(JSON.parse(JSON.stringify(DEF)), true); nav('/home'); toast(t('All data reset')) } })} />
     </Section>
     <input ref={fileRef} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={doImport} />
     {/* Reset after reading so picking the same file twice still fires onChange. */}

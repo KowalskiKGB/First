@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const apiMock = vi.fn();
 const resetCollaboration = vi.fn();
+const loadCollaboration = vi.fn();
+const setCollaborationContext = vi.fn();
 
 function storage(initial = {}) {
   const values = new Map(Object.entries(initial));
@@ -18,7 +20,7 @@ async function appStore() {
   vi.doMock('../lib/demo.js', () => ({ DEMO: false, DEMO_SEEDED: 'seeded' }));
   vi.doMock('../lib/mobile.js', () => ({ MOBILE: false, nativeLoad: vi.fn(), nativeSave: vi.fn(), syncReminder: vi.fn() }));
   vi.doMock('./useCollaboration.js', () => ({
-    useCollaboration: { getState: () => ({ reset: resetCollaboration }) },
+    useCollaboration: { getState: () => ({ reset: resetCollaboration, load: loadCollaboration, setContext: setCollaborationContext, context: 'trainer' }) },
   }));
   return (await import('./useStore.js')).useStore;
 }
@@ -31,6 +33,8 @@ beforeEach(() => {
   globalThis.document = { addEventListener: vi.fn(), visibilityState: 'visible' };
   apiMock.mockReset();
   resetCollaboration.mockReset();
+  loadCollaboration.mockReset();
+  setCollaborationContext.mockReset();
   resetCollaboration.mockImplementation(() => localStorage.removeItem('first_context'));
 });
 
@@ -74,5 +78,18 @@ describe('account collaboration cleanup', () => {
 
     expect(resetCollaboration).not.toHaveBeenCalled();
     expect(localStorage.getItem('first_context')).toBe('trainer');
+  });
+
+  it('reloads the current account projection when sign out everywhere fails', async () => {
+    const store = await appStore();
+    apiMock.mockImplementation(path => path === '/api/data'
+      ? Promise.resolve({})
+      : Promise.reject(new Error('offline')));
+
+    await expect(store.getState().signOutAll()).rejects.toThrow('offline');
+
+    expect(resetCollaboration).toHaveBeenCalledOnce();
+    expect(loadCollaboration).toHaveBeenCalledWith({ id: 'u1', name: 'One' });
+    expect(setCollaborationContext).toHaveBeenCalledWith('trainer', { id: 'u1', name: 'One' });
   });
 });

@@ -5,6 +5,7 @@ import { registerCustom } from '../lib/exercises.js'
 import { DEFAULT_LANG } from '../lib/i18n.js'
 import { DEMO, DEMO_SEEDED } from '../lib/demo.js'
 import { MOBILE, nativeLoad, nativeSave, syncReminder } from '../lib/mobile.js'
+import { useCollaboration } from './useCollaboration.js'
 
 const KEY = 'gym_state_v1'
 export const DEF = {
@@ -73,7 +74,8 @@ export const useStore = create((set, get) => {
 
   // Everything a sign-out leaves behind on this device, whichever way it was triggered.
   const clearLocalSession = () => {
-    get().setUser(null)
+    localStorage.removeItem('gym_user')
+    set({ user: null })
     localStorage.removeItem('gym_guest')
     localStorage.removeItem('gym_dirty')
     localStorage.removeItem(KEY)
@@ -97,6 +99,7 @@ export const useStore = create((set, get) => {
     setGuest(v) { if (v) localStorage.setItem('gym_guest', '1'); else localStorage.removeItem('gym_guest'); set({}) },
 
     setUser(u) {
+      if ((get().user?.id || null) !== (u?.id || null)) useCollaboration.getState().reset()
       if (u) { localStorage.setItem('gym_user', JSON.stringify(u)); localStorage.removeItem('gym_guest') }
       else localStorage.removeItem('gym_user')
       set({ user: u })
@@ -123,18 +126,24 @@ export const useStore = create((set, get) => {
     },
 
     async signOut() {
+      useCollaboration.getState().reset()
       try { await get().pushState(); await api('/api/logout', { method: 'POST', body: '{}' }) } catch (e) { /* */ }
       clearLocalSession()
     },
 
-    // "Sign out everywhere": the server bumps this profile's session version, which kills every
-    // session it has on any device — this browser included, so the app has to end up exactly
-    // where a normal signOut leaves it. Unlike signOut the request is NOT swallowed: if it fails
-    // the sessions elsewhere are all still valid, and wiping this device's copy of the data
-    // would sign the user out of the one place the bump didn't reach. Caller reports the error.
+    // Collaboration is hidden immediately while the server invalidates every session. If that
+    // request fails, restore this still-valid account from the server before reporting the error.
     async signOutAll() {
+      const user = get().user
+      const context = useCollaboration.getState().context
+      useCollaboration.getState().reset()
       await get().pushState()   // never throws — stores gym_dirty and moves on when offline
-      await api('/api/logout/all', { method: 'POST', body: '{}' })
+      try { await api('/api/logout/all', { method: 'POST', body: '{}' }) }
+      catch (error) {
+        await useCollaboration.getState().load(user)
+        useCollaboration.getState().setContext(context, user)
+        throw error
+      }
       clearLocalSession()
     },
 

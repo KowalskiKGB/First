@@ -13,14 +13,15 @@ describe('personal helpers', () => {
 
   it('returns trainer navigation without workout start action', () => {
     expect(personalTabs().map(tab => tab.to)).toEqual(['/personal', '/personal/alunos', '/personal/agenda', '/personal/financeiro', '/settings']);
-    expect(personalTabs().map(tab => tab.label)).toEqual(['Overview', 'Students', 'Schedule', 'Finances', 'Settings']);
+    expect(personalTabs().map(tab => tab.label)).toEqual(['Overview', 'Students', 'Schedule', 'Finances', 'Adjustments']);
     expect(personalTabs().map(tab => pt[tab.label])).toEqual(['Visão geral', 'Alunos', 'Agenda', 'Financeiro', 'Ajustes']);
   });
 
   it('keeps priority text explicit and never color-only', () => {
     expect(normalizePriority({ priority: 'urgent' })).toBe('urgent');
     expect(priorityCopy({ priority: 'attention', reasons: ['Medidas antigas'] })).toContain('Medidas antigas');
-    expect(priorityCopy({ priority: 'ok', reasons: [] })).toBe('Em dia');
+    expect(priorityCopy({ priority: 'ok', reasons: [] })).toBe('Up to date');
+    expect(pt[priorityCopy({ priority: 'ok', reasons: [] })]).toBe('Em dia');
   });
 
   it.each([

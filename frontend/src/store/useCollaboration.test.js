@@ -51,6 +51,11 @@ describe('collaboration context', () => {
   it('persists trainer context only for a real web account', async () => {
     const store = await collaborationStore();
     store.getState().setContext('trainer', { id: 'u1' });
+    expect(store.getState().context).toBe('student');
+    expect(localStorage.getItem('first_context')).toBeNull();
+
+    localStorage.setItem('gym_user', JSON.stringify({ id: 'u1' }));
+    store.getState().setContext('trainer', { id: 'u1' });
     expect(store.getState().context).toBe('trainer');
     expect(localStorage.getItem('first_context')).toBe('trainer');
 
@@ -76,6 +81,7 @@ describe('collaboration loading boundaries', () => {
   });
 
   it('clears another user projection before the next request resolves', async () => {
+    localStorage.setItem('gym_user', JSON.stringify({ id: 'u2' }));
     const store = await collaborationStore();
     store.setState({
       ownerId: 'u1',
@@ -90,17 +96,46 @@ describe('collaboration loading boundaries', () => {
     expect(store.getState()).toMatchObject({ ownerId: 'u2', profile: null, workspace: null, detail: null });
     await loading;
   });
+
+  it('fails closed when workspace access is revoked during load', async () => {
+    localStorage.setItem('gym_user', JSON.stringify({ id: 'u1' }));
+    localStorage.setItem('first_context', 'trainer');
+    const store = await collaborationStore();
+    store.setState({ ownerId: 'u1', profile: { userId: 'u1', roles: ['trainer'] }, workspace: { clients: [{ id: 'private' }] }, detail: { client: { id: 'private' } }, context: 'trainer' });
+    apiMock
+      .mockResolvedValueOnce({ rev: 4, profile: { userId: 'u1', roles: ['trainer'] } })
+      .mockRejectedValueOnce(Object.assign(new Error('forbidden'), { status: 403 }));
+
+    await store.getState().load({ id: 'u1' });
+
+    expect(store.getState()).toMatchObject({ profile: null, workspace: null, detail: null, context: 'student', message: 'Permissão revogada' });
+    expect(localStorage.getItem('first_context')).toBeNull();
+  });
+
+  it('fails closed when a workspace refresh returns 403', async () => {
+    localStorage.setItem('gym_user', JSON.stringify({ id: 'u1' }));
+    localStorage.setItem('first_context', 'trainer');
+    const store = await collaborationStore();
+    store.setState({ ownerId: 'u1', profile: { userId: 'u1', roles: ['trainer'] }, workspace: { clients: [{ id: 'private' }] }, detail: { client: { id: 'private' } }, context: 'trainer' });
+    apiMock.mockRejectedValueOnce(Object.assign(new Error('forbidden'), { status: 403 }));
+
+    await expect(store.getState().reloadWorkspace()).rejects.toMatchObject({ status: 403 });
+
+    expect(store.getState()).toMatchObject({ profile: null, workspace: null, detail: null, context: 'student', message: 'Permissão revogada' });
+    expect(localStorage.getItem('first_context')).toBeNull();
+  });
 });
 
 describe('collaboration mutation recovery', () => {
   it('reloads a safe projection and exposes the retry message after 409', async () => {
     localStorage.setItem('gym_user', JSON.stringify({ id: 'u1' }));
     const store = await collaborationStore();
-    store.setState({ ownerId: 'u1', rev: 3, profile: { userId: 'u1', roles: ['trainer'] }, workspace: { clients: [] } });
+    store.setState({ ownerId: 'u1', rev: 3, profile: { userId: 'u1', roles: ['trainer'] }, workspace: { clients: [] }, selected: 'c1', detail: { client: { id: 'stale' } } });
     apiMock
       .mockRejectedValueOnce(Object.assign(new Error('stale'), { status: 409 }))
       .mockResolvedValueOnce({ rev: 4, profile: { userId: 'u1', roles: ['trainer'] } })
-      .mockResolvedValueOnce({ rev: 4, kpis: {}, clients: [{ id: 'fresh' }] });
+      .mockResolvedValueOnce({ rev: 4, kpis: {}, clients: [{ id: 'fresh' }] })
+      .mockResolvedValueOnce({ rev: 4, client: { id: 'c1', name: 'Fresh detail' } });
 
     await expect(store.getState().mutate('/api/personal/client', { clientId: 'c1' }, 'PUT')).rejects.toMatchObject({ status: 409 });
 
@@ -108,19 +143,49 @@ describe('collaboration mutation recovery', () => {
       '/api/personal/client',
       '/api/collaboration',
       '/api/personal/workspace',
+      '/api/personal/client?id=c1',
     ]);
     expect(store.getState().workspace.clients).toEqual([{ id: 'fresh' }]);
+    expect(store.getState().detail.client.name).toBe('Fresh detail');
     expect(store.getState().message).toBe('Dados atualizados; repita a ação');
   });
 
   it('clears privileged detail immediately after 403', async () => {
     const store = await collaborationStore();
-    store.setState({ ownerId: 'u1', rev: 3, profile: { userId: 'u1', roles: ['trainer'] }, detail: { client: { id: 'secret' } } });
+    store.setState({ ownerId: 'u1', rev: 3, profile: { userId: 'u1', roles: ['trainer'] }, workspace: { clients: [{ id: 'secret' }] }, detail: { client: { id: 'secret' } } });
     apiMock.mockRejectedValueOnce(Object.assign(new Error('forbidden'), { status: 403 }));
 
     await expect(store.getState().mutate('/api/personal/program', {}, 'PUT')).rejects.toMatchObject({ status: 403 });
 
     expect(store.getState().detail).toBeNull();
+    expect(store.getState().workspace).toBeNull();
     expect(store.getState().message).toBe('Permissão revogada');
+  });
+
+  it('clears the privileged workspace when client loading returns 403', async () => {
+    const store = await collaborationStore();
+    store.setState({ ownerId: 'u1', profile: { userId: 'u1', roles: ['trainer'] }, workspace: { clients: [{ id: 'secret' }] }, detail: { client: { id: 'secret' } } });
+    apiMock.mockRejectedValueOnce(Object.assign(new Error('forbidden'), { status: 403 }));
+
+    await expect(store.getState().loadClient('secret')).rejects.toMatchObject({ status: 403 });
+
+    expect(store.getState()).toMatchObject({ workspace: null, detail: null, selected: null, message: 'Permissão revogada' });
+  });
+
+  it('does not let an old account mutation clear the current account detail', async () => {
+    localStorage.setItem('gym_user', JSON.stringify({ id: 'u1' }));
+    const store = await collaborationStore();
+    store.setState({ ownerId: 'u1', rev: 3, profile: { userId: 'u1', roles: ['trainer'] } });
+    let rejectMutation;
+    apiMock.mockReturnValueOnce(new Promise((_resolve, reject) => { rejectMutation = reject; }));
+
+    const mutation = store.getState().mutate('/api/personal/program', {}, 'PUT');
+    localStorage.setItem('gym_user', JSON.stringify({ id: 'u2' }));
+    store.setState({ ownerId: 'u2', profile: { userId: 'u2', roles: ['trainer'] }, detail: { client: { id: 'safe-u2' } }, message: null });
+    rejectMutation(Object.assign(new Error('forbidden'), { status: 403 }));
+
+    await expect(mutation).rejects.toMatchObject({ status: 403 });
+    expect(store.getState().detail.client.id).toBe('safe-u2');
+    expect(store.getState().message).toBeNull();
   });
 });
