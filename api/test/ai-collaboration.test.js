@@ -159,6 +159,15 @@ test('trainer profile and gym writes require ownership, active link and training
     collaboration: allowed, actorId: 'trainer-b', studentId: 'student-a', clientId: 'client-a',
     data: gymData, now: NOW, randomId
   }), /client not found/);
+
+  const manualClient = base({
+    profiles: [{ userId: 'trainer-a', roles: ['student', 'trainer'] }],
+    clients: [{ id: 'manual-client', trainerId: 'trainer-a', studentUserId: null, name: 'Manual', archivedAt: null }]
+  });
+  assert.throws(() => saveTrainingProfile({
+    collaboration: manualClient, actorId: 'trainer-a', studentId: null, clientId: 'manual-client',
+    data: profileData, now: NOW, randomId
+  }), /client not found/);
 });
 
 test('trainer workspace projects profile and AI plan through separate grants and isolates trainers', () => {
@@ -225,6 +234,15 @@ test('student AI context is isolated, safe, complete-aware and exposes current m
   assert.equal(JSON.stringify(context).includes('private-model'), false);
   assert.equal(JSON.stringify(context).includes('hash-b'), false);
   assert.equal(JSON.stringify(context).includes('prompt'), false);
+
+  const under14 = buildAiContext({
+    collaboration: {
+      ...state,
+      trainingProfiles: [{ ...state.trainingProfiles[0], ageBand: 'under14', guardianConsent: true }]
+    },
+    studentId: 'student-a'
+  });
+  assert.equal(under14.completeness.conservative, true);
 });
 
 test('AI plan notifications target only active trainers with aiPlanRead', () => {

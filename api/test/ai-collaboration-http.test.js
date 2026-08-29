@@ -129,6 +129,33 @@ test('student grant mutation keeps the relationship active and trainers cannot w
   assert.equal(f.read().connections[0].grants.aiPlanRead, true);
 });
 
+test('connection projections normalize every grant without exposing other relationships', async t => {
+  const f = fixture(t, {
+    ...state({ plansWrite: true }),
+    connections: [
+      { id: 'connection-a', trainerId: 'trainer-a', studentId: 'student-a', requestedBy: 'student-a', status: 'active', grants: { plansWrite: true } },
+      { id: 'connection-private', trainerId: 'trainer-b', studentId: 'student-b', requestedBy: 'student-b', status: 'active', grants: { aiPlanRead: true } }
+    ]
+  });
+
+  const response = await invoke(f, 'GET /api/collaboration', { user: { id: 'student-a' } });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body.connections, [{
+    id: 'connection-a', trainerId: 'trainer-a', studentId: 'student-a', requestedBy: 'student-a', status: 'active',
+    grants: {
+      plansWrite: true,
+      workoutsRead: false,
+      progressRead: false,
+      measurementsWrite: false,
+      liveActivityRead: false,
+      trainingProfileWrite: false,
+      aiPlanRead: false
+    }
+  }]);
+  assert.equal(JSON.stringify(response.body).includes('connection-private'), false);
+});
+
 test('student AI writes enforce optimistic revision and production Origin', async t => {
   const previous = process.env.NODE_ENV;
   process.env.NODE_ENV = 'production';
