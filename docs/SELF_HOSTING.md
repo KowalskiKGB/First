@@ -82,13 +82,18 @@ The first deployment uses:
 ```bash
 INVITE_ONLY=0
 ADMIN_UIDS=
+FIRST_BASIC_AUTH_USERS=first-bootstrap:{SHA}<generated-hash>
+FIRST_BOOTSTRAP_MIDDLEWARE=,first-bootstrap-auth
 ```
 
-After creating your first profile, read its `id` from the persisted `db.json`, set it in
-`ADMIN_UIDS`, and switch:
+The two `FIRST_*` values activate the temporary high-priority Basic Auth router in Coolify;
+leave them empty on ordinary local deployments. After creating your first profile, read its `id`
+from the persisted `db.json`, set it in `ADMIN_UIDS`, and switch:
 
 ```bash
 INVITE_ONLY=1
+FIRST_BASIC_AUTH_USERS=
+FIRST_BOOTSTRAP_MIDDLEWARE=
 ```
 
 Existing accounts continue working after invite-only mode is enabled.

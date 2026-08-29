@@ -13,6 +13,9 @@ test('the deployment template is complete and builds only this repository', () =
   assert.doesNotMatch(compose, /ghcr\.io\/duartesantos8/i)
   assert.doesNotMatch(compose, /hasaneyldrm\/exercises-dataset/i)
   assert.match(compose, /dockerfile:\s*Dockerfile/)
+  assert.match(compose, /FIRST_BASIC_AUTH_USERS/)
+  assert.match(compose, /FIRST_BOOTSTRAP_MIDDLEWARE/)
+  assert.match(compose, /priority=1000/)
 
   const webDockerfile = read('Dockerfile')
   const apiDockerfile = read('api/Dockerfile')

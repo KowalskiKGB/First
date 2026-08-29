@@ -13,6 +13,7 @@ Data: 2026-08-29
   - valida falha segura da API em produção sem `RP_ID`/`ORIGIN`;
   - valida identidade Android, iOS e Web como First;
   - valida restauração de IP do proxy e limite de autenticação por cliente;
+  - exige o router Traefik prioritário usado para proteger o cadastro inicial;
   - impede que nomes de arquivos exportados voltem à marca anterior;
   - valida `docker compose --env-file .env.example config`.
 - `frontend/src/lib/api.test.js`
