@@ -1,6 +1,6 @@
 /* First service worker: runtime caching for Vite's hashed asset names.
    API responses are never cached; optional media stays same-origin only. */
-const CACHE = 'first-rt-v1'
+const CACHE = 'first-rt-v2'
 
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', e => {
@@ -30,6 +30,7 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url)
   if (e.request.method !== 'GET' || url.origin !== location.origin) return
   if (url.pathname.startsWith('/api/')) return    // never cache auth/data
+  if (url.pathname.startsWith('/media/')) return  // nginx marks private exercise media no-store
 
   const isMedia = url.pathname.includes('/img/') || url.pathname.includes('/gif/')
   if (isMedia) {
