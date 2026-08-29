@@ -41,6 +41,7 @@ const hasData = st => !!((st.workouts || []).length || (st.routines || []).lengt
 export const useStore = create((set, get) => {
   let pushTm = null
   let saveTm = null
+  let bootPromise = null
 
   // Mobile build: mirror the state into a file in the app's data directory (survives WebView
   // storage eviction) and keep the native reminder schedule in step with the weekly plan.
@@ -169,44 +170,49 @@ export const useStore = create((set, get) => {
     },
 
     // Boot: ask the server who we are, then pull.
-    async boot() {
-      // Mobile restores the durable local copy first, then tries the same optional account as web.
-      // If the server is unreachable, the student plan remains fully usable offline.
-      if (MOBILE) {
-        const saved = await nativeLoad()
-        const S = get().S
-        if (saved && (!hasData(S) || (saved._ts || 0) >= (S._ts || 0))) {
-          persist(Object.assign(clone(DEF), saved), false)
-        } else if (hasData(S)) {
-          nativeSave(S)   // first run after an update from a file-less version: seed the mirror
+    boot() {
+      // React StrictMode replays mount effects; both callers must share the same pull.
+      if (bootPromise) return bootPromise
+      bootPromise = (async () => {
+        // Mobile restores the durable local copy first, then tries the same optional account as web.
+        // If the server is unreachable, the student plan remains fully usable offline.
+        if (MOBILE) {
+          const saved = await nativeLoad()
+          const S = get().S
+          if (saved && (!hasData(S) || (saved._ts || 0) >= (S._ts || 0))) {
+            persist(Object.assign(clone(DEF), saved), false)
+          } else if (hasData(S)) {
+            nativeSave(S)   // first run after an update from a file-less version: seed the mirror
+          }
+          syncReminder(get().S)
         }
-        syncReminder(get().S)
-      }
-      // Demo build (GitHub Pages): no backend at all — seed once, stay in guest mode.
-      if (DEMO) {
-        if (!localStorage.getItem(DEMO_SEEDED)) {
-          localStorage.setItem(DEMO_SEEDED, '1')
-          await get().resetDemo()
+        // Demo build (GitHub Pages): no backend at all — seed once, stay in guest mode.
+        if (DEMO) {
+          if (!localStorage.getItem(DEMO_SEEDED)) {
+            localStorage.setItem(DEMO_SEEDED, '1')
+            await get().resetDemo()
+          }
+          get().setGuest(true)
+          set({ ready: true })
+          return
         }
-        get().setGuest(true)
+        try {
+          const me = await api('/api/me')
+          get().setUser(me.user)
+          await get().pullState()
+          // Re-stamp the reminder's timezone on every load — keeps it correct if you're travelling,
+          // without needing to revisit Settings.
+          const tz = localTZ()
+          if (get().S.reminder?.on && get().S.reminder.tz !== tz) {
+            get().update(s => { s.reminder = { ...s.reminder, tz } })
+          }
+        } catch (e) {
+          if (e.status === 401) get().setUser(null)
+        }
+        if (MOBILE && !get().user) get().setGuest(true)
         set({ ready: true })
-        return
-      }
-      try {
-        const me = await api('/api/me')
-        get().setUser(me.user)
-        await get().pullState()
-        // Re-stamp the reminder's timezone on every load — keeps it correct if you're travelling,
-        // without needing to revisit Settings.
-        const tz = localTZ()
-        if (get().S.reminder?.on && get().S.reminder.tz !== tz) {
-          get().update(s => { s.reminder = { ...s.reminder, tz } })
-        }
-      } catch (e) {
-        if (e.status === 401) get().setUser(null)
-      }
-      if (MOBILE && !get().user) get().setGuest(true)
-      set({ ready: true })
+      })()
+      return bootPromise
     }
   }
 })

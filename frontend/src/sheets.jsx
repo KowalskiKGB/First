@@ -832,8 +832,8 @@ export function SessionPicker({ options, iso = todayISO(), close }) {
     startFlow(option)
   }
   return <>
-    <h3>Escolha a sessão</h3>
-    <div className="muted small" style={{ marginBottom: 12 }}>Você tem {options.length} sessões disponíveis.</div>
+    <h3>{t('Choose a session')}</h3>
+    <div className="muted small" style={{ marginBottom: 12 }}>{t('You have {0} sessions available.', options.length)}</div>
     <SessionOptions options={options} onSelect={choose} />
   </>
 }

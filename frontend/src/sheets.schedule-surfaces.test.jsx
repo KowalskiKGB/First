@@ -75,9 +75,10 @@ describe('schedule sheets with rest preference and managed availability', () => 
   it('routes the session chooser heading and count through the translation fallback', () => {
     const markup = renderToStaticMarkup(<SessionPicker options={[
       { sourceType: 'ai', planId: 'plan-1', routineId: 'ai-monday', label: 'Plano IA', routine: harness.state.routines[0] },
+      { sourceType: 'personal', planId: 'plan-2', routineId: 'personal-monday', label: 'Personal', routine: { id: 'personal-monday', name: 'Personal Monday', emoji: 'sparkles', ex: [] } },
     ]} close={vi.fn()} />)
 
     expect(markup).toContain('<h3>Choose a session</h3>')
-    expect(markup).toContain('You have 1 sessions available.')
+    expect(markup).toContain('You have 2 sessions available.')
   })
 })

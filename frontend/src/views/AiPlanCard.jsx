@@ -15,6 +15,15 @@ const activeJob = job => job?.status === 'queued' || job?.status === 'running'
 const snapshot = context => ({ profile: context?.profile || null, gym: context?.gym || null, measurements: context?.measurements || {} })
 const fingerprintKey = userId => `first_ai_context_${userId}`
 
+function hasMaterializedPlan(state, plan) {
+  const schedule = state.sourceSchedules?.ai?.find(item => item.active !== false && item.planId === plan.id && item.version === plan.version)
+  if (!schedule) return false
+  return (plan.routines || []).every(expected => (state.routines || []).some(routine => (
+    routine.id === expected.id && routine._aiGenerated === true
+    && routine._aiPlanId === plan.id && routine._aiVersion === plan.version
+  )))
+}
+
 function legacyDraft(state) {
   const profile = aiProfile(state)
   return draftFromAiContext({
@@ -33,6 +42,7 @@ function legacyDraft(state) {
 export default function AiPlanCard() {
   const state = useStore(store => store.S)
   const user = useStore(store => store.user)
+  const ready = useStore(store => store.ready)
   const replaceState = useStore(store => store.replaceState)
   const update = useStore(store => store.update)
   const toast = useUI(store => store.toast)
@@ -44,12 +54,16 @@ export default function AiPlanCard() {
   const [busy, setBusy] = useState(false)
   const pollController = useRef(null)
 
-  const applyContext = async next => {
+  const applyContext = async (next, isCurrent = () => true) => {
+    if (!isCurrent()) return false
     setContext(next); setJob(next.job || null); setDraft(draftFromAiContext(next))
-    if (next.plan) {
+    if (next.plan && !hasMaterializedPlan(useStore.getState().S, next.plan)) {
       replaceState(applyAiPlanToState(useStore.getState().S, next.plan), false)
       await useStore.getState().pushState()
+      localStorage.setItem(fingerprintKey(user.id), contextFingerprint(snapshot(next)))
+      return true
     }
+    return false
   }
   const load = async () => {
     if (!user) return
@@ -60,13 +74,15 @@ export default function AiPlanCard() {
   }
   useEffect(() => {
     let current = true
+    if (!ready) return undefined
     if (!user) { setStatus({ configured: false }); return undefined }
-    Promise.all([api('/api/ai/context'), api('/api/ai/status')]).then(([nextContext, nextStatus]) => {
+    Promise.all([api('/api/ai/context'), api('/api/ai/status')]).then(async ([nextContext, nextStatus]) => {
       if (!current) return
-      setContext(nextContext); setStatus(nextStatus); setJob(nextContext.job || null); setDraft(draftFromAiContext(nextContext))
+      setStatus(nextStatus)
+      await applyContext(nextContext, () => current)
     }).catch(() => current && setStatus({ configured: false }))
     return () => { current = false; pollController.current?.abort() }
-  }, [user?.id])
+  }, [ready, user?.id])
 
   const finishJob = async (initialJob, submission, signal) => {
     try {

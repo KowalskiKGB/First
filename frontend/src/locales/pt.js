@@ -893,6 +893,8 @@ export default {
   'Version {0} is active. Update only when you choose.': 'A versão {0} está ativa. Atualize somente quando quiser.',
   'Measurements, goals and gym equipment in four short steps.': 'Medidas, objetivos e equipamentos da academia em quatro etapas rápidas.',
   'My workout': 'Meu treino',
+  'Choose a session': 'Escolha a sessão',
+  'You have {0} sessions available.': 'Você tem {0} sessões disponíveis.',
   'Manual preference: rest': 'Preferência manual: descanso',
   'Preferred': 'Preferido',
   'Prefer rest for this day': 'Preferir descanso neste dia',

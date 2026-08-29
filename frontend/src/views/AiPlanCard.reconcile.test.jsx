@@ -27,6 +27,7 @@ vi.mock('../store/useStore.js', () => {
   const store = {
     get S() { return harness.state },
     user: { id: 'student-a' },
+    ready: true,
     replaceState: (...args) => harness.replaceState(...args),
     update: vi.fn(),
   }
