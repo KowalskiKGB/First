@@ -143,6 +143,27 @@ test('workspace flags missing and stale body measurements for attention', () => 
   assert.deepEqual(stale.reasons, ['Medidas sem atualização há mais de 30 dias']);
 });
 
+test('workspace adherence counts multiple sessions on one date only once while preserving volume and history', () => {
+  const client = { id: 'student', trainerId: 'trainer1', studentUserId: 'student-1', name: 'Aluno', targetSessionsPerWeek: 1, inactiveAfterDays: 7, archivedAt: null };
+  const collaboration = {
+    ...structuredClone(INITIAL_COLLABORATION),
+    clients: [client],
+    connections: [{ id: 'connection-1', trainerId: 'trainer1', studentId: 'student-1', status: 'active', grants: { progressRead: true, workoutsRead: true } }],
+    measurements: [{ id: 'measurement-1', clientId: client.id, observedAt: '2026-08-29' }]
+  };
+  const workouts = [
+    { id: 'manual', d: '2026-08-28', vol: 1000 },
+    { id: 'ai', d: '2026-08-28', vol: 1500, sourceType: 'ai', planId: 'ai-plan', version: 2 }
+  ];
+
+  const workspace = buildWorkspace({ collaboration, trainerId: 'trainer1', now, readState: () => ({ workouts }) });
+
+  assert.equal(workspace.clients[0].progress.adherence, 25);
+  assert.equal(workspace.clients[0].progress.workouts28d, 2);
+  assert.equal(workspace.clients[0].progress.volume28d, 2500);
+  assert.equal(workspace.clients[0].progress.recentWorkouts.length, 2);
+});
+
 test('schedule refuses overlapping active appointments and finance keeps clients isolated', () => {
   const randomId = idSource();
   let collaboration = structuredClone(INITIAL_COLLABORATION);

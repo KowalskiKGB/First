@@ -123,7 +123,13 @@ describe('program helpers', () => {
           }],
         },
       ],
-      week: { 0: 'manual', 1: 'personal-program-1-routine-a' },
+      week: { 0: 'manual' },
+      sourceSchedules: {
+        personal: [{
+          sourceType: 'personal', planId: 'program-1', version: 2, label: 'Hipertrofia', active: true,
+          week: { 1: 'personal-program-1-routine-a' },
+        }],
+      },
     })
     expect(buildSets(merged, merged.routines[1].ex[0])).toEqual([
       { w: 0, r: 12, done: false },
@@ -141,12 +147,20 @@ describe('program helpers', () => {
         { id: 'manual', name: 'Meu treino', ex: [] },
         { id: 'personal-old-a', name: 'Antigo', _personalProgramId: 'old', ex: [] },
       ],
-      week: { 1: 'personal-old-a', 3: 'manual' },
+      week: { 3: 'manual' },
+      sourceSchedules: {
+        ai: [{ sourceType: 'ai', planId: 'ai-1', version: 4, active: true, week: { 1: 'ai-a' } }],
+        personal: [{ sourceType: 'personal', planId: 'old', version: 1, active: true, week: { 1: 'personal-old-a' } }],
+      },
     }, [])
 
     expect(merged).toMatchObject({
       routines: [{ id: 'manual', name: 'Meu treino', ex: [] }],
       week: { 3: 'manual' },
+      sourceSchedules: {
+        ai: [{ sourceType: 'ai', planId: 'ai-1', version: 4, active: true, week: { 1: 'ai-a' } }],
+        personal: [],
+      },
     })
   })
   it('renders financial months returned by the workspace API', () => {

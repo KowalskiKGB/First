@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, exLine, workoutVolume, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep } from './history.js'
+import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, exLine, workoutVolume, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, trainedDates } from './history.js'
 import { EXDB } from './exercises.js'
 
 // Real ids out of the shipped catalogue, so the body-part fallback is exercised for real.
@@ -399,5 +399,18 @@ describe('workoutVolume', () => {
   it('leaves an unloaded bodyweight set at zero volume rather than inventing a number', () => {
     const w = { entries: [{ id: BW, target: { bodyweight: true }, sets: [{ w: 0, r: 20, done: true }] }] }
     expect(workoutVolume(w)).toBe(0)
+  })
+})
+
+describe('trainedDates', () => {
+  it('keeps two sessions in history while counting their date once for adherence', () => {
+    const workouts = [
+      { id: 'manual-session', d: '2026-08-31', vol: 1000, sourceType: 'manual' },
+      { id: 'ai-session', d: '2026-08-31', vol: 1500, sourceType: 'ai', planId: 'ai-plan', version: 3 },
+    ]
+
+    expect(workouts).toHaveLength(2)
+    expect(workouts.reduce((sum, workout) => sum + workout.vol, 0)).toBe(2500)
+    expect([...trainedDates(workouts)]).toEqual(['2026-08-31'])
   })
 })

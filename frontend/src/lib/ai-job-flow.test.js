@@ -37,9 +37,38 @@ describe('AI job flow', () => {
 
     expect(next.week).toEqual({ 1: 'manual' })
     expect(next.week).toBe(state.week)
-    expect(next.aiSchedule).toEqual([{ day: 2, routineId: 'ai-routine' }])
+    expect(next.sourceSchedules.ai).toEqual([{
+      sourceType: 'ai', planId: 'plan-1', version: 3, label: 'Plano IA v3', active: true,
+      updatedAt: '2026-08-29T12:00:00.000Z', week: { 2: 'ai-routine' },
+    }])
     expect(next.routines.map(routine => routine.id)).toEqual(['manual', 'ai-routine'])
+    expect(next.routines[1]).toEqual(expect.objectContaining({ _aiPlanId: 'plan-1', _aiVersion: 3 }))
     expect(next.routines[1].ex[0]).toEqual(expect.objectContaining({ id: '0001', sets: 3, repsMin: 8, repsMax: 12, weight: 0 }))
+  })
+
+  it('replaces only AI routines and schedules when a new AI version arrives', () => {
+    const state = {
+      week: { 1: 'manual' },
+      routines: [
+        { id: 'manual', ex: [] },
+        { id: 'personal-a', ex: [], _personalProgramId: 'personal-plan' },
+        { id: 'old-ai', ex: [], _aiGenerated: true },
+      ],
+      sourceSchedules: {
+        personal: [{ sourceType: 'personal', planId: 'personal-plan', version: 1, active: true, week: { 2: 'personal-a' } }],
+        ai: [{ sourceType: 'ai', planId: 'old-plan', version: 1, active: true, week: { 3: 'old-ai' } }],
+      },
+    }
+
+    const next = applyAiPlanToState(state, {
+      id: 'new-plan', version: 2, appliedAt: '2026-08-29T12:00:00.000Z', justification: 'Seguro',
+      routines: [{ id: 'new-ai', name: 'Nova IA', exercises: [] }], schedule: [{ day: 4, routineId: 'new-ai' }],
+    })
+
+    expect(next.week).toEqual({ 1: 'manual' })
+    expect(next.routines.map(routine => routine.id)).toEqual(['manual', 'personal-a', 'new-ai'])
+    expect(next.sourceSchedules.personal).toEqual(state.sourceSchedules.personal)
+    expect(next.sourceSchedules.ai[0]).toMatchObject({ planId: 'new-plan', version: 2, week: { 4: 'new-ai' } })
   })
 
   it('surfaces a failed job public error without refreshing context', async () => {
