@@ -112,16 +112,45 @@ describe('collaboration loading boundaries', () => {
     expect(localStorage.getItem('first_context')).toBeNull();
   });
 
-  it('fails closed when a workspace refresh returns 403', async () => {
+  it('clears privileged detail and context after a trainer role downgrade', async () => {
+    localStorage.setItem('gym_user', JSON.stringify({ id: 'u1' }));
+    localStorage.setItem('first_context', 'trainer');
+    const store = await collaborationStore();
+    store.setState({
+      ownerId: 'u1',
+      profile: { userId: 'u1', roles: ['trainer'] },
+      workspace: { clients: [{ id: 'private' }] },
+      selected: 'private',
+      detail: { client: { id: 'private' } },
+      context: 'trainer',
+    });
+    apiMock.mockResolvedValueOnce({ rev: 5, profile: { userId: 'u1', roles: ['student'] } });
+
+    await store.getState().load({ id: 'u1' });
+
+    expect(store.getState()).toMatchObject({
+      profile: { userId: 'u1', roles: ['student'] },
+      workspace: null,
+      selected: null,
+      detail: null,
+      context: 'student',
+    });
+    expect(localStorage.getItem('first_context')).toBeNull();
+  });
+
+  it.each([
+    [403, 'Permissão revogada'],
+    [401, null],
+  ])('fails closed when a workspace refresh returns %s', async (status, message) => {
     localStorage.setItem('gym_user', JSON.stringify({ id: 'u1' }));
     localStorage.setItem('first_context', 'trainer');
     const store = await collaborationStore();
     store.setState({ ownerId: 'u1', profile: { userId: 'u1', roles: ['trainer'] }, workspace: { clients: [{ id: 'private' }] }, detail: { client: { id: 'private' } }, context: 'trainer' });
-    apiMock.mockRejectedValueOnce(Object.assign(new Error('forbidden'), { status: 403 }));
+    apiMock.mockRejectedValueOnce(Object.assign(new Error('access lost'), { status }));
 
-    await expect(store.getState().reloadWorkspace()).rejects.toMatchObject({ status: 403 });
+    await expect(store.getState().reloadWorkspace()).rejects.toMatchObject({ status });
 
-    expect(store.getState()).toMatchObject({ profile: null, workspace: null, detail: null, context: 'student', message: 'Permissão revogada' });
+    expect(store.getState()).toMatchObject({ profile: null, workspace: null, detail: null, context: 'student', message });
     expect(localStorage.getItem('first_context')).toBeNull();
   });
 });
@@ -184,26 +213,70 @@ describe('collaboration mutation recovery', () => {
     expect(localStorage.getItem('first_context')).toBeNull();
   });
 
-  it('clears privileged detail immediately after 403', async () => {
+  it.each([
+    [403, 'Permissão revogada'],
+    [401, null],
+  ])('preserves fail-closed state when selected detail recovery returns %s', async (status, message) => {
+    localStorage.setItem('gym_user', JSON.stringify({ id: 'u1' }));
+    localStorage.setItem('first_context', 'trainer');
     const store = await collaborationStore();
-    store.setState({ ownerId: 'u1', rev: 3, profile: { userId: 'u1', roles: ['trainer'] }, workspace: { clients: [{ id: 'secret' }] }, detail: { client: { id: 'secret' } } });
-    apiMock.mockRejectedValueOnce(Object.assign(new Error('forbidden'), { status: 403 }));
+    store.setState({
+      ownerId: 'u1',
+      rev: 3,
+      profile: { userId: 'u1', roles: ['trainer'] },
+      workspace: { clients: [{ id: 'private' }] },
+      selected: 'c1',
+      detail: { client: { id: 'private' } },
+      context: 'trainer',
+    });
+    apiMock
+      .mockRejectedValueOnce(Object.assign(new Error('stale'), { status: 409 }))
+      .mockResolvedValueOnce({ rev: 4, profile: { userId: 'u1', roles: ['trainer'] } })
+      .mockResolvedValueOnce({ rev: 4, clients: [{ id: 'fresh' }] })
+      .mockRejectedValueOnce(Object.assign(new Error('access lost'), { status }));
 
-    await expect(store.getState().mutate('/api/personal/program', {}, 'PUT')).rejects.toMatchObject({ status: 403 });
+    await expect(store.getState().mutate('/api/personal/client', { clientId: 'c1' }, 'PUT'))
+      .rejects.toMatchObject({ status: 409 });
 
-    expect(store.getState().detail).toBeNull();
-    expect(store.getState().workspace).toBeNull();
-    expect(store.getState().message).toBe('Permissão revogada');
+    expect(store.getState()).toMatchObject({
+      profile: null,
+      workspace: null,
+      selected: null,
+      detail: null,
+      context: 'student',
+      message,
+    });
+    expect(localStorage.getItem('first_context')).toBeNull();
   });
 
-  it('clears the privileged workspace when client loading returns 403', async () => {
+  it.each([
+    [403, 'Permissão revogada'],
+    [401, null],
+  ])('clears privileged state immediately after mutation returns %s', async (status, message) => {
+    localStorage.setItem('first_context', 'trainer');
     const store = await collaborationStore();
-    store.setState({ ownerId: 'u1', profile: { userId: 'u1', roles: ['trainer'] }, workspace: { clients: [{ id: 'secret' }] }, detail: { client: { id: 'secret' } } });
-    apiMock.mockRejectedValueOnce(Object.assign(new Error('forbidden'), { status: 403 }));
+    store.setState({ ownerId: 'u1', rev: 3, profile: { userId: 'u1', roles: ['trainer'] }, workspace: { clients: [{ id: 'secret' }] }, detail: { client: { id: 'secret' } }, context: 'trainer' });
+    apiMock.mockRejectedValueOnce(Object.assign(new Error('access lost'), { status }));
 
-    await expect(store.getState().loadClient('secret')).rejects.toMatchObject({ status: 403 });
+    await expect(store.getState().mutate('/api/personal/program', {}, 'PUT')).rejects.toMatchObject({ status });
 
-    expect(store.getState()).toMatchObject({ workspace: null, detail: null, selected: null, message: 'Permissão revogada' });
+    expect(store.getState()).toMatchObject({ profile: null, workspace: null, detail: null, context: 'student', message });
+    expect(localStorage.getItem('first_context')).toBeNull();
+  });
+
+  it.each([
+    [403, 'Permissão revogada'],
+    [401, null],
+  ])('clears privileged state when client loading returns %s', async (status, message) => {
+    localStorage.setItem('first_context', 'trainer');
+    const store = await collaborationStore();
+    store.setState({ ownerId: 'u1', profile: { userId: 'u1', roles: ['trainer'] }, workspace: { clients: [{ id: 'secret' }] }, detail: { client: { id: 'secret' } }, context: 'trainer' });
+    apiMock.mockRejectedValueOnce(Object.assign(new Error('access lost'), { status }));
+
+    await expect(store.getState().loadClient('secret')).rejects.toMatchObject({ status });
+
+    expect(store.getState()).toMatchObject({ profile: null, workspace: null, detail: null, selected: null, context: 'student', message });
+    expect(localStorage.getItem('first_context')).toBeNull();
   });
 
   it('does not let an old account mutation clear the current account detail', async () => {
