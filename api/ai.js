@@ -28,7 +28,7 @@ const EXERCISE_FIELDS = new Set([
 ]);
 const SCHEDULE_FIELDS = new Set(['day', 'routineRef']);
 const MODES = new Set(['reps', 'time', 'cardio']);
-const ABSOLUTE_LOAD_UNIT = /\b(?:kg|kgs|quilogramas?|quilos?|lb|lbs|libras?|pounds?|ounces?)\b/i;
+const ABSOLUTE_LOAD_UNIT = /(?:^|[^\p{L}\p{N}_])\d{1,4}(?:[.,]\d{1,2})?\s*(?:kg|kgs|quilogramas?|quilos?|lb|lbs|libras?|pounds?|ounces?)(?=$|[^\p{L}\p{N}_])/iu;
 const FUNDAMENTAL_TARGETS = new Set(['pectorals', 'lats', 'quads', 'hamstrings', 'glutes', 'delts', 'abs']);
 
 const nullableInteger = (minimum, maximum) => ({

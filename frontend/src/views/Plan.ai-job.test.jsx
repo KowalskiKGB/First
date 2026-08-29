@@ -76,8 +76,21 @@ describe('Plan AI job integration', () => {
   })
 
   it('saves an initially incomplete canonical context before the async job and never writes the manual week', async () => {
+    harness.store.S.aiProfile = {
+      ...harness.store.S.aiProfile, ageBand: undefined, consent: false, gymName: ''
+    }
     renderToStaticMarkup(<AiPlanCard />)
+    harness.fields.find(field => field.options?.some(option => option.value === 'adult')).onChange('adult')
+    harness.fields.find(field => field.options?.some(option => option.value === true)).onChange(true)
+    harness.fields.find(field => field.name === 'ai-gym-name').onChange({ target: { value: 'Academia Centro' } })
+
+    harness.buttons.length = 0
+    harness.fields.length = 0
+    const markup = renderToStaticMarkup(<AiPlanCard />)
     const generate = harness.buttons.find(button => button.children === 'Elaborar meu treino com IA')
+    expect(generate.disabled).toBe(false)
+    expect(markup).toMatch(/Faixa etária/)
+    expect(markup).toMatch(/Dias disponíveis/)
     await generate.onClick()
 
     expect(harness.calls.map(call => call.path)).toEqual([

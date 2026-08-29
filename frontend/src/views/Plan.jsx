@@ -5,8 +5,8 @@ import { useUI } from '../store/useUI.js'
 import { DAYN, uid, exCount } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
 import { api } from '../lib/api.js'
-import { AI_EQUIPMENT, AI_EXPERIENCE, aiMissingFields, aiProfile, latestBodyWeight } from '../lib/ai-plan.js'
-import { applyAiPlanToState, generateAiWorkout } from '../lib/ai-job-flow.js'
+import { AI_EQUIPMENT, AI_EXPERIENCE, aiProfile, latestBodyWeight } from '../lib/ai-plan.js'
+import { applyAiPlanToState, canonicalAiMissingFields, generateAiWorkout, persistCanonicalAiContext } from '../lib/ai-job-flow.js'
 import { dayAssignSheet, loadStarterPlan, planToolsSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button, NumberField, Segmented, TextArea, TextField } from '../components/ui.jsx'
@@ -67,8 +67,7 @@ export function AiPlanCard() {
   const [status, setStatus] = useState(null)
   const [busy, setBusy] = useState(false)
   const [weight, setWeight] = useState(latest?.w || '')
-  const missing = aiMissingFields(S)
-  const generationMissing = Array.isArray(status?.missing) ? status.missing : missing
+  const generationMissing = canonicalAiMissingFields({ profile, weight })
 
   useEffect(() => { setWeight(latest?.w || '') }, [latest?.w])
   useEffect(() => {
@@ -82,6 +81,14 @@ export function AiPlanCard() {
     if (current.has(id)) current.delete(id); else current.add(id)
     setProfile({ equipment: [...current] })
   }
+  const toggleAvailableDay = day => {
+    const current = profile.availableDays || []
+    setProfile({
+      availableDays: current.includes(day)
+        ? current.filter(value => value !== day)
+        : [...current, day].sort((a, b) => a - b)
+    })
+  }
   const saveWeight = value => {
     setWeight(value)
     update(state => {
@@ -92,12 +99,26 @@ export function AiPlanCard() {
   }
   const generate = async () => {
     if (!user) { toast('Entre com sua conta para usar IA.'); return }
-    const nowMissing = Array.isArray(status?.missing) ? status.missing : aiMissingFields(useStore.getState().S)
+    const currentState = useStore.getState().S
+    const currentProfile = aiProfile(currentState)
+    const nowMissing = canonicalAiMissingFields({ profile: currentProfile, weight })
     if (nowMissing.length) { toast(`Complete: ${nowMissing.join(', ')}`); return }
-    if (status?.blockers?.length) { toast('A geração está bloqueada até a revisão dos dados de saúde.'); return }
     setBusy(true)
     try {
       await useStore.getState().pushState()
+      const prepared = await persistCanonicalAiContext({
+        profile: currentProfile,
+        weight,
+        weightUnit: currentState.unit,
+        observedAt: new Date().toISOString().slice(0, 10)
+      })
+      setStatus(prepared.status)
+      const completeness = prepared.context.completeness || {}
+      if (prepared.status?.configured === false) throw new Error('Configure um provedor de IA antes de gerar o treino.')
+      if (completeness.blockers?.length) throw new Error('A geração está bloqueada até a revisão dos dados de saúde.')
+      if (completeness.eligible !== true || completeness.missing?.length) {
+        throw new Error(`Complete: ${(completeness.missing || ['dados obrigatórios']).join(', ')}`)
+      }
       const { context } = await generateAiWorkout({ idempotencyKey: `plan-${uid()}` })
       replaceState(applyAiPlanToState(useStore.getState().S, context.plan), false)
       await useStore.getState().pushState()
@@ -137,10 +158,40 @@ export function AiPlanCard() {
         <label><span>Altura (cm)</span><NumberField name="ai-height" decimal={false} value={profile.heightCm} onChange={heightCm => setProfile({ heightCm })} /></label>
         <label><span>Sessões/semana</span><NumberField name="ai-sessions" decimal={false} value={profile.sessionsPerWeek} onChange={sessionsPerWeek => setProfile({ sessionsPerWeek })} /></label>
         <label><span>Minutos/sessão</span><NumberField name="ai-minutes" decimal={false} value={profile.minutesPerSession} onChange={minutesPerSession => setProfile({ minutesPerSession })} /></label>
+        <label><span>Academia</span><TextField name="ai-gym-name" autoComplete="organization" value={profile.gymName} onChange={e => setProfile({ gymName: e.target.value })} /></label>
       </div>
 
       <label className="ai-field"><span>Objetivo principal</span><TextField name="ai-goal" autoComplete="off" value={profile.goal} onChange={e => setProfile({ goal: e.target.value })} placeholder="Ex.: hipertrofia, emagrecimento, força…" /></label>
-      <Segmented className="ai-seg" value={profile.experience} onChange={experience => setProfile({ experience })} options={AI_EXPERIENCE.map(([value, label]) => ({ value, label }))} />
+      <fieldset className="ai-choice-group">
+        <legend>Faixa etária</legend>
+        <Segmented className="ai-seg" value={profile.ageBand} onChange={ageBand => setProfile({ ageBand })} options={[
+          { value: 'under14', label: 'Menos de 14' }, { value: '14to17', label: '14 a 17' }, { value: 'adult', label: '18 ou mais' }
+        ]} />
+      </fieldset>
+      <fieldset className="ai-choice-group">
+        <legend>Consentimento para usar estes dados na geração</legend>
+        <Segmented className="ai-seg" value={profile.consent} onChange={consent => setProfile({ consent })} options={[
+          { value: true, label: 'Autorizo' }, { value: false, label: 'Não autorizo' }
+        ]} />
+      </fieldset>
+      {profile.ageBand && profile.ageBand !== 'adult' && <fieldset className="ai-choice-group">
+        <legend>Autorização do responsável</legend>
+        <Segmented className="ai-seg" value={profile.guardianConsent} onChange={guardianConsent => setProfile({ guardianConsent })} options={[
+          { value: true, label: 'Autorizado' }, { value: false, label: 'Não autorizado' }
+        ]} />
+      </fieldset>}
+      <fieldset className="ai-choice-group">
+        <legend>Dias disponíveis</legend>
+        <div className="ai-days">
+          {[1, 2, 3, 4, 5, 6, 0].map(day => <button key={day} type="button" aria-pressed={(profile.availableDays || []).includes(day)} onClick={() => toggleAvailableDay(day)}>
+            {t(DAYN[day])}
+          </button>)}
+        </div>
+      </fieldset>
+      <fieldset className="ai-choice-group">
+        <legend>Experiência</legend>
+        <Segmented className="ai-seg" value={profile.experience} onChange={experience => setProfile({ experience })} options={AI_EXPERIENCE.map(([value, label]) => ({ value, label }))} />
+      </fieldset>
       <label className="ai-field"><span>Preferências</span><TextArea name="ai-preferences" autoComplete="off" value={profile.preferences} onChange={e => setProfile({ preferences: e.target.value })} placeholder="Ex.: gosto de costas, não gosto de corrida, prefiro halteres…" /></label>
       <label className="ai-field"><span>Restrições ou observações</span><TextArea name="ai-limitations" autoComplete="off" value={profile.limitations} onChange={e => setProfile({ limitations: e.target.value })} placeholder="Ex.: evitar impacto no joelho, sem agachamento livre…" /></label>
 
@@ -156,7 +207,7 @@ export function AiPlanCard() {
 
       <div className="ai-actions">
         <div className="ss">{generationMissing.length ? `Falta: ${generationMissing.join(', ')}` : status?.provider ? `Modelo: ${status.provider.label || status.provider.provider} · ${status.provider.selectedModel}` : 'Dados completos para gerar.'}</div>
-        <Button icon="sparkles" onClick={generate} disabled={busy || !status?.configured || status?.eligible === false}>{busy ? 'Gerando…' : 'Elaborar meu treino com IA'}</Button>
+        <Button icon="sparkles" onClick={generate} disabled={busy || status?.configured === false || generationMissing.length > 0}>{busy ? 'Gerando…' : 'Elaborar meu treino com IA'}</Button>
       </div>
     </section>
   )

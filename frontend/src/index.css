@@ -1211,6 +1211,11 @@ body.resting #app{padding-bottom:calc(250px + var(--sab))}
 .ai-card .num{width:100%;height:38px;padding:0 11px;border:var(--hair) solid var(--sep);border-radius:12px;background:var(--surface-2);color:var(--label)}
 .ai-card .num:focus{outline:0;border-color:var(--acc);box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 24%,transparent)}
 .ai-field{margin:10px 0}.ai-field .area{min-height:72px}.ai-seg{margin:10px 0}
+.ai-choice-group{min-width:0;margin:10px 0;padding:0;border:0}
+.ai-choice-group legend{padding:0;color:var(--label-2);font-size:12px;font-weight:700}
+.ai-days{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px}
+.ai-days button{min-height:44px;padding:0 11px;border:var(--hair) solid var(--sep);border-radius:12px;background:var(--surface-2);color:var(--label-2);font-weight:650}
+.ai-days button[aria-pressed="true"]{border-color:var(--acc);color:var(--label)}
 .ai-equipment{margin-top:12px}.ai-equipment-title{margin-bottom:8px;color:var(--label-2);font-size:12px;font-weight:700}
 .ai-equipment-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .ai-equipment-grid button{
