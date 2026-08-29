@@ -1,4 +1,5 @@
 import { api } from './api.js'
+import { canonicalDraftPayloads } from './ai-product.js'
 
 const ACTIVE = new Set(['queued', 'running'])
 const waitFor = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
@@ -104,6 +105,43 @@ export async function generateAiWorkout({
   return { job, context }
 }
 
+function aborted() {
+  return Object.assign(new Error('AI job polling cancelled'), { name: 'AbortError' })
+}
+
+export async function pollExistingAiJob({
+  request = api, job, wait = waitFor, signal, onUpdate = () => {}, maxPolls = 120,
+}) {
+  let current = job
+  for (let poll = 0; current && ACTIVE.has(current.status) && poll < maxPolls; poll += 1) {
+    if (signal?.aborted) throw aborted()
+    await wait(Math.min(3000, 700 + poll * 150))
+    if (signal?.aborted) throw aborted()
+    const result = await request(`/api/ai/job?id=${encodeURIComponent(current.id)}`)
+    current = result.job
+    onUpdate(current)
+  }
+  if (!current || ACTIVE.has(current.status)) {
+    throw new Error('Workout generation is taking longer than expected. Check the status again.')
+  }
+  return current
+}
+
+export async function persistAiWizardContext({
+  request = api, draft, rev, observedAt = new Date().toISOString().slice(0, 10), unit = 'kg',
+}) {
+  const payloads = canonicalDraftPayloads(draft, rev, observedAt, unit)
+  const savedProfile = await request('/api/ai/profile', { method: 'PUT', body: JSON.stringify(payloads.profile) })
+  const savedGym = await request('/api/ai/gym', { method: 'PUT', body: JSON.stringify({ ...payloads.gym, rev: savedProfile.rev }) })
+  let currentRev = savedGym.rev
+  for (const measurement of payloads.measurements) {
+    const saved = await request('/api/ai/measurements', { method: 'POST', body: JSON.stringify({ ...measurement, rev: currentRev }) })
+    currentRev = saved.rev
+  }
+  const [context, status] = await Promise.all([request('/api/ai/context'), request('/api/ai/status')])
+  return { context, status }
+}
+
 function frontendExercise(exercise) {
   return {
     id: exercise.exerciseId,
@@ -139,6 +177,14 @@ export function applyAiPlanToState(state, plan) {
     const next = routines.includes(item.routineId) ? routines : [...routines, item.routineId]
     return { ...result, [item.day]: next.length === 1 ? next[0] : next }
   }, {})
+  const currentAi = state.sourceSchedules?.ai?.find(schedule => schedule.active !== false)
+  const priorHistory = [...(state.aiPlanHistory || [])]
+  if (currentAi?.planId && !priorHistory.some(item => item.planId === currentAi.planId)) {
+    priorHistory.push({ planId: currentAi.planId, version: currentAi.version, label: currentAi.label, appliedAt: currentAi.updatedAt || null })
+  }
+  const aiPlanHistory = [...priorHistory.filter(item => item.planId !== plan.id), {
+    planId: plan.id, version: plan.version, label: `Plano IA v${plan.version}`, appliedAt: plan.appliedAt,
+  }].slice(-10)
   return {
     ...state,
     routines: [...manualRoutines, ...aiRoutines],
@@ -158,6 +204,7 @@ export function applyAiPlanToState(state, plan) {
       summary: plan.justification,
       justification: plan.justification,
       generatedAt: plan.appliedAt
-    }
+    },
+    aiPlanHistory,
   }
 }

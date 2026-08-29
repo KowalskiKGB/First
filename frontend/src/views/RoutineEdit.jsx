@@ -56,7 +56,7 @@ export default function RoutineEdit() {
       <button className="iconbtn" onClick={() => nav('/plan')} aria-label={t('Plan')}><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, margin: '0 12px' }}>
         {prescribed
-          ? <><div style={{ fontWeight: 600, fontSize: 20, letterSpacing: '-.021em' }}>{r.name}</div><div className="sub">Somente leitura</div></>
+          ? <><div style={{ fontWeight: 600, fontSize: 20, letterSpacing: '-.021em' }}>{r.name}</div><div className="sub">{t('Read only')}</div></>
           : <input className="input" defaultValue={r.name} style={{ fontWeight: 600, fontSize: 20, letterSpacing: '-.021em' }}
             onChange={e => update(s => { s.routines.find(x => x.id === id).name = e.target.value.trim() || t('Routine') })} />}
       </div>
@@ -66,12 +66,12 @@ export default function RoutineEdit() {
     </div>
 
     {prescribed ? <div className="card" style={{ marginBottom: 16 }}>
-      <div className="small dim">{r._aiGenerated ? 'Plano da IA' : 'Programa do Personal'}</div>
+      <div className="small dim"><span className={`plan-source-badge ${r._aiGenerated ? 'source-ai' : 'source-personal'}`}>{r._aiGenerated ? 'IA' : t('Personal')}</span></div>
       <div className="row between" style={{ margin: '4px 0 12px' }}>
-        <strong>{r._aiGenerated ? 'Treino gerenciado pela IA' : (r._personalProgramName || 'Treino prescrito')}</strong>
-        <span className="tag">Versão {r._aiGenerated ? (r._aiVersion || 1) : (r._personalVersion || 1)}</span>
+        <strong>{r._aiGenerated ? t('AI-managed workout') : (r._personalProgramName || t('Prescribed workout'))}</strong>
+        <span className="tag">{t('Version {0}', r._aiGenerated ? (r._aiVersion || 1) : (r._personalVersion || 1))}</span>
       </div>
-      <Button variant="primary" icon="clipboard" onClick={copyToPlan}>{r._aiGenerated ? 'Copiar e personalizar' : 'Copiar para meu plano'}</Button>
+      <Button variant="primary" icon="clipboard" onClick={copyToPlan}>{r._aiGenerated ? t('Copy and customize') : t('Copy to My workout')}</Button>
     </div> : <>
       <div className="sect-b" style={{ marginBottom: 16 }}>
         <SelectRow icon="chartLine" title={t('Progression')} sheetTitle={t('Progression')}
@@ -98,8 +98,8 @@ export default function RoutineEdit() {
           {!prescribed && <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 'none', alignItems: 'center' }}>
             {i > 0 && <button className={'iconbtn' + (linkedPrev ? ' on-ss' : '')} title={t('Superset with exercise above')} style={{ width: 32, height: 28, borderRadius: 8, fontSize: 15 }} onClick={ev => { ev.stopPropagation(); toggleLink(i) }}><Icon name="link" /></button>}
             <div style={{ display: 'flex', gap: 2 }}>
-              <button className="iconbtn" aria-label="Move up" style={{ width: 28, height: 24, borderRadius: 7, fontSize: 12 }} onClick={ev => { ev.stopPropagation(); move(i, -1) }}><Icon name="chevronUp" /></button>
-              <button className="iconbtn" aria-label="Move down" style={{ width: 28, height: 24, borderRadius: 7, fontSize: 12 }} onClick={ev => { ev.stopPropagation(); move(i, 1) }}><Icon name="chevronDown" /></button>
+              <button className="iconbtn" aria-label={t('Move up')} style={{ width: 28, height: 24, borderRadius: 7, fontSize: 12 }} onClick={ev => { ev.stopPropagation(); move(i, -1) }}><Icon name="chevronUp" /></button>
+              <button className="iconbtn" aria-label={t('Move down')} style={{ width: 28, height: 24, borderRadius: 7, fontSize: 12 }} onClick={ev => { ev.stopPropagation(); move(i, 1) }}><Icon name="chevronDown" /></button>
             </div>
           </div>}
         </div>

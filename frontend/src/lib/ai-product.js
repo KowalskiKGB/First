@@ -34,25 +34,25 @@ const required = (errors, field, condition, message) => condition ? errors : { .
 export function validateWizardStep(draft, step) {
   let errors = {}
   if (step === 1) {
-    errors = required(errors, 'ageBand', ['under14', '14to17', 'adult'].includes(draft.ageBand), 'Informe a faixa etária.')
-    errors = required(errors, 'heightCm', Number(draft.heightCm) >= 80 && Number(draft.heightCm) <= 250, 'Informe uma altura válida.')
-    errors = required(errors, 'weight', Number(draft.weight) > 0 && Number(draft.weight) <= 500, 'Informe um peso válido.')
+    errors = required(errors, 'ageBand', ['under14', '14to17', 'adult'].includes(draft.ageBand), 'Enter the age range.')
+    errors = required(errors, 'heightCm', Number(draft.heightCm) >= 80 && Number(draft.heightCm) <= 250, 'Enter a valid height.')
+    errors = required(errors, 'weight', Number(draft.weight) > 0 && Number(draft.weight) <= 500, 'Enter a valid weight.')
   }
   if (step === 2) {
-    errors = required(errors, 'goal', String(draft.goal || '').trim().length > 0, 'Informe o objetivo principal.')
-    errors = required(errors, 'experience', ['iniciante', 'intermediario', 'avancado'].includes(draft.experience), 'Informe a experiência.')
-    errors = required(errors, 'availableDays', Array.isArray(draft.availableDays) && draft.availableDays.length > 0, 'Escolha pelo menos um dia.')
-    errors = required(errors, 'minutesPerSession', Number(draft.minutesPerSession) >= 15 && Number(draft.minutesPerSession) <= 180, 'Informe uma duração entre 15 e 180 minutos.')
+    errors = required(errors, 'goal', String(draft.goal || '').trim().length > 0, 'Enter the primary goal.')
+    errors = required(errors, 'experience', ['iniciante', 'intermediario', 'avancado'].includes(draft.experience), 'Enter the experience level.')
+    errors = required(errors, 'availableDays', Array.isArray(draft.availableDays) && draft.availableDays.length > 0, 'Choose at least one day.')
+    errors = required(errors, 'minutesPerSession', Number(draft.minutesPerSession) >= 15 && Number(draft.minutesPerSession) <= 180, 'Enter a duration between 15 and 180 minutes.')
   }
   if (step === 3) {
-    errors = required(errors, 'gymName', String(draft.gymName || '').trim().length > 0, 'Informe a academia.')
+    errors = required(errors, 'gymName', String(draft.gymName || '').trim().length > 0, 'Enter the gym.')
     const hasSpecific = draft.specificMachines?.some(machine => machine.exerciseIds?.length)
-    errors = required(errors, 'genericEquipment', draft.genericEquipment?.length > 0 || hasSpecific, 'Escolha pelo menos um aparelho disponível.')
+    errors = required(errors, 'genericEquipment', draft.genericEquipment?.length > 0 || hasSpecific, 'Choose at least one available equipment item.')
   }
   if (step === 4) {
-    errors = required(errors, 'consent', draft.consent === true, 'Confirme o uso dos dados para gerar o treino.')
+    errors = required(errors, 'consent', draft.consent === true, 'Confirm data use to generate the workout.')
     if (draft.ageBand === 'under14' || draft.ageBand === '14to17') {
-      errors = required(errors, 'guardianConsent', draft.guardianConsent === true, 'Confirme a autorização do responsável.')
+      errors = required(errors, 'guardianConsent', draft.guardianConsent === true, 'Confirm guardian authorization.')
     }
   }
   return errors
@@ -74,11 +74,33 @@ export function contextFingerprint(value) {
   return `ctx-${(hash >>> 0).toString(16).padStart(8, '0')}`
 }
 
+export function isAiContextStale(context, storedFingerprint) {
+  if (!context?.plan) return false
+  const canonical = { profile: context.profile || null, gym: context.gym || null, measurements: context.measurements || {} }
+  const planTime = Date.parse(context.plan.appliedAt || context.plan.createdAt || '')
+  const changedTimes = [
+    context.profile?.updatedAt,
+    context.gym?.updatedAt,
+    ...Object.values(context.measurements || {}).map(item => item?.updatedAt || item?.observedAt),
+  ].map(Date.parse).filter(Number.isFinite)
+  return !!(
+    (storedFingerprint && storedFingerprint !== contextFingerprint(canonical))
+    || (context.job?.contextHash && context.plan.contextHash && context.job.contextHash !== context.plan.contextHash)
+    || (Number.isFinite(planTime) && changedTimes.some(value => value > planTime))
+  )
+}
+
 const JOB_PRESENTATION = Object.freeze({
   queued: ['Na fila', 'Queued'], organizing: ['Organizando contexto', 'Organizing context'],
   generating: ['Gerando treino', 'Generating workout'], validating: ['Validando plano', 'Validating plan'],
   applying: ['Aplicando treino', 'Applying workout'], applied: ['Aplicado', 'Applied'], failed: ['Falha na geração', 'Generation failed'],
 })
+
+const PROVIDER_NAMES = Object.freeze({ openai: 'OpenAI', gemini: 'Gemini', anthropic: 'Anthropic' })
+
+export function providerDisplayName(provider) {
+  return PROVIDER_NAMES[provider] || String(provider || '')
+}
 
 export function jobPresentation(job) {
   const key = job?.status === 'queued' || job?.status === 'applied' || job?.status === 'failed' ? job.status : (job?.stage || job?.status || 'organizing')
@@ -103,5 +125,24 @@ export function canonicalDraftPayloads(draft, rev, observedAt, unit = 'kg') {
       ['weight', draft.weight, unit === 'lb' ? 'lb' : 'kg'], ['waist', draft.waistCm, 'cm'], ['chest', draft.chestCm, 'cm'],
       ['hip', draft.hipCm, 'cm'], ['arm', draft.armCm, 'cm'], ['thigh', draft.thighCm, 'cm'], ['calf', draft.calfCm, 'cm'],
     ].filter(([, value]) => Number(value) > 0).map(([kind, value, measurementUnit]) => ({ kind, value: Number(value), unit: measurementUnit, observedAt })),
+  }
+}
+
+export function generationSubmission(storage, userId, randomUUID = () => crypto.randomUUID()) {
+  const storageKey = `first_ai_generation_${String(userId || 'anonymous')}`
+  let current
+  try { current = JSON.parse(storage.getItem(storageKey) || 'null') }
+  catch { current = null }
+  if (!current?.key) {
+    current = { key: randomUUID(), jobId: null }
+    storage.setItem(storageKey, JSON.stringify(current))
+  }
+  return {
+    ...current,
+    rememberJob(jobId) {
+      current = { ...current, jobId }
+      storage.setItem(storageKey, JSON.stringify(current))
+    },
+    clear() { storage.removeItem(storageKey) },
   }
 }

@@ -7,7 +7,10 @@ const harness = vi.hoisted(() => ({
   navigate: vi.fn(),
 }))
 
-vi.mock('react-router-dom', () => ({ useNavigate: () => harness.navigate }))
+vi.mock('react-router-dom', () => ({
+  Link: ({ children, to, ...props }) => <a href={to} {...props}>{children}</a>,
+  useNavigate: () => harness.navigate,
+}))
 vi.mock('../store/useStore.js', () => ({
   useStore: selector => selector({ S: harness.state, user: null }),
 }))

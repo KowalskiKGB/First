@@ -42,23 +42,23 @@ export function equipmentLabel(value) {
 
 export const AI_EQUIPMENT = Object.keys(equipmentCounts)
   .sort((a, b) => equipmentCounts[b] - equipmentCounts[a] || equipmentLabel(a).localeCompare(equipmentLabel(b), 'pt-BR'))
-  .map(id => [id, equipmentLabel(id), equipmentCounts[id]])
+  .map(id => [id, id, equipmentCounts[id]])
 
 export const AI_TARGET_AREAS = [
-  ['chest', 'Peito'],
-  ['back', 'Costas'],
-  ['shoulders', 'Ombros'],
-  ['upper arms', 'Braços'],
-  ['upper legs', 'Pernas'],
-  ['lower legs', 'Panturrilhas'],
-  ['waist', 'Core'],
-  ['cardio', 'Cardio']
+  ['chest', 'chest'],
+  ['back', 'back'],
+  ['shoulders', 'shoulders'],
+  ['upper arms', 'upper arms'],
+  ['upper legs', 'upper legs'],
+  ['lower legs', 'lower legs'],
+  ['waist', 'waist'],
+  ['cardio', 'cardio']
 ]
 
 export const AI_EXPERIENCE = [
-  ['iniciante', 'Iniciante'],
-  ['intermediario', 'Intermediário'],
-  ['avancado', 'Avançado']
+  ['iniciante', 'Beginner'],
+  ['intermediario', 'Intermediate'],
+  ['avancado', 'Advanced']
 ]
 
 export function latestBodyWeight(state) {

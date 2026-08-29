@@ -44,6 +44,7 @@ describe('Brazilian Portuguese defaults', () => {
       'My workout',
       'Prefer rest for this day',
       'Dev credential',
+      'Providers and AI models',
       'AI providers',
       'Test structured output',
       'The saved key is never displayed again.',

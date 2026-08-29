@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  canonicalDraftPayloads,
   contextFingerprint,
   draftFromAiContext,
   generationSubmission,
+  isAiContextStale,
   jobPresentation,
+  providerDisplayName,
   validateWizardStep,
 } from './ai-product.js'
 
@@ -39,10 +42,50 @@ describe('AI product flow helpers', () => {
     expect(validateWizardStep({ ...draft, ageBand: 'adult', heightCm: 165, weight: 60, consent: true }, 4)).not.toHaveProperty('guardianConsent')
   })
 
+  it('validates goals, availability, gym equipment and minor consent per wizard step', () => {
+    const draft = draftFromAiContext()
+    expect(Object.keys(validateWizardStep(draft, 2))).toEqual(['goal', 'availableDays'])
+    expect(validateWizardStep({
+      ...draft, goal: 'Condicionamento', experience: 'avancado', availableDays: [2], minutesPerSession: 180,
+    }, 2)).toEqual({})
+    expect(Object.keys(validateWizardStep(draft, 3))).toEqual(['gymName', 'genericEquipment'])
+    expect(validateWizardStep({ ...draft, gymName: 'Centro', genericEquipment: ['cable'] }, 3)).toEqual({})
+    expect(validateWizardStep({
+      ...draft, gymName: 'Centro', specificMachines: [{ name: 'Leg press', exerciseIds: ['0572'] }],
+    }, 3)).toEqual({})
+    expect(Object.keys(validateWizardStep({ ...draft, ageBand: 'under14' }, 4))).toEqual(['consent', 'guardianConsent'])
+    expect(validateWizardStep({ ...draft, ageBand: 'under14', consent: true, guardianConsent: true }, 4)).toEqual({})
+  })
+
+  it('keeps safe empty defaults and clones partially populated machine links', () => {
+    expect(draftFromAiContext()).toMatchObject({
+      gymName: '', genericEquipment: [], specificMachines: [], availableDays: [], focusAreas: [],
+    })
+    const draft = draftFromAiContext({ gym: { specificMachines: [{ name: 'Máquina livre' }] }, measurements: { weight: {} } })
+    expect(draft.weight).toBe('')
+    expect(draft.specificMachines).toEqual([{ name: 'Máquina livre', exerciseIds: [] }])
+  })
+
   it('fingerprints canonical values deterministically and detects meaningful changes', () => {
     const reordered = { measurements: context.measurements, gym: context.gym, profile: context.profile }
     expect(contextFingerprint(reordered)).toBe(contextFingerprint(context))
     expect(contextFingerprint({ ...context, gym: { ...context.gym, name: 'Outra academia' } })).not.toBe(contextFingerprint(context))
+  })
+
+  it('detects a cross-device context update from canonical timestamps', () => {
+    const plan = { id: 'plan-1', appliedAt: '2026-08-29T12:00:00.000Z', contextHash: 'hash-1' }
+    expect(isAiContextStale({ ...context, plan, profile: { ...context.profile, updatedAt: '2026-08-29T13:00:00.000Z' } }, null)).toBe(true)
+    expect(isAiContextStale({ ...context, plan, profile: { ...context.profile, updatedAt: '2026-08-29T11:00:00.000Z' } }, null)).toBe(false)
+    expect(isAiContextStale({ ...context, plan, measurements: { weight: { ...context.measurements.weight, observedAt: '2026-08-30' } } }, null)).toBe(true)
+  })
+
+  it('does not mark a missing or identical plan context stale and detects server hash drift', () => {
+    expect(isAiContextStale(context, 'anything')).toBe(false)
+    const planContext = { ...context, plan: { id: 'plan-1', createdAt: '2026-08-29T12:00:00.000Z', contextHash: 'plan-hash' } }
+    const canonical = { profile: planContext.profile, gym: planContext.gym, measurements: planContext.measurements }
+    expect(isAiContextStale(planContext, contextFingerprint(canonical))).toBe(false)
+    expect(isAiContextStale(planContext, 'ctx-different')).toBe(true)
+    expect(isAiContextStale({ ...planContext, job: { contextHash: 'new-hash' } }, null)).toBe(true)
   })
 
   it('maps every persistent job state to the approved visible stages', () => {
@@ -51,6 +94,27 @@ describe('AI product flow helpers', () => {
     expect(jobPresentation({ status: 'running', stage: 'validating' }).label).toBe('Validando plano')
     expect(jobPresentation({ status: 'applied' }).label).toBe('Aplicado')
     expect(jobPresentation({ status: 'failed' }).label).toBe('Falha na geração')
+    expect(jobPresentation({ status: 'running', stage: 'applying' })).toMatchObject({ key: 'applying', active: true })
+    expect(jobPresentation()).toMatchObject({ key: 'organizing', active: false })
+  })
+
+  it('uses product names instead of internal provider ids', () => {
+    expect(providerDisplayName('openai')).toBe('OpenAI')
+    expect(providerDisplayName('gemini')).toBe('Gemini')
+    expect(providerDisplayName('anthropic')).toBe('Anthropic')
+    expect(providerDisplayName('private-provider')).toBe('private-provider')
+    expect(providerDisplayName()).toBe('')
+  })
+
+  it('builds canonical minor measurement payloads without empty optional values', () => {
+    const draft = {
+      ...draftFromAiContext(context), weight: 62, waistCm: '', ageBand: '14to17', guardianConsent: true,
+    }
+    const payloads = canonicalDraftPayloads(draft, 5, '2026-08-29', 'lb')
+    expect(payloads.profile).toMatchObject({ rev: 5, guardianConsent: true })
+    expect(payloads.gym.specificMachines[0].exerciseIds).toEqual(['0003'])
+    expect(payloads.measurements).toEqual([{ kind: 'weight', value: 62, unit: 'lb', observedAt: '2026-08-29' }])
+    expect(canonicalDraftPayloads({ ...draft, ageBand: 'adult' }, 6, '2026-08-30').profile.guardianConsent).toBeNull()
   })
 
   it('keeps one idempotency key stable until the submission is cleared', () => {
@@ -63,5 +127,11 @@ describe('AI product flow helpers', () => {
     expect(generationSubmission(storage, 'student-1', () => 'random-3').jobId).toBe('job-1')
     first.clear()
     expect(generationSubmission(storage, 'student-1', () => 'random-4').key).toBe('random-4')
+  })
+
+  it('recovers a stable anonymous submission from corrupt local storage', () => {
+    const values = new Map([['first_ai_generation_anonymous', '{invalid']])
+    const storage = { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) }
+    expect(generationSubmission(storage, '', () => 'anonymous-key')).toMatchObject({ key: 'anonymous-key', jobId: null })
   })
 })

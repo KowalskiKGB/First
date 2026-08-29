@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('./Icon.jsx', () => ({ default: ({ name }) => <i data-icon={name} /> }))
 vi.mock('../lib/glyphs.js', () => ({ glyphOf: () => 'dumbbell' }))
+vi.mock('../lib/i18n.js', () => ({ t: value => value === 'My workout' ? 'Meu treino' : value === 'Preferred' ? 'Preferido' : value }))
 
 import SessionOptions from './SessionOptions.jsx'
 
@@ -20,6 +21,7 @@ describe('SessionOptions', () => {
     expect(markup.match(/<button/g)).toHaveLength(3)
     expect(markup.match(/>Meu treino<\/span>/g)).toHaveLength(2)
     expect(markup).not.toContain('>Manual</span>')
+    expect(markup).toContain('aria-label="Meu treino, Manual"')
     expect(markup).toContain('Treino A')
     expect(markup).toContain('Treino IA')
     expect(markup).toContain('Meu treino')

@@ -2,7 +2,10 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('../lib/i18n.js', () => ({ exerciseName: exercise => exercise?.n || '', t: value => value }))
+vi.mock('../lib/i18n.js', () => ({
+  dateLocale: () => 'en-GB', exerciseName: exercise => exercise?.n || '',
+  t: (value, ...args) => args.reduce((text, arg, index) => text.replaceAll(`{${index}}`, arg), value),
+}))
 vi.mock('./Icon.jsx', () => ({ default: ({ name }) => <i data-icon={name} /> }))
 vi.mock('./ui.jsx', () => ({
   Button: ({ children, ...props }) => <button {...props}>{children}</button>,

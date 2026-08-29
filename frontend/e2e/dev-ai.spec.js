@@ -1,0 +1,115 @@
+import { expect, test } from '@playwright/test'
+
+function devFixtures() {
+  let unlocked = false
+  let providers = ['openai', 'gemini', 'anthropic'].map(provider => ({
+    provider, selectedModel: '', configured: false, keyFingerprint: null,
+    testedAt: null, testStatus: 'untested', active: false,
+  }))
+  const writes = []
+  const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
+  const patchProvider = (provider, patch) => { providers = providers.map(slot => slot.provider === provider ? { ...slot, ...patch } : slot) }
+
+  return {
+    writes,
+    async handle(route) {
+      const request = route.request()
+      const { pathname, searchParams } = new URL(request.url())
+      const method = request.method()
+      const body = method === 'GET' ? null : request.postDataJSON()
+      if (method !== 'GET') writes.push({ pathname, body })
+
+      if (pathname === '/api/me') return json(route, { user: { id: 'admin-1', name: 'Administrador', admin: true } })
+      if (pathname === '/api/data' && method === 'GET') return json(route, { state: { lang: 'pt', theme: 'dark', accent: 'lime', routines: [], workouts: [], bodyweight: [] } })
+      if (pathname === '/api/data' && method === 'PUT') return json(route, { ok: true })
+      if (pathname === '/api/collaboration') return json(route, { rev: 1, profile: { userId: 'admin-1', roles: ['student'] }, connections: [], notifications: [], programs: [] })
+      if (pathname === '/api/dev/session') return json(route, { unlocked, username: 'first_dev_demo' })
+      if (pathname === '/api/dev/login' && method === 'POST') {
+        unlocked = true
+        return json(route, { ok: true })
+      }
+      if (pathname === '/api/dev/logout' && method === 'POST') {
+        unlocked = false
+        return json(route, { ok: true })
+      }
+      if (pathname === '/api/dev/ai/providers') return json(route, { providers })
+      if (pathname === '/api/dev/ai/usage') {
+        const longWindow = searchParams.get('window') === '30d'
+        return json(route, { usage: { requests: longWindow ? 30 : 7, failures: longWindow ? 3 : 1, totalTokens: longWindow ? 5400 : 1200, latencyMs: longWindow ? 9000 : 2100 } })
+      }
+      if (pathname === '/api/dev/ai/models') {
+        if (searchParams.get('provider') === 'gemini') return json(route, { error: 'upstream credential material' }, 500)
+        return json(route, { models: ['gpt-5', 'gpt-5-mini', 'o3'] })
+      }
+      if (pathname === '/api/dev/ai/provider' && method === 'PUT') {
+        patchProvider(body.provider, {
+          selectedModel: body.selectedModel, configured: true, keyFingerprint: '…A1B2',
+          testStatus: 'untested', testedAt: null,
+        })
+        return json(route, { ok: true })
+      }
+      if (pathname === '/api/dev/ai/provider/test' && method === 'POST') {
+        patchProvider(body.provider, { testStatus: 'success', testedAt: '2026-08-29T18:00:00.000Z' })
+        return json(route, { ok: true })
+      }
+      if (pathname === '/api/dev/ai/active' && method === 'PUT') {
+        providers = providers.map(slot => ({ ...slot, active: slot.provider === body.provider }))
+        return json(route, { ok: true })
+      }
+      return json(route, { error: `unmocked ${method} ${pathname}` }, 501)
+    },
+  }
+}
+
+test('Dev configures, tests and activates one provider without redisplaying its secret', async ({ page }, testInfo) => {
+  const fixtures = devFixtures()
+  const errors = []
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
+  page.on('pageerror', error => errors.push(error.message))
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.route('**/api/**', route => fixtures.handle(route))
+
+  await page.goto('/#/dev')
+  await expect(page.getByRole('heading', { name: 'Credencial Dev' })).toBeVisible()
+  await expect(page.locator('[name="dev-username"]')).toHaveValue('first_dev_demo')
+  await page.locator('[name="dev-password"]').fill('temporary-demo-password')
+  await page.getByRole('button', { name: 'Abrir Painel Dev' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Provedores de IA' })).toBeVisible()
+  await expect(page.locator('.dev-provider-card')).toHaveCount(3)
+  const openai = page.locator('form[aria-labelledby="provider-openai"]')
+  await openai.getByRole('button', { name: 'Carregar modelos' }).click()
+  await openai.locator('[name="openai-model-search"]').fill('mini')
+  await openai.getByRole('option', { name: 'gpt-5-mini' }).click()
+  await openai.getByRole('button', { name: 'Limpar busca' }).click()
+  expect(fixtures.writes.filter(write => write.pathname === '/api/dev/ai/provider')).toHaveLength(0)
+  await openai.locator('[name="openai-api-key"]').fill('test-provider-key-never-render-again')
+  await openai.getByRole('button', { name: 'Salvar configuração' }).click()
+
+  await expect(openai.locator('[name="openai-api-key"]')).toHaveValue('')
+  await expect(openai.getByText('…A1B2')).toBeVisible()
+  expect(await page.content()).not.toContain('test-provider-key-never-render-again')
+  await openai.getByRole('button', { name: 'Testar saída estruturada' }).click()
+  await expect(openai.getByText('Testado')).toBeVisible()
+  await openai.getByRole('button', { name: 'Ativar globalmente' }).click()
+  await expect(openai.getByText('Ativo', { exact: true })).toBeVisible()
+
+  const gemini = page.locator('form[aria-labelledby="provider-gemini"]')
+  await gemini.getByRole('button', { name: 'Carregar modelos' }).click()
+  await expect(gemini.getByText('Não foi possível carregar os modelos. Tente novamente.').first()).toBeVisible()
+  expect(await page.content()).not.toContain('upstream credential material')
+  await page.getByRole('button', { name: '30 dias' }).click()
+  await expect(page.getByText('30').first()).toBeVisible()
+  await expect(page.locator('#tabbar')).toHaveCount(0)
+
+  expect(fixtures.writes.find(write => write.pathname === '/api/dev/ai/provider').body).toEqual({ provider: 'openai', selectedModel: 'gpt-5-mini', apiKey: 'test-provider-key-never-render-again' })
+  expect(fixtures.writes.find(write => write.pathname === '/api/dev/ai/provider/test').body).toEqual({ provider: 'openai' })
+  expect(fixtures.writes.find(write => write.pathname === '/api/dev/ai/active').body).toEqual({ provider: 'openai' })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1)
+  await page.screenshot({ path: testInfo.outputPath('dev-ai-desktop.png'), fullPage: true })
+
+  await page.getByRole('button', { name: 'Sair do Painel Dev' }).click()
+  await expect(page.getByRole('heading', { name: 'Credencial Dev' })).toBeVisible()
+  expect(errors.filter(message => !message.includes('500 (Internal Server Error)'))).toEqual([])
+})

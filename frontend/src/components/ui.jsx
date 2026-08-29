@@ -60,14 +60,14 @@ export function TextArea({ className = '', ...rest }) {
   return <textarea className={'field area ' + className} {...rest} />
 }
 
-export function SearchField({ value, onChange, onClear, ...rest }) {
+export function SearchField({ value, onChange, onClear, clearLabel = 'Clear', ...rest }) {
   const label = rest['aria-label'] || rest.placeholder || 'Search'
   return (
     <div className="searchf">
       <Icon name="magnifier" className="lead" />
       <input className="field" value={value} onChange={onChange} aria-label={label} name={rest.name || label} {...rest} />
       {!!value && (
-        <button className="clear" onClick={onClear} aria-label="Clear">
+        <button type="button" className="clear" onClick={onClear} aria-label={clearLabel}>
           <Icon name="xmark" />
         </button>
       )}

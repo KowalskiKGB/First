@@ -27,3 +27,9 @@ export function usageKpis(usage = {}) {
     averageLatencyMs: requests ? Math.round((Number(usage.latencyMs) || 0) / requests) : 0,
   }
 }
+
+export function safeDevError(error, fallback) {
+  if (error?.status === 401 || error?.status === 403) return 'Invalid Dev credential.'
+  if (error?.status === 429) return 'Too many attempts. Try again later.'
+  return fallback
+}

@@ -1,0 +1,152 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+
+import { AiPlanOverview, AiWizard } from '../components/AiPlanExperience.jsx'
+import { api } from '../lib/api.js'
+import { applyAiPlanToState, persistAiWizardContext, pollExistingAiJob } from '../lib/ai-job-flow.js'
+import { aiProfile, latestBodyWeight } from '../lib/ai-plan.js'
+import { contextFingerprint, draftFromAiContext, generationSubmission, isAiContextStale } from '../lib/ai-product.js'
+import { uid } from '../lib/format.js'
+import { t } from '../lib/i18n.js'
+import { copyPersonalRoutine } from '../lib/personal-forms.js'
+import { useStore } from '../store/useStore.js'
+import { useUI } from '../store/useUI.js'
+
+const activeJob = job => job?.status === 'queued' || job?.status === 'running'
+const snapshot = context => ({ profile: context?.profile || null, gym: context?.gym || null, measurements: context?.measurements || {} })
+const fingerprintKey = userId => `first_ai_context_${userId}`
+
+function legacyDraft(state) {
+  const profile = aiProfile(state)
+  return draftFromAiContext({
+    profile: {
+      ageBand: profile.ageBand || '', heightCm: profile.heightCm, goal: profile.goal, experience: profile.experience,
+      availableDays: profile.availableDays || [], minutesPerSession: profile.minutesPerSession, focusAreas: profile.targetAreas || [],
+      favoriteExerciseIds: profile.favoriteExerciseIds || [], avoidedExerciseIds: profile.blockedExerciseIds || [],
+      limitations: profile.limitations, acuteRisk: false, medicalRestriction: false, consent: profile.consent === true,
+      guardianConsent: profile.guardianConsent === true,
+    },
+    gym: { name: profile.gymName, genericEquipment: profile.equipment || [], specificMachines: [] },
+    measurements: latestBodyWeight(state) ? { weight: { value: latestBodyWeight(state).w, unit: state.unit || 'kg' } } : {},
+  })
+}
+
+export default function AiPlanCard() {
+  const state = useStore(store => store.S)
+  const user = useStore(store => store.user)
+  const replaceState = useStore(store => store.replaceState)
+  const update = useStore(store => store.update)
+  const toast = useUI(store => store.toast)
+  const [context, setContext] = useState(null)
+  const [status, setStatus] = useState(null)
+  const [job, setJob] = useState(null)
+  const [draft, setDraft] = useState(() => legacyDraft(state))
+  const [wizard, setWizard] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const pollController = useRef(null)
+
+  const applyContext = async next => {
+    setContext(next); setJob(next.job || null); setDraft(draftFromAiContext(next))
+    if (next.plan) {
+      replaceState(applyAiPlanToState(useStore.getState().S, next.plan), false)
+      await useStore.getState().pushState()
+    }
+  }
+  const load = async () => {
+    if (!user) return
+    const [nextContext, nextStatus] = await Promise.all([api('/api/ai/context'), api('/api/ai/status')])
+    setContext(nextContext); setStatus(nextStatus); setJob(nextContext.job || null)
+    setDraft(draftFromAiContext(nextContext))
+    return nextContext
+  }
+  useEffect(() => {
+    let current = true
+    if (!user) { setStatus({ configured: false }); return undefined }
+    Promise.all([api('/api/ai/context'), api('/api/ai/status')]).then(([nextContext, nextStatus]) => {
+      if (!current) return
+      setContext(nextContext); setStatus(nextStatus); setJob(nextContext.job || null); setDraft(draftFromAiContext(nextContext))
+    }).catch(() => current && setStatus({ configured: false }))
+    return () => { current = false; pollController.current?.abort() }
+  }, [user?.id])
+
+  const finishJob = async (initialJob, submission, signal) => {
+    try {
+      const terminal = await pollExistingAiJob({ job: initialJob, signal, onUpdate: setJob })
+      setJob(terminal)
+      if (terminal.status === 'failed') throw new Error(terminal.publicError || t('Generation failed. Your previous plan is still active.'))
+      if (terminal.status !== 'applied') throw new Error(t('Invalid generation status.'))
+      const nextContext = await api('/api/ai/context')
+      await applyContext(nextContext)
+      localStorage.setItem(fingerprintKey(user.id), contextFingerprint(snapshot(nextContext)))
+      submission.clear(); setWizard(false); toast(t('Weekly workout generated and applied.'))
+    } catch (error) {
+      if (error.name !== 'AbortError') { submission.clear(); toast(t(error.message || 'Workout generation failed.')) }
+    } finally { setBusy(false) }
+  }
+
+  useEffect(() => {
+    if (!user || !activeJob(job) || pollController.current) return undefined
+    const controller = new AbortController(); pollController.current = controller
+    const submission = generationSubmission(localStorage, user.id)
+    if (!submission.jobId) submission.rememberJob(job.id)
+    finishJob(job, submission, controller.signal).finally(() => { if (pollController.current === controller) pollController.current = null })
+    return () => controller.abort()
+  }, [user?.id, job?.id])
+
+  const generate = async completedDraft => {
+    if (!user) { toast(t('Sign in to generate a workout with AI.')); return }
+    setBusy(true)
+    try {
+      await useStore.getState().pushState()
+      const current = await api('/api/ai/context')
+      const { context: prepared, status: generationStatus } = await persistAiWizardContext({
+        draft: completedDraft, rev: current.rev, observedAt: new Date().toISOString().slice(0, 10), unit: state.unit,
+      })
+      setContext(prepared); setStatus(generationStatus); setDraft(draftFromAiContext(prepared))
+      if (!generationStatus.configured) throw new Error(t('No tested AI provider is active.'))
+      if (prepared.completeness?.blockers?.length) throw new Error(t('Generation is blocked by the current health information.'))
+      if (!prepared.completeness?.eligible) throw new Error(t('Review the required information before generating.'))
+      const submission = generationSubmission(localStorage, user.id)
+      const created = await api('/api/ai/jobs', { method: 'POST', headers: { 'Idempotency-Key': submission.key }, body: '{}' })
+      submission.rememberJob(created.job.id); setJob(created.job)
+      pollController.current?.abort()
+      const controller = new AbortController(); pollController.current = controller
+      await finishJob(created.job, submission, controller.signal)
+      if (pollController.current === controller) pollController.current = null
+    } catch (error) {
+      setBusy(false); toast(t(error.message || 'Workout generation failed.'))
+    }
+  }
+
+  const copy = () => {
+    const managed = state.routines.filter(routine => routine._aiGenerated === true && (!context?.plan?.id || routine._aiPlanId === context.plan.id))
+    if (!managed.length) return
+    update(next => {
+      const copies = managed.map(routine => ({ ...copyPersonalRoutine(routine, uid()), name: `${routine.name} · ${t('copy')}` }))
+      next.routines = [...next.routines, ...copies]
+    })
+    toast(t('{0} routines copied to My workout.', managed.length))
+  }
+  const priorPlan = useMemo(() => {
+    const history = state.aiPlanHistory || []
+    const currentIndex = history.findIndex(item => item.planId === context?.plan?.id)
+    return currentIndex > 0 ? history[currentIndex - 1] : null
+  }, [state.aiPlanHistory, context?.plan?.id])
+  const rollback = async () => {
+    if (!priorPlan) return
+    setBusy(true)
+    try {
+      await api('/api/ai/plan/rollback', { method: 'POST', body: JSON.stringify({ planId: priorPlan.planId }) })
+      const nextContext = await load(); await applyContext(nextContext)
+      toast(t('Previous AI version restored.'))
+    } catch (error) { toast(t(error.message || 'The previous version could not be restored.')) }
+    finally { setBusy(false) }
+  }
+
+  const storedFingerprint = user && globalThis.localStorage ? globalThis.localStorage.getItem(fingerprintKey(user.id)) : null
+  const stale = isAiContextStale(context, storedFingerprint)
+
+  return wizard ? <AiWizard draft={draft} onDraft={setDraft} onClose={() => setWizard(false)} onSubmit={generate} busy={busy} /> : <AiPlanOverview
+    plan={context?.plan} status={status} job={job} stale={stale} onOpen={() => setWizard(true)}
+    onRollback={rollback} onCopy={copy} canRollback={!!priorPlan}
+  />
+}

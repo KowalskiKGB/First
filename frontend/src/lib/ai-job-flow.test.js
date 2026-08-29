@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { applyAiPlanToState, canonicalAiMissingFields, generateAiWorkout, persistCanonicalAiContext, pollExistingAiJob } from './ai-job-flow.js'
+import {
+  applyAiPlanToState,
+  canonicalAiMissingFields,
+  generateAiWorkout,
+  persistAiWizardContext,
+  persistCanonicalAiContext,
+  pollExistingAiJob,
+} from './ai-job-flow.js'
 
 describe('AI job flow', () => {
   it('creates a job, polls to applied and refreshes canonical AI context', async () => {
@@ -85,6 +92,22 @@ describe('AI job flow', () => {
     await expect(pollExistingAiJob({ request, job: { id: 'job-2', status: 'running' }, wait: async () => {}, signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' })
   })
 
+  it('returns a translatable key when resumed job polling times out', async () => {
+    await expect(pollExistingAiJob({
+      job: { id: 'job-slow', status: 'running' },
+      wait: async () => {},
+      maxPolls: 0,
+    })).rejects.toThrow('Workout generation is taking longer than expected. Check the status again.')
+
+    const controller = new AbortController()
+    await expect(pollExistingAiJob({
+      request: async () => ({ job: { id: 'job-slow', status: 'running' } }),
+      job: { id: 'job-slow', status: 'running' },
+      wait: async () => controller.abort(),
+      signal: controller.signal,
+    })).rejects.toMatchObject({ name: 'AbortError' })
+  })
+
   it('keeps two distinct AI sessions scheduled on the same day', () => {
     const next = applyAiPlanToState({ week: {}, routines: [] }, {
       id: 'double-plan', version: 1, appliedAt: '2026-08-29T12:00:00.000Z', justification: 'Duas sessões',
@@ -96,6 +119,24 @@ describe('AI job flow', () => {
     })
 
     expect(next.sourceSchedules.ai[0].week).toEqual({ 1: ['ai-am', 'ai-pm'] })
+  })
+
+  it('maps time and cardio prescriptions while tolerating a minimal local state', () => {
+    const next = applyAiPlanToState({}, {
+      id: 'mixed-plan', version: 1, appliedAt: '2026-08-29T12:00:00.000Z', justification: 'Misto',
+      routines: [{
+        id: 'mixed', name: 'Misto', exercises: [
+          { id: 'time-1', exerciseId: '0100', mode: 'time', sets: 2, seconds: 45, restSeconds: 30 },
+          { id: 'cardio-1', exerciseId: '0101', mode: 'cardio', sets: 1, seconds: 600, restSeconds: 0 },
+        ],
+      }],
+      schedule: [{ day: 2, routineId: 'mixed' }, { day: 2, routineId: 'mixed' }],
+    })
+    expect(next.routines[0].ex).toEqual([
+      expect.objectContaining({ id: '0100', sec: 45, reps: undefined }),
+      expect.objectContaining({ id: '0101', min: 10, reps: undefined }),
+    ])
+    expect(next.sourceSchedules.ai[0].week).toEqual({ 2: 'mixed' })
   })
 
   it('surfaces a failed job public error without refreshing context', async () => {
@@ -110,6 +151,18 @@ describe('AI job flow', () => {
     await expect(generateAiWorkout({ request, idempotencyKey: 'request-1', wait: async () => {} }))
       .rejects.toThrow('Geração interrompida.')
     expect(calls).toEqual(['/api/ai/jobs', '/api/ai/job?id=job-1'])
+  })
+
+  it('rejects terminal and mismatched generated plans without changing local state', async () => {
+    await expect(generateAiWorkout({
+      request: async () => ({ job: { id: 'job-empty', status: 'cancelled' } }), idempotencyKey: 'request-empty', wait: async () => {},
+    })).rejects.toThrow('Status de geração inválido.')
+
+    const request = async path => path === '/api/ai/jobs'
+      ? { job: { id: 'job-version', status: 'applied', planVersion: 2 } }
+      : { plan: { id: 'plan-old', version: 1 } }
+    await expect(generateAiWorkout({ request, idempotencyKey: 'request-version', wait: async () => {} }))
+      .rejects.toThrow('O plano gerado ainda não está disponível.')
   })
 
   it('persists profile, gym and measurement with chained revisions before refreshing context and status', async () => {
@@ -151,6 +204,33 @@ describe('AI job flow', () => {
     expect(result.status.configured).toBe(true)
   })
 
+  it('persists every wizard measurement with the revision returned by the previous write', async () => {
+    const writes = []
+    const request = vi.fn(async (path, options) => {
+      const body = options?.body ? JSON.parse(options.body) : null
+      if (body) writes.push({ path, body })
+      if (path === '/api/ai/profile') return { rev: 8 }
+      if (path === '/api/ai/gym') return { rev: 9 }
+      if (path === '/api/ai/measurements') return { rev: body.rev + 1 }
+      if (path === '/api/ai/context') return { rev: 11 }
+      if (path === '/api/ai/status') return { configured: true }
+      throw new Error(`unexpected ${path}`)
+    })
+    const draft = {
+      ageBand: 'adult', heightCm: 170, weight: 74, waistCm: 82, chestCm: '', hipCm: '', armCm: '', thighCm: '', calfCm: '',
+      goal: 'Força', experience: 'intermediario', availableDays: [1, 3], minutesPerSession: 45, focusAreas: [],
+      gymName: 'Centro', genericEquipment: ['dumbbell'], specificMachines: [], favoriteExerciseIds: [], avoidedExerciseIds: [],
+      limitations: '', acuteRisk: false, medicalRestriction: false, consent: true, guardianConsent: false,
+    }
+
+    const result = await persistAiWizardContext({ request, draft, rev: 7, observedAt: '2026-08-29' })
+
+    expect(writes.map(write => [write.path, write.body.rev])).toEqual([
+      ['/api/ai/profile', 7], ['/api/ai/gym', 8], ['/api/ai/measurements', 9], ['/api/ai/measurements', 10],
+    ])
+    expect(result).toEqual({ context: { rev: 11 }, status: { configured: true } })
+  })
+
   it('requires explicit age, consent, guardian consent, days and gym', () => {
     const profile = {
       heightCm: 170, goal: 'Força', experience: 'iniciante', minutesPerSession: 45,
@@ -158,5 +238,8 @@ describe('AI job flow', () => {
     }
     expect(canonicalAiMissingFields({ profile, weight: 70 })).toEqual(['autorização do responsável'])
     expect(canonicalAiMissingFields({ profile: { ...profile, guardianConsent: true }, weight: 70 })).toEqual([])
+    expect(canonicalAiMissingFields({ profile: {}, weight: 0 })).toEqual([
+      'peso', 'altura', 'objetivo', 'faixa etária', 'consentimento', 'dias disponíveis', 'academia', 'aparelhos',
+    ])
   })
 })

@@ -16,6 +16,7 @@ export default function TabBar({ onStart }) {
   const profile = useCollaboration(s => s.profile)
   const ownerId = useCollaboration(s => s.ownerId)
   if (!user && !isGuest) return null
+  if (loc.pathname === '/dev') return null
   const trainerPortal = context === 'trainer' && canEnterPersonal({ user, isGuest, mobile: MOBILE, profile, ownerId })
   const cur = loc.pathname.split('/')[1] || 'home'
   const on = k => cur === k || (cur === 'history' && k === 'stats') || (cur === 'settings' && k === 'home')

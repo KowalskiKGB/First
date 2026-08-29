@@ -1,81 +1,176 @@
 import { expect, test } from '@playwright/test'
 
-test('AI plan saves the completed canonical profile before creating a job', async ({ page }, testInfo) => {
+const initialState = () => ({
+  lang: 'pt', theme: 'dark', accent: 'lime', unit: 'kg', body: 'male',
+  bodyweight: [], week: { 1: 'manual' }, routines: [{ id: 'manual', name: 'Meu treino', emoji: 'dumbbell', ex: [] }],
+  workouts: [], sourceSchedules: {}, aiPlanHistory: [{ planId: 'plan-0', version: 0, label: 'Plano anterior' }],
+})
+
+const profile = () => ({
+  ageBand: 'adult', heightCm: 170, goal: 'Força', experience: 'intermediario',
+  availableDays: [1, 3, 5], minutesPerSession: 45, focusAreas: ['back'],
+  favoriteExerciseIds: [], avoidedExerciseIds: [], limitations: '', acuteRisk: false,
+  medicalRestriction: false, consent: false, guardianConsent: null,
+})
+
+const gym = () => ({ name: 'Academia Centro', genericEquipment: ['dumbbell'], specificMachines: [] })
+
+const generatedPlan = (id = 'plan-1', version = 1) => ({
+  id, version, provider: 'openai', model: 'gpt-5-mini', contextHash: `ctx-${version}`,
+  justification: version === 1 ? 'Prioriza força com o equipamento disponível.' : 'Versão anterior segura.',
+  appliedAt: '2026-08-29T17:00:00.000Z',
+  routines: [{
+    id: `routine-${version}`, name: `Força IA ${version}`, emoji: 'sparkles',
+    exercises: [{ id: `output-${version}`, exerciseId: '0001', mode: 'reps', sets: 3, repMin: 8, repMax: 10, restSeconds: 90, note: 'Técnica controlada', progression: 'double' }],
+  }],
+  schedule: [{ day: 1, routineId: `routine-${version}` }],
+})
+
+function aiFixtures({ plan = null, job = null } = {}) {
+  let rev = 3
+  let currentProfile = profile()
+  let currentGym = gym()
+  let measurements = { weight: { value: 70, unit: 'kg', observedAt: '2026-08-29' } }
+  let currentPlan = plan
+  let currentJob = job
   const calls = []
-  const consoleErrors = []
-  let contextReads = 0
-  const state = {
-    lang: 'pt', theme: 'dark', accent: 'lime', unit: 'kg',
-    bodyweight: [{ d: '2026-08-29', w: 70 }],
-    week: { 1: 'manual' }, routines: [{ id: 'manual', name: 'Manual', ex: [] }], workouts: [],
-    aiProfile: {
-      heightCm: 170, goal: 'Força', experience: 'intermediario', sessionsPerWeek: 3,
-      minutesPerSession: 45, availableDays: [1, 3, 5], equipment: ['dumbbell'],
-      gymName: '', ageBand: null, consent: false, guardianConsent: false,
-      targetAreas: [], favoriteExerciseIds: [], blockedExerciseIds: [], limitations: '', preferences: ''
-    }
-  }
   const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
-
-  page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()) })
-  page.on('pageerror', error => consoleErrors.push(error.message))
-  page.on('request', request => {
-    const path = new URL(request.url()).pathname
-    if (['/api/ai/profile', '/api/ai/gym', '/api/ai/measurements', '/api/ai/jobs', '/api/ai/job'].includes(path)) {
-      calls.push({ path, body: request.postDataJSON?.() })
-    }
-  })
-  await page.route('**/api/**', route => {
-    const request = route.request()
-    const path = new URL(request.url()).pathname
-    const method = request.method()
-    if (path === '/api/me') return json(route, { user: { id: 'student-a', name: 'Aluno' } })
-    if (path === '/api/data' && method === 'GET') return json(route, { state })
-    if (path === '/api/data' && method === 'PUT') return json(route, { ok: true })
-    if (path === '/api/collaboration') return json(route, {
-      rev: 3, profile: { userId: 'student-a', roles: ['student'] }, connections: [], notifications: [], programs: []
-    })
-    if (path === '/api/ai/status') return json(route, {
-      configured: true, eligible: contextReads > 1, missing: contextReads > 1 ? [] : ['profile'], blockers: [],
-      provider: { provider: 'openai', selectedModel: 'mock-model' }
-    })
-    if (path === '/api/ai/context') {
-      contextReads += 1
-      if (contextReads === 1) return json(route, { rev: 3, completeness: { eligible: false, missing: ['profile'], blockers: [] } })
-      if (contextReads === 2) return json(route, { rev: 6, completeness: { eligible: true, missing: [], blockers: [] }, plan: null })
-      return json(route, {
-        rev: 7, completeness: { eligible: true, missing: [], blockers: [] },
-        plan: { id: 'plan-1', version: 1, justification: 'Seguro', appliedAt: '2026-08-29T17:00:00.000Z', routines: [], schedule: [] }
-      })
-    }
-    if (path === '/api/ai/profile') return json(route, { rev: 4 })
-    if (path === '/api/ai/gym') return json(route, { rev: 5 })
-    if (path === '/api/ai/measurements') return json(route, { rev: 6 })
-    if (path === '/api/ai/jobs') return json(route, { job: { id: 'job-1', status: 'queued' } })
-    if (path === '/api/ai/job') return json(route, { job: { id: 'job-1', status: 'applied', planVersion: 1 } })
-    return json(route, { error: `unmocked ${method} ${path}` }, 501)
+  const context = () => ({
+    rev, profile: currentProfile, gym: currentGym, measurements, plan: currentPlan, job: currentJob,
+    completeness: { eligible: true, missing: [], blockers: [] },
   })
 
+  return {
+    calls,
+    async handle(route) {
+      const request = route.request()
+      const { pathname } = new URL(request.url())
+      const method = request.method()
+      const body = method === 'GET' ? null : request.postDataJSON()
+      if (method !== 'GET') calls.push({ pathname, body, headers: request.headers() })
+
+      if (pathname === '/api/me') return json(route, { user: { id: 'student-a', name: 'Aluno' } })
+      if (pathname === '/api/data' && method === 'GET') {
+        const state = initialState()
+        if (currentPlan) state.aiLastGeneration = { planId: currentPlan.id, version: currentPlan.version, summary: currentPlan.justification, generatedAt: currentPlan.appliedAt }
+        return json(route, { state })
+      }
+      if (pathname === '/api/data' && method === 'PUT') return json(route, { ok: true })
+      if (pathname === '/api/collaboration') return json(route, { rev, profile: { userId: 'student-a', roles: ['student'] }, connections: [], notifications: [], programs: [] })
+      if (pathname === '/api/ai/status') return json(route, { configured: true, eligible: true, missing: [], blockers: [], provider: { provider: 'openai', selectedModel: 'gpt-5-mini' } })
+      if (pathname === '/api/ai/context') return json(route, context())
+      if (pathname === '/api/ai/profile' && method === 'PUT') {
+        rev += 1
+        const { rev: _observedRev, ...saved } = body
+        currentProfile = saved
+        return json(route, { rev })
+      }
+      if (pathname === '/api/ai/gym' && method === 'PUT') {
+        rev += 1
+        const { rev: _observedRev, ...saved } = body
+        currentGym = saved
+        return json(route, { rev })
+      }
+      if (pathname === '/api/ai/measurements' && method === 'POST') {
+        rev += 1
+        const { rev: _observedRev, kind, ...saved } = body
+        measurements = { ...measurements, [kind]: saved }
+        return json(route, { rev })
+      }
+      if (pathname === '/api/ai/jobs' && method === 'POST') {
+        currentJob = { id: 'job-1', status: 'queued', stage: 'organizing' }
+        return json(route, { job: currentJob })
+      }
+      if (pathname === '/api/ai/job') {
+        currentPlan = generatedPlan()
+        currentJob = { id: 'job-1', status: 'applied', planVersion: 1, contextHash: 'ctx-1' }
+        return json(route, { job: currentJob })
+      }
+      if (pathname === '/api/ai/plan/rollback' && method === 'POST') {
+        currentPlan = generatedPlan('plan-0', 0)
+        currentJob = null
+        return json(route, { ok: true })
+      }
+      return json(route, { error: `unmocked ${method} ${pathname}` }, 501)
+    },
+  }
+}
+
+const watchBrowser = page => {
+  const errors = []
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
+  page.on('pageerror', error => errors.push(error.message))
+  return errors
+}
+
+test('wizard persists canonical context, applies, copies and rolls back on mobile', async ({ page }, testInfo) => {
+  const fixtures = aiFixtures()
+  const errors = watchBrowser(page)
   await page.setViewportSize({ width: 390, height: 844 })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.route('**/api/**', route => fixtures.handle(route))
+
   await page.goto('/#/plan')
-  await expect(page.getByRole('heading', { name: 'Treino da semana com IA' })).toBeVisible()
-  await expect(page.getByText('IA ativa')).toHaveText('IA ativa')
+  await expect(page.getByRole('heading', { name: 'Treino semanal com IA' })).toBeVisible()
+  await page.getByRole('button', { name: 'Configurar meu treino com IA' }).click()
+  await expect(page.getByRole('heading', { name: 'Dados e medidas' })).toBeFocused()
+  await page.getByRole('button', { name: 'Continuar' }).click()
+  await expect(page.getByRole('heading', { name: 'Objetivo e disponibilidade' })).toBeFocused()
+  await page.getByRole('button', { name: 'Continuar' }).click()
+  await expect(page.getByRole('heading', { name: 'Academia e preferências' })).toBeFocused()
+  await page.getByRole('button', { name: 'Continuar' }).click()
+  await expect(page.getByRole('heading', { name: 'Revisão e consentimento' })).toBeFocused()
+  await page.getByText('Autorizo o uso destes dados nesta geração.').click()
+  await page.getByRole('button', { name: 'Gerar e aplicar' }).click()
 
-  await page.locator('[name="ai-gym-name"]').fill('Academia Centro')
-  await page.getByRole('button', { name: '18 ou mais' }).click()
-  await page.getByRole('button', { name: 'Autorizo', exact: true }).click()
-  const generate = page.getByRole('button', { name: 'Elaborar meu treino com IA' })
-  await expect(generate).toBeEnabled()
-  await generate.click()
+  await expect(page.getByText('Treino semanal gerado e aplicado.')).toBeVisible()
+  await expect(page.getByText('OpenAI · gpt-5-mini')).toBeVisible()
+  await page.getByRole('button', { name: 'Copiar e personalizar' }).click()
+  await expect(page.locator('#toast')).toContainText('1 rotinas copiadas para Meu treino.')
+  await page.getByRole('button', { name: 'Desfazer geração' }).click()
+  await expect(page.getByText('Versão 0')).toBeVisible()
 
-  await expect(page.getByText('Treino da semana gerado e aplicado.')).toBeVisible()
-  expect(calls.map(call => call.path)).toEqual([
-    '/api/ai/profile', '/api/ai/gym', '/api/ai/measurements', '/api/ai/jobs', '/api/ai/job'
+  const canonicalWrites = fixtures.calls.filter(call => ['/api/ai/profile', '/api/ai/gym', '/api/ai/measurements'].includes(call.pathname))
+  expect(canonicalWrites.map(call => [call.pathname, call.body.rev])).toEqual([
+    ['/api/ai/profile', 3], ['/api/ai/gym', 4], ['/api/ai/measurements', 5],
   ])
-  expect(calls[0].body.rev).toBe(3)
-  expect(calls[1].body.rev).toBe(4)
-  expect(calls[2].body.rev).toBe(5)
+  const jobWrite = fixtures.calls.find(call => call.pathname === '/api/ai/jobs')
+  expect(jobWrite.headers['idempotency-key']).toBeTruthy()
+  expect(fixtures.calls.find(call => call.pathname === '/api/ai/plan/rollback').body).toEqual({ planId: 'plan-0' })
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1)
-  expect(consoleErrors).toEqual([])
   await page.screenshot({ path: testInfo.outputPath('ai-plan-mobile.png'), fullPage: true })
+  expect(errors).toEqual([])
+})
+
+test('an active job resumes after remount without creating a second job', async ({ page }, testInfo) => {
+  const fixtures = aiFixtures({ job: { id: 'job-1', status: 'running', stage: 'generating' } })
+  const errors = watchBrowser(page)
+  await page.setViewportSize({ width: 768, height: 1024 })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.route('**/api/**', route => fixtures.handle(route))
+
+  await page.goto('/#/plan')
+  await expect(page.getByText('Gerando treino')).toBeVisible()
+  await expect(page.getByText('Versão 1')).toBeVisible()
+  expect(fixtures.calls.filter(call => call.pathname === '/api/ai/jobs')).toHaveLength(0)
+  await page.screenshot({ path: testInfo.outputPath('ai-plan-tablet-resumed.png'), fullPage: true })
+  expect(errors).toEqual([])
+})
+
+test('stale context is discoverable from Home and never generates automatically', async ({ page }, testInfo) => {
+  const fixtures = aiFixtures({ plan: generatedPlan() })
+  const errors = watchBrowser(page)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.addInitScript(() => localStorage.setItem('first_ai_context_student-a', 'ctx-stale'))
+  await page.route('**/api/**', route => fixtures.handle(route))
+
+  await page.goto('/#/plan')
+  await expect(page.getByText('Seu treino pode ser atualizado')).toBeVisible()
+  await page.waitForTimeout(900)
+  expect(fixtures.calls.filter(call => call.pathname === '/api/ai/jobs')).toHaveLength(0)
+  await page.goto('/#/home')
+  await expect(page.getByText('Revisar seu treino com IA', { exact: true })).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('ai-home-desktop.png'), fullPage: true })
+  expect(errors).toEqual([])
 })

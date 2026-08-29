@@ -44,7 +44,7 @@ describe('Plan AI canonical persistence', () => {
   it('marks a changed context stale without making a network request', () => {
     const request = vi.fn()
     const stored = 'ctx-old'
-    expect(isAiContextStale(canonical, stored)).toBe(true)
+    expect(isAiContextStale({ ...canonical, plan: { id: 'plan-1', contextHash: 'hash-1' } }, stored)).toBe(true)
     expect(request).not.toHaveBeenCalled()
   })
 })

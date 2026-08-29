@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { effectiveRoutineId, streakWeeks, lastBW, setsDoneActive, trainedDates } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, isoOf, weekKey, DAYS } from '../lib/format.js'
@@ -76,6 +76,12 @@ export default function Home() {
           : <Icon name="plus" className="chev" />}
       </div>
     </div>
+
+    <Link className="ai-discovery-card" to="/plan">
+      <span className="ai-discovery-icon"><Icon name="sparkles" /></span>
+      <span className="grow"><span className="personal-eyebrow">{t('Weekly intelligence')}</span><strong>{S.aiLastGeneration ? t('Review your AI workout') : t('Create your week with AI')}</strong><small>{S.aiLastGeneration ? t('Version {0} is active. Update only when you choose.', S.aiLastGeneration.version) : t('Measurements, goals and gym equipment in four short steps.')}</small></span>
+      <Icon name="chevronRight" className="chev" />
+    </Link>
 
     {!S.routines.length && !S.active && (
       <div className="card">

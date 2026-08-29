@@ -91,17 +91,18 @@ describe('RoutineEdit prescribed routine', () => {
   it('is read-only and copies to an independent editable routine without replacing the Personal schedule', () => {
     const markup = renderToStaticMarkup(<RoutineEdit />)
 
-    expect(markup).toContain('Programa do Personal')
+    expect(markup).toContain('source-personal')
+    expect(markup).toContain('>Personal<')
     expect(markup).toContain('Hipertrofia')
-    expect(markup).toContain('Versão 2')
-    expect(markup).toContain('Copiar para meu plano')
+    expect(markup).toContain('Version 2')
+    expect(markup).toContain('Copy to My workout')
     expect(markup).not.toContain('<input')
     expect(markup).not.toContain('Progression')
     expect(markup).not.toContain('Add exercise')
     expect(markup).not.toContain('Delete routine')
     expect(markup).not.toContain('Move up')
 
-    const copyButton = harness.buttons.find(button => button.children === 'Copiar para meu plano')
+    const copyButton = harness.buttons.find(button => button.children === 'Copy to My workout')
     expect(copyButton).toBeTruthy()
     copyButton.onClick()
 
@@ -126,11 +127,12 @@ describe('RoutineEdit prescribed routine', () => {
 
     const markup = renderToStaticMarkup(<RoutineEdit />)
 
-    expect(markup).toContain('Plano da IA')
-    expect(markup).toContain('Versão 3')
-    expect(markup).toContain('Copiar e personalizar')
+    expect(markup).toContain('source-ai')
+    expect(markup).toContain('>IA<')
+    expect(markup).toContain('Version 3')
+    expect(markup).toContain('Copy and customize')
     expect(markup).not.toContain('<input')
-    const copyButton = harness.buttons.find(button => button.children === 'Copiar e personalizar')
+    const copyButton = harness.buttons.find(button => button.children === 'Copy and customize')
     copyButton.onClick()
     expect(harness.state.routines[1]).toEqual({ id: 'copy-1', name: 'Treino IA', emoji: 'sparkles', ex: [{ id: '0043', sets: 3, reps: 10 }] })
   })
