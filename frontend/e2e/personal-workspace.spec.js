@@ -174,6 +174,14 @@ async function assertBottomBarClear(page, viewport) {
   })).toBe(true)
 }
 
+async function assertFinanceDetailReadable(page, viewport) {
+  if (viewport.width !== 768) return
+  const historyPanel = page.locator('.finance-detail-layout > .personal-panel')
+  await expect(historyPanel).toBeVisible()
+  const box = await historyPanel.boundingBox()
+  expect(box?.width || 0).toBeGreaterThan(480)
+}
+
 for (const viewport of VIEWPORTS) {
   test(`fluxo profissional completo em ${viewport.name}`, async ({ page }, testInfo) => {
     const fixtures = apiFixtures()
@@ -227,6 +235,7 @@ for (const viewport of VIEWPORTS) {
     await receivableForm.locator('[name="receivableAmount"]').fill('300,00')
     await receivableForm.getByRole('button', { name: 'Salvar cobrança' }).click()
     await expect(page.getByText('R$ 300,00').first()).toBeVisible()
+    await assertFinanceDetailReadable(page, viewport)
 
     const byPath = pathname => fixtures.writes.find(write => write.pathname === pathname)?.body
     expect(byPath('/api/personal/measurements')).toMatchObject({ clientId: 'client-1', kind: 'weight', side: null, value: 82.4, unit: 'kg', observedAt: '2026-08-29', rev: 1 })
