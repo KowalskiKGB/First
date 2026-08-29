@@ -450,6 +450,32 @@ test('linked clients require an active connection and state projections honor ea
   assert.equal(reads, 2);
 });
 
+test('priority does not infer hidden adherence without progress consent', () => {
+  const client = {
+    id: 'client-a', trainerId: 'trainer-a', studentUserId: 'student-a', name: 'Aluno',
+    targetSessionsPerWeek: 3, inactiveAfterDays: 7, createdAt: NOW, archivedAt: null
+  };
+  const state = collaboration({
+    clients: [client],
+    connections: [{
+      id: 'connection-a', studentId: 'student-a', trainerId: 'trainer-a', requestedBy: 'student-a',
+      status: 'active', grants: { workoutsRead: false, progressRead: false }, createdAt: NOW
+    }],
+    measurements: [{ id: 'measurement-a', clientId: 'client-a', observedAt: '2026-08-28' }]
+  });
+
+  const workspace = buildWorkspace({
+    collaboration: state,
+    trainerId: 'trainer-a',
+    now: NOW,
+    readState: () => ({ workouts: [] })
+  });
+
+  assert.equal(workspace.clients[0].progress, undefined);
+  assert.equal(workspace.clients[0].priority, 'ok');
+  assert.deepEqual(workspace.clients[0].reasons, ['Em dia']);
+});
+
 test('collaboration projection includes only published programs behind an active student connection', async t => {
   const fixture = routeFixture(t, collaboration({
     profiles: [profile('student-a')],

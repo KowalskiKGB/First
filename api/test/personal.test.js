@@ -113,6 +113,36 @@ test('trainer workspace summarizes clients, schedule, measures, programs and rec
   assert.equal(workspace.agenda.today.some(item => item.clientName === 'Ana Souza'), true);
 });
 
+test('workspace flags missing and stale body measurements for attention', () => {
+  const clients = [
+    { id: 'missing', trainerId: 'trainer1', studentUserId: 'student-missing', name: 'Sem medidas', targetSessionsPerWeek: 3, inactiveAfterDays: 7, archivedAt: null },
+    { id: 'stale', trainerId: 'trainer1', studentUserId: 'student-stale', name: 'Medidas antigas', targetSessionsPerWeek: 3, inactiveAfterDays: 7, archivedAt: null }
+  ];
+  const connections = clients.map(client => ({
+    id: `connection-${client.id}`,
+    trainerId: 'trainer1',
+    studentId: client.studentUserId,
+    status: 'active',
+    grants: { progressRead: true }
+  }));
+  const workouts = Array.from({ length: 12 }, () => ({ d: '2026-08-28', vol: 1000 }));
+  const collaboration = {
+    ...structuredClone(INITIAL_COLLABORATION),
+    clients,
+    connections,
+    measurements: [{ id: 'measurement-stale', clientId: 'stale', observedAt: '2026-07-29' }]
+  };
+
+  const workspace = buildWorkspace({ collaboration, trainerId: 'trainer1', now, readState: () => ({ workouts }) });
+  const missing = workspace.clients.find(client => client.id === 'missing');
+  const stale = workspace.clients.find(client => client.id === 'stale');
+
+  assert.equal(missing.priority, 'attention');
+  assert.deepEqual(missing.reasons, ['Medidas ainda não registradas']);
+  assert.equal(stale.priority, 'attention');
+  assert.deepEqual(stale.reasons, ['Medidas sem atualização há mais de 30 dias']);
+});
+
 test('schedule refuses overlapping active appointments and finance keeps clients isolated', () => {
   const randomId = idSource();
   let collaboration = structuredClone(INITIAL_COLLABORATION);
