@@ -96,9 +96,21 @@ test('collaboration migration preserves legacy data, is idempotent and enforces 
   assert.equal(migrated.schemaVersion, 2);
   assert.equal(migrated.rev, 7);
   assert.deepEqual(migrated.legacyFlag, { keep: true });
-  for (const key of ['profiles', 'connections', 'clients', 'notifications', 'audit', 'programs', 'measurements', 'availability', 'appointments', 'receivables']) {
+  for (const key of ['profiles', 'clients', 'notifications', 'audit', 'programs', 'measurements', 'availability', 'appointments', 'receivables']) {
     assert.deepEqual(migrated[key], legacy[key], `legacy collection ${key} changed`);
   }
+  assert.deepEqual(migrated.connections[0], {
+    ...legacy.connections[0],
+    grants: {
+      plansWrite: false,
+      workoutsRead: false,
+      progressRead: false,
+      measurementsWrite: false,
+      liveActivityRead: false,
+      trainingProfileWrite: false,
+      aiPlanRead: false
+    }
+  });
   assert.equal(migrated.aiPlans.filter(item => item.studentId === 'student-a').length, 10);
   assert.deepEqual(migrated.aiPlans.map(item => item.version), [5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
   assert.equal(migrated.aiUsage.length, 2000);
@@ -168,6 +180,59 @@ test('collaboration migration normalizes or ignores malformed canonical records 
   assert.deepEqual(migrateCollaboration(null), INITIAL_COLLABORATION);
 });
 
+test('collaboration migration rejects truthy non-boolean grants without dropping connection fields', () => {
+  const migrated = migrateCollaboration(base({
+    connections: [{
+      id: 'connection-a', studentId: 'student-a', trainerId: 'trainer-a', status: 'active',
+      legacyField: 'keep',
+      grants: {
+        plansWrite: true,
+        workoutsRead: 1,
+        progressRead: 'true',
+        measurementsWrite: {},
+        liveActivityRead: [],
+        trainingProfileWrite: 'yes',
+        aiPlanRead: 'yes',
+        unknown: true
+      }
+    }]
+  }));
+
+  assert.deepEqual(migrated.connections[0], {
+    id: 'connection-a', studentId: 'student-a', trainerId: 'trainer-a', status: 'active', legacyField: 'keep',
+    grants: {
+      plansWrite: true,
+      workoutsRead: false,
+      progressRead: false,
+      measurementsWrite: false,
+      liveActivityRead: false,
+      trainingProfileWrite: false,
+      aiPlanRead: false
+    }
+  });
+  assert.deepEqual(migrateCollaboration(migrated), migrated);
+});
+
+test('collaboration migration retains the newest plan versions independent of physical order', () => {
+  const plan = (version, id = `plan-${version}`, updatedAt = `2026-08-${String(version).padStart(2, '0')}T00:00:00.000Z`) => ({
+    id, studentId: 'student-a', version, provider: 'openai', model: 'gpt-test',
+    contextHash: `hash-${id}`, justification: id, routines: [], schedule: {},
+    source: 'generated', status: 'applied', createdAt: updatedAt, updatedAt
+  });
+  const migrated = migrateCollaboration(base({
+    aiPlans: [
+      plan(12, 'plan-12-b', '2026-08-29T12:00:00.000Z'),
+      plan(3), plan(11), plan(4), plan(10), plan(5), plan(9), plan(6), plan(8), plan(7),
+      plan(12, 'plan-12-old', '2026-08-28T12:00:00.000Z'),
+      plan(12, 'plan-12-a', '2026-08-29T12:00:00.000Z')
+    ]
+  }));
+
+  assert.deepEqual(migrated.aiPlans.map(item => item.version), [5, 6, 7, 8, 9, 10, 11, 12, 12, 12]);
+  assert.deepEqual(migrated.aiPlans.slice(-3).map(item => item.id), ['plan-12-old', 'plan-12-a', 'plan-12-b']);
+  assert.deepEqual(migrateCollaboration(migrated), migrated);
+});
+
 test('only the student can change grants on an active relationship', () => {
   const randomId = idSource();
   const state = linked({ trainingProfileWrite: false, aiPlanRead: false });
@@ -229,6 +294,45 @@ test('trainer profile and gym writes require ownership, active link and training
     collaboration: manualClient, actorId: 'trainer-a', studentId: null, clientId: 'manual-client',
     data: profileData, now: NOW, randomId
   }), /client not found/);
+});
+
+test('truthy malformed grants cannot authorize profile writes or workspace projections', () => {
+  const malformed = linked({
+    workoutsRead: 'yes',
+    progressRead: 1,
+    trainingProfileWrite: 'yes',
+    aiPlanRead: 'yes'
+  }, {
+    trainingProfiles: [{ studentId: 'student-a', ...profileData, createdAt: NOW, updatedAt: NOW }],
+    gymProfiles: [{ studentId: 'student-a', ...gymData, createdAt: NOW, updatedAt: NOW }],
+    aiPlans: [{
+      id: 'plan-a', studentId: 'student-a', version: 1, provider: 'openai', model: 'gpt-test',
+      contextHash: 'hash-a', justification: 'private', routines: [], schedule: {},
+      source: 'generated', status: 'applied', createdAt: NOW, updatedAt: NOW
+    }]
+  });
+  let stateReads = 0;
+
+  assert.throws(() => saveTrainingProfile({
+    collaboration: malformed, actorId: 'trainer-a', studentId: 'student-a', clientId: 'client-a',
+    data: profileData, now: NOW, randomId: idSource()
+  }), /forbidden/);
+
+  const workspace = buildWorkspace({
+    collaboration: malformed,
+    trainerId: 'trainer-a',
+    now: NOW,
+    readState: () => {
+      stateReads += 1;
+      return { workouts: [{ d: '2026-08-28', vol: 1000 }] };
+    }
+  });
+
+  assert.equal(stateReads, 0);
+  assert.equal(workspace.clients[0].progress, undefined);
+  assert.equal(workspace.clients[0].trainingProfile, undefined);
+  assert.equal(workspace.clients[0].gymProfile, undefined);
+  assert.equal(workspace.clients[0].aiPlan, undefined);
 });
 
 test('trainer workspace projects profile and AI plan through separate grants and isolates trainers', () => {
