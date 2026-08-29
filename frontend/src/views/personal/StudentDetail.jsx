@@ -11,6 +11,7 @@ import TrendChart from '../../components/personal/TrendChart.jsx'
 import { Button } from '../../components/ui.jsx'
 import { fmtDate } from '../../lib/format.js'
 import { t } from '../../lib/i18n.js'
+import { personalAiGrants } from '../../lib/personal-ai.js'
 import {
   appointmentStatusLabel,
   dateInTimeZone,
@@ -35,12 +36,14 @@ import {
   formatMoneyBRL,
   timeOf,
 } from './components.jsx'
+import PersonalAiTab from './PersonalAiTab.jsx'
 
 const TABS = [
   ['resumo', 'Summary'],
   ['treino', 'Training'],
   ['evolucao', 'Evolution'],
   ['medidas', 'Measurements'],
+  ['ia', 'AI and gym'],
   ['agenda', 'Schedule'],
   ['financeiro', 'Finances'],
 ]
@@ -292,6 +295,8 @@ export default function StudentDetail() {
   const message = useCollaboration(state => state.message)
   const loadClient = useCollaboration(state => state.loadClient)
   const timeZone = useCollaboration(state => state.profile?.timezone || 'America/Fortaleza')
+  const trainerId = useCollaboration(state => state.profile?.userId)
+  const connections = useCollaboration(state => state.connections)
   const current = selected === id && detail?.client?.id === id ? detail : null
 
   useEffect(() => {
@@ -311,6 +316,7 @@ export default function StudentDetail() {
   const progress = client.progress || {}
   const nextClass = client.nextAppointment ? `${fmtDate(dateInTimeZone(client.nextAppointment.startsAt, timeZone), true)} · ${timeOf(client.nextAppointment.startsAt, timeZone)}` : t('No class scheduled')
   const editClient = () => useUI.getState().openSheet(close => <ClientSheet close={close} client={client} />)
+  const aiGrants = personalAiGrants(connections, trainerId, client.studentUserId)
 
   return (
     <main className="personal-page student-detail">
@@ -342,6 +348,7 @@ export default function StudentDetail() {
         {tab === 'treino' ? <TrainingTab client={client} program={program} /> : null}
         {tab === 'evolucao' ? <EvolutionTab client={client} measurements={measurements} /> : null}
         {tab === 'medidas' ? <MeasurementsTab client={client} measurements={measurements} /> : null}
+        {tab === 'ia' ? <PersonalAiTab client={client} measurements={measurements} grants={aiGrants} /> : null}
         {tab === 'agenda' ? <ScheduleTab client={client} appointments={appointments} loadClient={loadClient} timeZone={timeZone} /> : null}
         {tab === 'financeiro' ? <FinanceTab client={client} receivables={receivables} loadClient={loadClient} /> : null}
       </div>

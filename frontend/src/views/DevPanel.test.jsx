@@ -11,7 +11,7 @@ vi.mock('../components/ui.jsx', () => ({
   SearchField: props => <input {...props} />,
   TextField: props => <input {...props} />,
 }))
-vi.mock('../lib/i18n.js', () => ({ t: value => value }))
+vi.mock('../lib/i18n.js', () => ({ dateLocale: () => 'pt-BR', t: value => value }))
 
 import { DevDashboard, DevLogin } from './DevPanel.jsx'
 

@@ -3,7 +3,7 @@ import { aiMissingFields, aiProfile, equipmentLabel, latestBodyWeight } from './
 
 describe('AI plan helpers', () => {
   it('detects missing student data before generation', () => {
-    expect(aiMissingFields({ bodyweight: [], aiProfile: {} })).toEqual(['peso', 'altura', 'objetivo', 'aparelhos'])
+    expect(aiMissingFields({ bodyweight: [], aiProfile: {} })).toEqual(['peso', 'altura', 'objetivo', 'academia', 'aparelhos'])
   })
 
   it('keeps stable defaults for a student AI profile', () => {

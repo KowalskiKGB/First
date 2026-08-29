@@ -1,7 +1,7 @@
 import { todayFortaleza } from './personal-forms.js'
 
 const PRIORITY_ORDER = Object.freeze({ urgent: 0, attention: 1, ok: 2 })
-const STUDENT_TABS = new Set(['resumo', 'treino', 'evolucao', 'medidas', 'agenda', 'financeiro'])
+const STUDENT_TABS = new Set(['resumo', 'treino', 'evolucao', 'medidas', 'ia', 'agenda', 'financeiro'])
 
 export const normalizeViewText = value => String(value || '')
   .normalize('NFD')

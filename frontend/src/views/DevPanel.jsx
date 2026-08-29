@@ -1,137 +1,200 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api } from '../lib/api.js'
+
 import Icon from '../components/Icon.jsx'
-import { Button, TextField } from '../components/ui.jsx'
+import { Button, SearchField, TextField } from '../components/ui.jsx'
+import { api } from '../lib/api.js'
+import { canActivateProvider, DEV_PROVIDERS, emptyProviderDraft, filterProviderModels, usageKpis } from '../lib/dev-ai-ui.js'
+import { dateLocale, t } from '../lib/i18n.js'
 import { useUI } from '../store/useUI.js'
 
-const PROVIDERS = [
-  ['openai', 'ChatGPT / OpenAI', 'gpt-5.6'],
-  ['gemini', 'Google Gemini', 'gemini-3.7-flash'],
-  ['anthropic', 'Claude / Anthropic', 'claude-opus-5']
-]
+const number = value => new Intl.NumberFormat(dateLocale()).format(value || 0)
+const providerSlot = (providers, provider) => providers.find(item => item.provider === provider) || { provider, testStatus: 'untested' }
 
-const emptyForm = () => ({ id: '', provider: 'openai', label: 'OpenAI principal', model: 'gpt-5.6', apiKey: '', active: true })
+export function DevLogin({ busy, values, onChange, onSubmit, error = '' }) {
+  return (
+    <form className="dev-card dev-login" onSubmit={onSubmit} aria-labelledby="dev-login-title">
+      <div className="dev-card-head"><Icon name="shield" /><div><h2 id="dev-login-title">{t('Dev credential')}</h2><p>{t('The administrator passkey and this additional credential are both required.')}</p></div></div>
+      {error ? <p className="form-error" role="alert">{error}</p> : null}
+      <label><span>{t('Username')}</span><TextField name="dev-username" value={values.username} onChange={event => onChange({ ...values, username: event.target.value })} autoComplete="username" spellCheck={false} required /></label>
+      <label><span>{t('Password')}</span><TextField name="dev-password" value={values.password} onChange={event => onChange({ ...values, password: event.target.value })} type="password" autoComplete="current-password" required /></label>
+      <Button variant="primary" icon="key" disabled={busy}>{busy ? t('Checking…') : t('Open Dev panel')}</Button>
+    </form>
+  )
+}
+
+function UsageBoard({ usage, window, onWindow }) {
+  const kpis = usageKpis(usage)
+  const cards = [
+    ['API calls', kpis.requests], ['Successful', kpis.successes], ['Failures', kpis.failures],
+    ['Tokens', kpis.totalTokens], ['Average latency', `${number(kpis.averageLatencyMs)} ms`],
+  ]
+  return (
+    <section className="dev-usage" aria-labelledby="dev-usage-title">
+      <div className="panel-heading">
+        <div><span className="personal-eyebrow">{t('Operations')}</span><h2 id="dev-usage-title">{t('AI usage')}</h2></div>
+        <div className="dev-window" aria-label={t('Metrics period')}>
+          {['7d', '30d'].map(value => <button key={value} type="button" aria-pressed={window === value} onClick={() => onWindow?.(value)}>{value === '7d' ? t('7 days') : t('30 days')}</button>)}
+        </div>
+      </div>
+      <div className="metric-grid dev-metrics">
+        {cards.map(([label, value]) => <article className="personal-metric" key={label}><span className="personal-metric-label">{t(label)}</span><strong className="personal-metric-value">{typeof value === 'number' ? number(value) : value}</strong></article>)}
+      </div>
+    </section>
+  )
+}
+
+function ProviderCard({ definition, slot, onChanged }) {
+  const [draft, setDraft] = useState(() => emptyProviderDraft(slot))
+  const [models, setModels] = useState([])
+  const [query, setQuery] = useState('')
+  const [modelState, setModelState] = useState('idle')
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+
+  useEffect(() => { setDraft(emptyProviderDraft(slot)) }, [slot.provider, slot.selectedModel, slot.keyFingerprint, slot.testedAt])
+  const visibleModels = useMemo(() => filterProviderModels(models, query), [models, query])
+  const run = async (kind, action) => {
+    setBusy(kind); setError('')
+    try { await action() }
+    catch (requestError) { setError(requestError.message || t('The operation could not be completed.')) }
+    finally { setBusy('') }
+  }
+  const save = event => {
+    event.preventDefault()
+    run('save', async () => {
+      await api('/api/dev/ai/provider', { method: 'PUT', body: JSON.stringify(draft) })
+      setDraft(current => ({ ...current, apiKey: '' }))
+      await onChanged?.()
+    })
+  }
+  const loadModels = () => run('models', async () => {
+    setModelState('loading')
+    try {
+      const data = await api(`/api/dev/ai/models?provider=${encodeURIComponent(definition.provider)}`)
+      setModels(data.models || []); setModelState((data.models || []).length ? 'ready' : 'empty')
+    } catch (requestError) {
+      setModelState('error'); throw requestError
+    }
+  })
+  const test = () => run('test', async () => {
+    await api('/api/dev/ai/provider/test', { method: 'POST', body: JSON.stringify({ provider: definition.provider }) })
+    await onChanged?.()
+  })
+  const activate = () => run('activate', async () => {
+    await api('/api/dev/ai/active', { method: 'PUT', body: JSON.stringify({ provider: definition.provider }) })
+    await onChanged?.()
+  })
+
+  const tested = slot.testStatus === 'success'
+  return (
+    <form className={`dev-provider-card${slot.active ? ' is-active' : ''}`} onSubmit={save} aria-labelledby={`provider-${definition.provider}`}>
+      <div className="dev-provider-head">
+        <div><span className="personal-eyebrow">{definition.product}</span><h3 id={`provider-${definition.provider}`}>{definition.name}</h3></div>
+        <span className={`status-badge ${slot.active ? 'status-paid' : tested ? 'status-confirmed' : 'status-none'}`}>{slot.active ? t('Active') : tested ? t('Tested') : t('Inactive')}</span>
+      </div>
+      <dl className="dev-provider-meta">
+        <div><dt>{t('Configuration')}</dt><dd>{slot.configured ? t('Key configured') : t('No key configured')}</dd></div>
+        <div><dt>{t('Fingerprint')}</dt><dd>{slot.keyFingerprint || '—'}</dd></div>
+        <div><dt>{t('Last test')}</dt><dd>{slot.testedAt ? new Date(slot.testedAt).toLocaleString(dateLocale()) : t('Not tested')}</dd></div>
+      </dl>
+
+      {error ? <p className="form-error" role="alert">{error}</p> : null}
+      <label><span>{t('Model')}</span><TextField name={`${definition.provider}-model`} value={draft.selectedModel} onChange={event => setDraft({ ...draft, selectedModel: event.target.value })} autoComplete="off" required /></label>
+      <div className="model-picker">
+        <div className="model-picker-tools">
+          <SearchField name={`${definition.provider}-model-search`} value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} placeholder={t('Search loaded models…')} />
+          <Button type="button" size="sm" icon="reset" onClick={loadModels} disabled={!!busy}>{modelState === 'loading' ? t('Loading…') : t('Load models')}</Button>
+        </div>
+        {modelState === 'error' ? <p className="model-empty" role="status">{t('Models could not be loaded. Try again.')}</p> : null}
+        {modelState === 'empty' ? <p className="model-empty" role="status">{t('No compatible model was returned.')}</p> : null}
+        {visibleModels.length ? <div className="model-results" role="listbox" aria-label={t('Available models')}>
+          {visibleModels.slice(0, 40).map(model => <button type="button" role="option" aria-selected={draft.selectedModel === model} key={model} onClick={() => setDraft({ ...draft, selectedModel: model })}>{model}</button>)}
+        </div> : null}
+      </div>
+      <label><span>{t('New API key')}</span><TextField name={`${definition.provider}-api-key`} value={draft.apiKey} onChange={event => setDraft({ ...draft, apiKey: event.target.value })} type="password" autoComplete="new-password" spellCheck={false} placeholder={slot.configured ? t('Key configured') : t('Paste a key to configure')} /></label>
+      <p className="dev-secret-note"><Icon name="lock" />{t('The saved key is never displayed again.')}</p>
+      <div className="dev-provider-actions">
+        <Button disabled={!!busy}>{busy === 'save' ? t('Saving…') : t('Save configuration')}</Button>
+        <Button type="button" onClick={test} disabled={!!busy || !slot.configured}>{busy === 'test' ? t('Testing…') : t('Test structured output')}</Button>
+        <Button type="button" variant="primary" onClick={activate} disabled={!!busy || !canActivateProvider(slot, draft)}>{busy === 'activate' ? t('Activating…') : t('Activate globally')}</Button>
+      </div>
+    </form>
+  )
+}
+
+export function DevDashboard({ providers, usage, window, onWindow, onLogout, onChanged }) {
+  return (
+    <>
+      <UsageBoard usage={usage} window={window} onWindow={onWindow} />
+      <section aria-labelledby="dev-providers-title">
+        <div className="dev-section-heading"><div><span className="personal-eyebrow">{t('Bring your own key')}</span><h2 id="dev-providers-title">{t('AI providers')}</h2><p>{t('Save, test structured output, then activate one provider globally.')}</p></div><Button icon="signOut" onClick={onLogout}>{t('Log out of Dev')}</Button></div>
+        <div className="dev-provider-grid">
+          {DEV_PROVIDERS.map(definition => <ProviderCard key={definition.provider} definition={definition} slot={providerSlot(providers, definition.provider)} onChanged={onChanged} />)}
+        </div>
+      </section>
+    </>
+  )
+}
 
 export default function DevPanel() {
-  const nav = useNavigate()
-  const toast = useUI(s => s.toast)
+  const navigate = useNavigate()
+  const toast = useUI(state => state.toast)
   const [session, setSession] = useState(null)
   const [login, setLogin] = useState({ username: '', password: '' })
   const [providers, setProviders] = useState([])
-  const [form, setForm] = useState(emptyForm())
-  const [models, setModels] = useState([])
+  const [window, setWindow] = useState('7d')
+  const [usage, setUsage] = useState({})
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
 
-  const loadSession = () => api('/api/dev/session').then(data => {
-    setSession(data)
-    setLogin(current => ({ ...current, username: data.username || current.username }))
-    if (data.unlocked) return loadProviders()
-  }).catch(error => toast(error.message || 'Painel indisponível'))
-  const loadProviders = () => api('/api/dev/ai/providers').then(data => setProviders(data.providers || []))
+  const loadDashboard = async selectedWindow => {
+    const [providerData, usageData] = await Promise.all([
+      api('/api/dev/ai/providers'), api(`/api/dev/ai/usage?window=${selectedWindow}`),
+    ])
+    setProviders(providerData.providers || []); setUsage(usageData.usage || {})
+  }
+  useEffect(() => {
+    let current = true
+    api('/api/dev/session').then(async data => {
+      if (!current) return
+      setSession(data); setLogin(value => ({ ...value, username: data.username || value.username }))
+      if (data.unlocked) await loadDashboard('7d')
+    }).catch(requestError => current && setError(requestError.message || t('Dev panel is unavailable.')))
+    return () => { current = false }
+  }, [])
 
-  useEffect(() => { loadSession() }, [])
-
-  const unlock = async e => {
-    e.preventDefault()
-    setBusy(true)
+  const unlock = async event => {
+    event.preventDefault(); setBusy(true); setError('')
     try {
       await api('/api/dev/login', { method: 'POST', body: JSON.stringify(login) })
-      setSession(current => ({ ...(current || {}), unlocked: true }))
-      await loadProviders()
-      toast('Painel dev desbloqueado.')
-    } catch (error) {
-      toast(error.message || 'Credencial inválida.')
-    } finally {
-      setBusy(false)
-    }
+      setLogin(value => ({ ...value, password: '' })); setSession(value => ({ ...(value || {}), unlocked: true }))
+      await loadDashboard(window)
+    } catch (requestError) { setError(requestError.message || t('Invalid Dev credential.')) }
+    finally { setBusy(false) }
   }
-  const saveProvider = async e => {
-    e.preventDefault()
-    setBusy(true)
+  const changeWindow = async value => {
+    setWindow(value)
+    try { const data = await api(`/api/dev/ai/usage?window=${value}`); setUsage(data.usage || {}) }
+    catch (requestError) { toast(requestError.message || t('Usage could not be loaded.')) }
+  }
+  const logout = async () => {
     try {
-      await api('/api/dev/ai/providers', { method: 'POST', body: JSON.stringify(form) })
-      setForm(emptyForm())
-      setModels([])
-      await loadProviders()
-      toast('Provedor salvo.')
-    } catch (error) {
-      toast(error.message || 'Não foi possível salvar.')
-    } finally {
-      setBusy(false)
-    }
-  }
-  const editProvider = provider => {
-    setForm({ ...provider, apiKey: '' })
-    setModels([])
-  }
-  const removeProvider = async id => {
-    setBusy(true)
-    try {
-      await api('/api/dev/ai/providers/delete', { method: 'POST', body: JSON.stringify({ id }) })
-      await loadProviders()
-      toast('Provedor removido.')
-    } catch (error) {
-      toast(error.message || 'Não foi possível remover.')
-    } finally {
-      setBusy(false)
-    }
-  }
-  const listModels = async id => {
-    setBusy(true)
-    try {
-      const data = await api(`/api/dev/ai/models?id=${encodeURIComponent(id)}`)
-      setModels(data.models || [])
-    } catch (error) {
-      toast(error.message || 'Não foi possível listar modelos.')
-    } finally {
-      setBusy(false)
-    }
-  }
-  const selectProvider = provider => {
-    const row = PROVIDERS.find(([id]) => id === provider)
-    setForm(current => ({ ...current, provider, model: row?.[2] || current.model, label: row?.[1] || current.label }))
+      await api('/api/dev/logout', { method: 'POST', body: '{}' })
+      setProviders([]); setUsage({}); setSession(value => ({ ...(value || {}), unlocked: false }))
+    } catch (requestError) { toast(requestError.message || t('Could not log out of Dev.')) }
   }
 
-  return <div className="narrow dev-page">
-    <div className="hdr">
-      <button className="iconbtn" onClick={() => nav('/settings')} aria-label="Voltar"><Icon name="chevronLeft" /></button>
-      <div style={{ flex: 1, marginLeft: 10 }}><h1>Painel dev</h1><div className="sub">IA, modelos e chaves BYOK</div></div>
-    </div>
-
-    {!session?.unlocked ? <form className="dev-card" onSubmit={unlock}>
-      <div className="dev-card-head"><Icon name="shield" /><div><h2>Credencial extra</h2><p>Exige login admin por passkey e esta senha dev.</p></div></div>
-      <label><span>Usuário</span><TextField name="dev-username" value={login.username} onChange={e => setLogin({ ...login, username: e.target.value })} autoComplete="username" spellCheck={false} /></label>
-      <label><span>Senha</span><TextField name="dev-password" value={login.password} onChange={e => setLogin({ ...login, password: e.target.value })} type="password" autoComplete="current-password" /></label>
-      <Button icon="key" disabled={busy}>{busy ? 'Validando…' : 'Entrar no painel dev'}</Button>
-    </form> : <>
-      <section className="dev-card">
-        <div className="dev-card-head"><Icon name="sparkles" /><div><h2>Provedores de IA</h2><p>Chaves ficam criptografadas no servidor. O app usa apenas o provedor ativo.</p></div></div>
-        <div className="dev-provider-list">
-          {providers.length ? providers.map(provider => <div key={provider.id} className="dev-provider-row">
-            <div><b>{provider.label}</b><span>{provider.provider} · {provider.model} · {provider.hasKey ? 'chave salva' : 'sem chave'}</span></div>
-            <div className="row">
-              {provider.active && <span className="tag acc">ativo</span>}
-              <button className="iconbtn" onClick={() => listModels(provider.id)} aria-label="Listar modelos"><Icon name="magnifier" /></button>
-              <button className="iconbtn" onClick={() => editProvider(provider)} aria-label="Editar"><Icon name="pencil" /></button>
-              <button className="iconbtn" onClick={() => removeProvider(provider.id)} aria-label="Remover"><Icon name="trash" /></button>
-            </div>
-          </div>) : <p className="ss">Nenhum provedor configurado ainda.</p>}
-        </div>
-      </section>
-
-      <form className="dev-card" onSubmit={saveProvider}>
-        <div className="dev-card-head"><Icon name="key" /><div><h2>{form.id ? 'Editar provedor' : 'Adicionar provedor'}</h2><p>OpenAI, Gemini e Anthropic seguem schema JSON na geração.</p></div></div>
-        <label><span>Fornecedor</span><select className="field" name="dev-provider" value={form.provider} onChange={e => selectProvider(e.target.value)}>
-          {PROVIDERS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-        </select></label>
-        <label><span>Nome interno</span><TextField name="dev-label" autoComplete="off" value={form.label} onChange={e => setForm({ ...form, label: e.target.value })} /></label>
-        <label><span>Modelo</span><TextField name="dev-model" autoComplete="off" value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} list="dev-models" /></label>
-        <datalist id="dev-models">{models.map(model => <option key={model} value={model} />)}</datalist>
-        <label><span>API key {form.id ? '(preencha só para trocar)' : ''}</span><TextField name="dev-api-key" value={form.apiKey} onChange={e => setForm({ ...form, apiKey: e.target.value })} type="password" autoComplete="off" spellCheck={false} /></label>
-        <label className="dev-inline"><input type="checkbox" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> Usar como provedor ativo</label>
-        <Button icon="check" disabled={busy}>{busy ? 'Salvando…' : 'Salvar provedor'}</Button>
-      </form>
-    </>}
-  </div>
+  return (
+    <main className="personal-page dev-page">
+      <header className="personal-header">
+        <button className="iconbtn" onClick={() => navigate('/settings')} aria-label={t('Back')}><Icon name="chevronLeft" /></button>
+        <div className="personal-header-copy"><span className="personal-eyebrow">{t('Restricted operations')}</span><h1>{t('Dev panel')}</h1><p>{t('Providers, models and controlled AI usage.')}</p></div>
+      </header>
+      {error && session?.unlocked ? <p className="personal-notice" role="alert">{error}</p> : null}
+      {!session?.unlocked
+        ? <DevLogin busy={busy} values={login} onChange={setLogin} onSubmit={unlock} error={error} />
+        : <DevDashboard providers={providers} usage={usage} window={window} onWindow={changeWindow} onLogout={logout} onChanged={() => loadDashboard(window)} />}
+    </main>
+  )
 }
