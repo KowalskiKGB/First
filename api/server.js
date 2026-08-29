@@ -22,6 +22,7 @@ import { createDevAuth, isTrustedMutation } from './dev-auth.js';
 import {
   activateProvider,
   activeProvider,
+  failedGenerationUsage,
   listProviderModels,
   providerSlotsDto,
   recordAiUsage,
@@ -498,9 +499,9 @@ const routes = {
       });
       saveDb();
     } catch {
-      db.aiUsage = recordAiUsage(db.aiUsage, {
-        provider: provider.provider, model: provider.selectedModel, inputTokens: 0, outputTokens: 0, totalTokens: 0
-      }, { status: 'failed', latencyMs: Date.now() - startedAt, timestamp: generatedAt });
+      db.aiUsage = recordAiUsage(db.aiUsage, failedGenerationUsage(generated, provider), {
+        status: 'failed', latencyMs: Date.now() - startedAt, timestamp: generatedAt
+      });
       saveDb();
       throw requestError('AI provider request failed', 502);
     }

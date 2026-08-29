@@ -177,3 +177,36 @@ Checkpoint RED: `ddb525f` (`test: reproduce Dev AI error disclosure`).
 ### Limites
 
 Somente os dois findings Important desta rodada foram tratados. Findings Minor permaneceram intocados conforme instrução.
+
+## Fix round 2/5 — uso faturado em plano inválido
+
+Base revisada: `c72737d`.
+
+### Escopo corrigido
+
+Quando o provider responde com usage válido, mas `normalizeAiWorkout` recusa o plano estrutural/semântico, o registro `AIUsage` agora mantém provider, modelo, input/output/total tokens e latência reais com status `failed`. Se a chamada falha antes de produzir usage, o fallback continua registrando zeros.
+
+A seleção foi extraída para `failedGenerationUsage`, uma transformação imutável usada diretamente pelo catch da geração. A sanitização pública/log introduzida na rodada anterior permanece inalterada.
+
+### RED
+
+Comando:
+
+```text
+npm test -- --test-name-pattern="failed invalid-plan generation|generation failure wiring"
+```
+
+Resultado: 2 falhas esperadas — export inexistente e wiring do servidor ainda fixando tokens em zero.
+
+Checkpoint RED: `7831a82` (`test: reproduce billed invalid-plan usage loss`).
+
+### GREEN e regressão
+
+- Teste focado: 11/11 PASS.
+- `cd api && npm test`: 102/102 PASS.
+- `cd api && npm run test:coverage`: 102/102 PASS; global 99,93% linhas / 81,60% branches / 92,92% funções.
+- `ai-providers.js`: 100% linhas / 80,90% branches / 94,12% funções.
+
+### Limites
+
+Somente o finding de uso faturado desta rodada foi tratado. Findings Minor permaneceram intocados conforme instrução.

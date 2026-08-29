@@ -268,6 +268,17 @@ export function recordAiUsage(entries = [], usage, details) {
   return [...entries, entry].slice(-10_000);
 }
 
+export function failedGenerationUsage(generated, provider) {
+  if (generated?.usage) return { ...generated.usage };
+  return {
+    provider: provider.provider,
+    model: provider.selectedModel,
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0
+  };
+}
+
 export function summarizeAiUsage(entries = [], window = '30d', now = new Date()) {
   if (!['7d', '30d'].includes(window)) throw new Error('usage window must be 7d or 30d');
   const cutoff = new Date(now).getTime() - Number(window.slice(0, -1)) * 86_400_000;
