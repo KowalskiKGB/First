@@ -93,3 +93,19 @@ The full frontend suite passed 347/349. Its two failures are confined to the exp
 - `notifyAiPlanApplied` is intentionally a pure contract; Task 3 must call it only after applying a persisted plan version and then dispatch the resulting notification after commit.
 - The preserved future-task WIP currently prevents a completely green frontend suite; focused Task 2 frontend coverage is green.
 - No deploy, push or external provider call was performed.
+
+## Fix Round 1 — Important Findings
+
+### Corrections
+
+- Persisted connection grants are now normalized to the complete canonical grant set, and only the boolean value `true` is retained as permission. Unknown keys and truthy non-booleans fail closed.
+- Personal authorization and workspace projections now require `grant === true`, including profile writes, workouts, progress, profile-write state and AI-plan visibility.
+- AI-plan migration now normalizes all candidates, sorts by numeric version with deterministic timestamp and ID tie-breakers, and retains the newest ten canonical rows per student independently of physical input order.
+
+### TDD Evidence
+
+- RED `5f13534` — migration, Personal write/workspace and unsorted-retention regressions failed in the expected four boundaries.
+- GREEN `bcaa842` — the same focused target passed 5/5.
+- Full API coverage suite passed 117/117: 99.76% lines, 81.09% branches and 93.10% functions overall; `schema.js` reached 100% lines / 87.31% branches / 100% functions and `personal.js` reached 99.30% lines / 80.40% branches / 91.49% functions.
+
+The source/status Minor was intentionally not changed and remains ledgered for Task 3. Existing future-task WIP was preserved and not staged.
