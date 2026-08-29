@@ -136,19 +136,21 @@ function requireTrainerAccess(collaboration, actorId, clientId, action = RELATIO
   return client;
 }
 
-export function requestConnection({ collaboration, actorId, shareCode, grants = {}, now, randomId }) {
+export function requestConnection({ collaboration, actorId, actorRole, shareCode, grants = {}, now, randomId }) {
+  const actor = collaboration.profiles.find(profile => profile.userId === actorId);
+  if (!['student', 'trainer'].includes(actorRole) || !actor?.roles?.includes(actorRole)) throw fail('actor role required');
+  const counterpartRole = actorRole === 'student' ? 'trainer' : 'student';
   const code = text(shareCode, 80).toUpperCase();
   const target = collaboration.profiles.find(profile =>
     /^[A-F0-9]{32}$/.test(profile.shareCode || '') &&
     profile.shareCode === code &&
-    new Date(profile.shareCodeExpiresAt).getTime() > new Date(now).getTime()
+    new Date(profile.shareCodeExpiresAt).getTime() > new Date(now).getTime() &&
+    profile.roles?.includes(counterpartRole)
   );
   if (!target || target.userId === actorId) throw fail('invalid share code');
-  const actor = collaboration.profiles.find(profile => profile.userId === actorId);
-  const actorIsTrainer = actor?.roles?.includes('trainer');
+  const actorIsTrainer = actorRole === 'trainer';
   const studentId = actorIsTrainer ? target.userId : actorId;
   const trainerId = actorIsTrainer ? actorId : target.userId;
-  if (!collaboration.profiles.find(profile => profile.userId === trainerId)?.roles?.includes('trainer')) throw fail('trainer profile required');
   if (collaboration.connections.some(item => item.studentId === studentId && item.status === 'active')) throw fail('student already linked');
   const connection = {
     id: randomId(),
@@ -727,7 +729,7 @@ export function createPersonalRoutes({ dataDir, origin, readSession, readBody, j
     }),
     'POST /api/connections/request': async (req, res) => withUser(req, res, async user => {
       const body = await readBody(req, COMMON_BODY);
-      const result = write(req, body, state => requestConnection({ collaboration: state, actorId: user.id, shareCode: body.shareCode, grants: body.grants || {}, now: now(), randomId }).collaboration);
+      const result = write(req, body, state => requestConnection({ collaboration: state, actorId: user.id, actorRole: body.actorRole, shareCode: body.shareCode, grants: body.grants || {}, now: now(), randomId }).collaboration);
       json(res, 200, { rev: result.rev, connections: result.connections.filter(item => item.studentId === user.id || item.trainerId === user.id) });
     }),
     'POST /api/connections/respond': async (req, res) => withUser(req, res, async user => {
