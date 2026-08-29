@@ -100,7 +100,7 @@ deploy usar registry — e reconstrua o Compose. Se a entrega alterou dados pers
 também o snapshot compatível de `first-data`, sempre com a API parada; não reverta somente o código
 contra arquivos JSON de uma versão incompatível.
 
-## Primeira conta
+## Primeira conta e acesso nativo
 
 O bootstrap inicial usa:
 
@@ -108,12 +108,16 @@ O bootstrap inicial usa:
 INVITE_ONLY=0
 ADMIN_UIDS=
 FIRST_BASIC_AUTH_USERS=first-bootstrap:{SHA}<hash-gerado>
-FIRST_BOOTSTRAP_MIDDLEWARE=,first-bootstrap-auth
+FIRST_BOOTSTRAP_MIDDLEWARE=
 ```
 
-Essas variáveis ativam a proteção Basic Auth de alta prioridade no Coolify. Depois de criar o
-primeiro perfil, obtenha seu `id` no `db.json`, configure `ADMIN_UIDS`, habilite convites e remova
-somente o middleware global:
+`FIRST_BASIC_AUTH_USERS` protege exclusivamente `/media/`. Mantenha
+`FIRST_BOOTSTRAP_MIDDLEWARE=` vazio: o app Capacitor precisa alcançar o shell, o Digital Asset
+Links e a API antes de possuir uma sessão e não envia credenciais Basic Auth. Para controlar novos
+cadastros, use `INVITE_ONLY` e convites da aplicação, não Basic Auth no host inteiro.
+
+Depois de criar o primeiro perfil, obtenha seu `id` no `db.json`, configure `ADMIN_UIDS` e habilite
+convites:
 
 ```dotenv
 INVITE_ONLY=1
@@ -123,17 +127,24 @@ FIRST_BOOTSTRAP_MIDDLEWARE=
 ```
 
 `FIRST_BASIC_AUTH_USERS` continua obrigatório para proteger `/media/`; não o remova enquanto a mídia
-do servidor estiver habilitada.
+do servidor estiver habilitada. A rota `/.well-known/assetlinks.json` também deve permanecer pública
+para a verificação do app Android.
 
 ## Portal do personal
 
-O portal colaborativo funciona para perfis web autenticados. O usuário ativa o papel de personal e
-alterna o contexto no mesmo login. Aluno e personal podem iniciar uma solicitação por código; o
-vínculo só fica ativo após aceite e os grants são validados pelo servidor.
+O portal colaborativo funciona para perfis autenticados na web/PWA e no Capacitor. O usuário ativa
+o papel de personal e alterna o contexto no mesmo login. Aluno e personal podem iniciar uma
+solicitação por código; o vínculo só fica ativo após aceite e os grants são validados pelo servidor.
 
-Os dados compartilhados são separados do estado privado de treino. Nesta versão, publicar um
-programa não o injeta automaticamente nas rotinas locais do aluno, e a evolução ainda não combina
-todo o histórico local com medidas e peso.
+Os dados compartilhados são separados do estado privado de treino. Um programa publicado é
+projetado para o aluno vinculado e sincronizado como rotina semanal executável. Atualizações
+substituem somente rotinas marcadas como gerenciadas pelo personal; rotinas manuais, treino em
+andamento e histórico local são preservados. A evolução ampliada que combina todo o histórico de
+treinos, medidas e peso continua no roadmap.
+
+Solicitação, resposta e encerramento de vínculo, além de publicação ou atualização de programa,
+geram uma entrada persistida na inbox. Quando o usuário possui inscrição Web Push, o mesmo evento é
+enviado ao navegador/PWA; falha no transporte não desfaz a alteração persistida.
 
 ## Mídia de exercícios
 
@@ -141,7 +152,7 @@ Metadados e textos do `hasaneyldrm/exercises-dataset` permanecem sob licença MI
 nomes e instruções pt-BR para os 1.324 exercícios; as instruções vêm da
 [`contribuição tutods`](https://github.com/tutods/exercises-dataset/commit/93475e2982117339d2cbf88eb900ad2ceb8d97d6).
 
-O serviço `media` baixa exatamente 1.324 JPGs e 1.324 GIFs do commit upstream
+O serviço `media` baixa exatamente 2.648 mídias — 1.324 JPGs e 1.324 GIFs — do commit upstream
 [`7455efa`](https://github.com/hasaneyldrm/exercises-dataset/commit/7455efae41b330c265e7cd4b78dfa848e7ce5ebd),
 valida contagem, caminhos e conteúdo e grava no volume privado. Reinicializações repetem a
 verificação antes de reutilizar o volume.
