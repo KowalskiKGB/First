@@ -21,6 +21,9 @@ Os testes foram adicionados antes das respectivas implementações. Exemplos do 
 | Revogação e fail-closed | `5353742`, `cd689de` | `a7c9d3d`, `7b356e2` |
 | Consentimento de conexão | `689d393`, `972f07f` | `0e7bdfb`, `eb4bf41` |
 | Painel profissional | `0a54e39` | `846a337` |
+| Prioridades e consentimento | `5860270` | `363b2da` |
+| Atualização, erros e fuso da agenda | `cb754dd`, `1db9398`, `d57df44` | `7645fdf`, `2b6f607`, `360d8f9` |
+| Pacote Docker da API | `89e9ac1` | `5adcb3f` |
 
 Os testes de regressão também cobrem papéis inválidos, solicitante malformado, IDOR, grants
 revogados, conflitos de revisão, valores monetários em centavos e recuperação segura após 401/403.
@@ -29,20 +32,21 @@ revogados, conflitos de revisão, valores monetários em centavos e recuperaçã
 
 | Verificação | Resultado |
 |---|---|
-| API (`node --test`) | 58/58 testes aprovados |
-| Cobertura da API | 99,77% linhas; 81,62% branches; 89,95% funções |
-| Frontend (`vitest run`) | 326/326 testes aprovados |
+| API (`node --test`) | 61/61 testes aprovados |
+| Cobertura da API | 99,77% linhas; 82,35% branches; 90,87% funções |
+| Frontend (`vitest run`) | 332/332 testes aprovados |
+| Playwright (`playwright test`) | 3/3 fluxos completos aprovados em 360×800, 768×1024 e 1440×900 |
 | Build Vite | concluído; 134 módulos transformados |
 | Auditoria de dependências de produção | 0 vulnerabilidades em frontend e API |
 | Smoke visual | 1440×900, 768×1024 e 360×800 aprovados |
 
-O smoke visual percorreu o painel, alunos, ficha, agenda, financeiro e conexões com respostas de API
-controladas, verificando navegação, overflow, conteúdo acima da barra inferior e console do
-navegador.
+O E2E versionado percorre seleção do aluno, medidas, publicação de programa, agenda, cobrança e
+revogação de acesso com respostas de API controladas. Também verifica navegação, payloads, overflow,
+conteúdo acima da barra inferior, console e capturas dos três viewports.
 
 ## Limites desta evidência
 
-- O smoke visual não substitui um E2E completo com passkey e dados reais de produção.
+- O E2E com API controlada não substitui um fluxo completo com passkey e dados reais de produção.
 - Programas publicados ainda não são convertidos automaticamente em treinos no estado local do
   aluno.
 - Métricas de evolução ainda não agregam todo o histórico local do aluno.

@@ -40,6 +40,7 @@
 - [x] Agenda com disponibilidade, horários livres, criação e cancelamento de atendimentos.
 - [x] Financeiro com cobranças por aluno, recebimentos, pendências e gráficos.
 - [x] Cadastro e edição de aluno, programa publicado e medidas corporais autorizadas.
+- [x] E2E versionado do painel em celular, tablet e desktop, incluindo revogação fail-closed.
 
 ### Entregue, parcial e futuro
 
@@ -53,7 +54,7 @@
 | T6 — medidas corporais | Parcial | O personal registra e consulta medidas autorizadas; a evolução combinada de medidas e peso ainda será ampliada. |
 | T7 — novos starters, notas e anilhas | Planejado | Upper/lower, full-body, 5×5, notas por exercício e calculadora de anilhas ainda não foram implementados. |
 | T8 — percentage/training-max | Planejado | A programação 5/3/1-style sobre o motor de progressão ainda não foi implementada. |
-| T9 — tradução, segurança e release | Parcial | pt-BR, hardening e release web estão cobertos; os E2E completos de integração local ainda são pendentes. |
+| T9 — tradução, segurança e release | Parcial | pt-BR, hardening e E2E do painel com API controlada estão cobertos; integração real com passkey e dados locais ainda é pendente. |
 
 Os checklists abaixo preservam o plano técnico original. A tabela acima é o registro factual da
 entrega; itens marcados como parciais ou planejados não devem ser interpretados como concluídos.
