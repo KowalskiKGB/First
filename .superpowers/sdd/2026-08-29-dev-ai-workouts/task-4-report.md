@@ -15,10 +15,12 @@
 - GREEN: `84aa089 feat: support coexisting workout schedules`.
 - Review fix 1/5 RED: `54eb995` reproduz a contagem duplicada de adesão e a preferência `rest` ocultando uma sessão gerenciada.
 - Review fix 1/5 GREEN: `548de30` reutiliza `trainedDates` para contar datas únicas e deriva o cartão de hoje das opções reais do resolvedor; Home/history/schedule passaram 68/68.
+- Review fix 2/5 RED: `06152d0` reproduz `rest` ocultando disponibilidade gerenciada na faixa semanal, calendário, override e helpers efetivos.
+- Review fix 2/5 GREEN: `652eb61` remove o veto divergente do helper central; `dayPlan` é somente preferência e `rest` não apaga opções disponíveis. A bateria focada passou 71/71.
 
 ## Verificação
 
-- Frontend, excluindo o teste do WIP externo de `ai-plan`: 31 arquivos e 372 testes aprovados após a rodada de correção.
+- Frontend, excluindo o teste do WIP externo de `ai-plan`: 32 arquivos e 375 testes aprovados após a segunda rodada de correção.
 - API: 155 testes aprovados.
 - Build Vite: aprovado.
 - Playwright de coexistência/cópia: 2 projetos aprovados (390x844 e 1280x900), com teclado e ausência de erros de página.
