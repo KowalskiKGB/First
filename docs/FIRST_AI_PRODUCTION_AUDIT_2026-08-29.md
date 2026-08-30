@@ -28,7 +28,7 @@ Nenhum bloqueador de código foi encontrado. Antes de liberar o host, o operador
 - `docker compose config --quiet`: concluído com fixtures não produtivas.
 - Imagens `first-api` e `first-web`: construídas sem chave de IA.
 - Health em `NODE_ENV=production` sem provedor/master key: HTTP 200 e `{"ok":true}`.
-- Operações de release: 17/17 testes comportamentais/contratuais, deployment 2/2 e sintaxe Bash validada no Alpine 3.22; nenhum segredo real foi gerado neste ciclo de auditoria.
+- Operações de release: 21/21 testes comportamentais/contratuais, deployment 2/2 e sintaxe Bash validada no Alpine 3.22. O restore usa snapshot privado de modo 0600, valida/extrai os mesmos bytes, rejeita links e tipos especiais, e o gerador publica arquivos por operação exclusiva; nenhum segredo real foi gerado neste ciclo de auditoria.
 - Capacitor: build web móvel, cópia de 1.324 JPG/1.324 GIF e sync Android/iOS concluídos.
 - Android: `assembleDebug` concluído; APK em `frontend/android/app/build/outputs/apk/debug/app-debug.apk`, 146.281.079 bytes, SHA-256 `B6DD25C92DE82C98BE88335D2F3C5BC6A5F1A95775F84E5B8B6FDD4B8F3F6CB5`.
 - Scan local de arquivos rastreados: nenhuma private key, chave OpenAI/Anthropic/Google ou atribuição de segredo conhecida; nenhum artefato de build rastreado.
