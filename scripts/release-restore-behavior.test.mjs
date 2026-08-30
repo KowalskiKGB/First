@@ -4,6 +4,7 @@ import {
   chmodSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -55,9 +56,9 @@ function tarEntry({ name, type = '0', link = '', body = '' }) {
   return Buffer.concat([header, content, padding])
 }
 
-function writeArchive(target, extraEntries = []) {
+function writeArchive(target, extraEntries = [], dbBody = '{}\n') {
   const entries = [
-    { name: 'db.json', body: '{}\n' },
+    { name: 'db.json', body: dbBody },
     { name: 'secret', body: 'fixture-only\n' },
     ...extraEntries,
   ]
@@ -77,6 +78,7 @@ function createHarness(t, extraEntries = []) {
   const events = path.join(sandbox, 'events.log')
   const stopCount = path.join(sandbox, 'stop-count')
   const apiState = path.join(sandbox, 'api-state')
+  const replaceMarker = path.join(sandbox, 'archive-replaced')
   const fakeBin = path.join(sandbox, 'bin')
   const runner = path.join(sandbox, 'run-restore.sh')
   mkdirSync(fakeBin)
@@ -97,6 +99,17 @@ shift || true
 case "$command" in
   ps)
     printf '%s\n' ps >> "$events"
+    if [ -n "${'$'}{FIRST_FAKE_REPLACEMENT_ARCHIVE:-}" ] && [ ! -e "$FIRST_FAKE_REPLACE_MARKER" ]; then
+      /usr/bin/cp -- "$FIRST_FAKE_REPLACEMENT_ARCHIVE" "$FIRST_FAKE_REPLACE_SOURCE"
+      : > "$FIRST_FAKE_REPLACE_MARKER"
+      printf '%s\n' archive-replaced >> "$events"
+    fi
+    if [ -n "${'$'}{FIRST_FAKE_SNAPSHOT_DIR:-}" ]; then
+      for snapshot in "$FIRST_FAKE_SNAPSHOT_DIR"/.first-restore-snapshot.*.tgz; do
+        [ -f "$snapshot" ] || continue
+        printf 'snapshot-mode:%s\n' "$(stat -c %a "$snapshot")" >> "$events"
+      done
+    fi
     if grep -Fxq running "$FIRST_FAKE_API_STATE"; then printf '%s\n' api; fi
     ;;
   stop)
@@ -108,6 +121,10 @@ case "$command" in
       || { [ "${'$'}{FIRST_FAKE_STOP_MODE:-}" = rollback ] && [ "$count" -ge 2 ]; }; then
       printf 'stop-failed:%s\n' "$count" >> "$events"
       exit 42
+    fi
+    if [ "${'$'}{FIRST_FAKE_STOP_MODE:-}" = unconfirmed ] && [ "$count" -eq 1 ]; then
+      printf '%s\n' stop-unconfirmed >> "$events"
+      exit 0
     fi
     printf '%s\n' stopped > "$FIRST_FAKE_API_STATE"
     ;;
@@ -123,6 +140,9 @@ case "$command" in
       printf '%s\n' rollback-mutate >> "$events"
     elif [[ "$all" == *'tar -C "$stage" -xzf -'* ]]; then
       printf '%s\n' extract >> "$events"
+      if [ -n "${'$'}{FIRST_FAKE_EXTRACTED_ARCHIVE:-}" ]; then
+        cat > "$FIRST_FAKE_EXTRACTED_ARCHIVE"
+      fi
     elif [[ "$all" == *'cp -a -- "$entry" "$recovery/"'* ]]; then
       printf '%s\n' recovery >> "$events"
     elif [[ "$all" == *'mv -- "$entry" /data/'* ]]; then
@@ -169,6 +189,7 @@ exit 0
         FIRST_FAKE_API_STATE: shellPath(apiState),
         FIRST_FAKE_BIN: shellPath(fakeBin),
         FIRST_FAKE_EVENTS: shellPath(events),
+        FIRST_FAKE_REPLACE_MARKER: shellPath(replaceMarker),
         FIRST_FAKE_STOP_COUNT: shellPath(stopCount),
         FIRST_HEALTH_URL: 'https://first.example.test/api/health',
         FIRST_RESTORE_ARCHIVE: shellPath(archive),
@@ -178,7 +199,7 @@ exit 0
     })
   }
 
-  return { events, run, sandbox }
+  return { archive, events, run, sandbox }
 }
 
 function readEvents(target) {
@@ -213,6 +234,17 @@ test('initial API stop failure never reaches any data mutation', t => {
   const events = readEvents(harness.events)
   assert.ok(events.includes('stop-failed:1'))
   assert.equal(events.some(event => dataMutationEvents.has(event)), false)
+})
+
+test('a successful stop that leaves the API active never reaches data mutation', t => {
+  const harness = createHarness(t)
+  const result = harness.run({ FIRST_FAKE_STOP_MODE: 'unconfirmed' })
+
+  assert.notEqual(result.status, 0)
+  const events = readEvents(harness.events)
+  assert.ok(events.includes('stop-unconfirmed'))
+  assert.equal(events.some(event => dataMutationEvents.has(event)), false)
+  assert.match(result.stderr, /writer stop could not be confirmed/i)
 })
 
 test('rollback stop failure preserves live data and requires manual recovery', t => {
@@ -264,6 +296,8 @@ test('rollback mutation failure leaves the API stopped for manual recovery', t =
 for (const fixture of [
   { label: 'symbolic link', entry: { name: 'unsafe-link', type: '2', link: 'db.json' } },
   { label: 'hard link', entry: { name: 'unsafe-hardlink', type: '1', link: 'db.json' } },
+  { label: 'FIFO', entry: { name: 'unsafe-fifo', type: '6' } },
+  { label: 'character device', entry: { name: 'unsafe-device', type: '3' } },
 ]) {
   test(`archive ${fixture.label} is rejected before API stop`, t => {
     const harness = createHarness(t, [fixture.entry])
@@ -274,8 +308,30 @@ for (const fixture of [
     assert.equal(events.includes('stop:1'), false)
     assert.equal(events.some(event => dataMutationEvents.has(event)), false)
     assert.match(result.stderr, /link|unsupported archive entry type/i)
+    assert.deepEqual(readdirSync(harness.sandbox).filter(name => name.startsWith('.first-restore-snapshot.')), [])
   })
 }
+
+test('source replacement after validation cannot change the private snapshot extracted', t => {
+  const harness = createHarness(t)
+  const replacement = path.join(harness.sandbox, 'replacement.tgz')
+  const extracted = path.join(harness.sandbox, 'extracted.tgz')
+  const original = readFileSync(harness.archive)
+  writeArchive(replacement, [], '{"replacement":true}\n')
+
+  const result = harness.run({
+    FIRST_FAKE_EXTRACTED_ARCHIVE: shellPath(extracted),
+    FIRST_FAKE_REPLACEMENT_ARCHIVE: shellPath(replacement),
+    FIRST_FAKE_REPLACE_SOURCE: shellPath(harness.archive),
+    FIRST_FAKE_SNAPSHOT_DIR: shellPath(harness.sandbox),
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.ok(readEvents(harness.events).includes('archive-replaced'))
+  assert.ok(readEvents(harness.events).includes('snapshot-mode:600'))
+  assert.deepEqual(readFileSync(extracted), original)
+  assert.deepEqual(readdirSync(harness.sandbox).filter(name => name.startsWith('.first-restore-snapshot.')), [])
+})
 
 test('an external symlink resolving into the repository is rejected canonically', t => {
   const harness = createHarness(t)

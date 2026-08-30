@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import {
   existsSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -179,15 +180,13 @@ test('generator removes owned temporary files when the second private write fail
   }
 })
 
-test('generator removes all owned artifacts when the second atomic rename fails', () => {
-  const sandbox = mkdtempSync(path.join(tmpdir(), 'first-release-rename-fault-'))
+test('generator leaves a racing external publication file untouched', () => {
+  const sandbox = mkdtempSync(path.join(tmpdir(), 'first-release-publish-race-'))
   const handoffDirectory = path.join(sandbox, 'handoff')
   mkdirSync(handoffDirectory)
   const credentialsPath = path.join(sandbox, 'owner.md')
   const handoffPath = path.join(handoffDirectory, 'coolify.json')
-  const sentinel = path.join(handoffDirectory, 'keep.txt')
-  writeFileSync(sentinel, 'do-not-touch\n')
-  let renames = 0
+  let racedPath = ''
   let leakedOutput = ''
   const originalWrite = process.stdout.write
   process.stdout.write = chunk => {
@@ -195,24 +194,27 @@ test('generator removes all owned artifacts when the second atomic rename fails'
     return true
   }
   try {
+    const race = (target, publish) => {
+      if (!racedPath) {
+        writeFileSync(target, 'external-race\n', { flag: 'wx' })
+        racedPath = target
+      }
+      return publish()
+    }
     assert.throws(() => generateReleaseCredentials([
       '--url', 'https://first.example.test',
       '--credentials-out', credentialsPath,
       '--handoff-out', handoffPath,
     ], {
-      renameSync: (...args) => {
-        renames += 1
-        const result = renameSync(...args)
-        if (renames === 2) throw new Error('injected atomic rename failure')
-        return result
-      },
-    }), /injected atomic rename failure/)
+      linkSync: (source, target) => race(target, () => linkSync(source, target)),
+      renameSync: (source, target) => race(target, () => renameSync(source, target)),
+    }), /EEXIST|file already exists/i)
 
-    assert.equal(existsSync(credentialsPath), false)
+    assert.equal(racedPath, credentialsPath)
+    assert.equal(readFileSync(credentialsPath, 'utf8'), 'external-race\n')
     assert.equal(existsSync(handoffPath), false)
-    assert.deepEqual(readdirSync(sandbox).sort(), ['handoff'])
-    assert.deepEqual(readdirSync(handoffDirectory), ['keep.txt'])
-    assert.equal(readFileSync(sentinel, 'utf8'), 'do-not-touch\n')
+    assert.deepEqual(readdirSync(sandbox).sort(), ['handoff', 'owner.md'])
+    assert.deepEqual(readdirSync(handoffDirectory), [])
     assert.equal(leakedOutput, '')
   } finally {
     process.stdout.write = originalWrite
