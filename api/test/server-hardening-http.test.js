@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   statSync,
   writeFileSync
@@ -15,6 +16,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { hashDevPassword } from '../dev-auth.js';
+import { INITIAL_COLLABORATION } from '../personal.js';
 
 const API_DIR = path.resolve(import.meta.dirname, '..');
 const ORIGIN = 'https://first.example';
@@ -45,10 +47,11 @@ async function availablePort() {
   });
 }
 
-async function startServer(t, { db = canonicalDb(), extraEnv = {} } = {}) {
+async function startServer(t, { db = canonicalDb(), omitDb = false, prepareData, extraEnv = {} } = {}) {
   const dataDir = mkdtempSync(path.join(tmpdir(), 'first-server-hardening-'));
   writeFileSync(path.join(dataDir, 'secret'), SECRET);
-  writeFileSync(path.join(dataDir, 'db.json'), JSON.stringify(db));
+  if (!omitDb) writeFileSync(path.join(dataDir, 'db.json'), JSON.stringify(db));
+  prepareData?.(dataDir);
   const port = await availablePort();
   const child = spawn(process.execPath, ['server.js'], {
     cwd: API_DIR,
@@ -79,6 +82,33 @@ async function startServer(t, { db = canonicalDb(), extraEnv = {} } = {}) {
   }
   throw new Error(`server did not start: ${stderr}`);
 }
+
+test('a legacy volume atomically bootstraps one canonical primary DB when it is absent at startup', async t => {
+  const sentinel = Buffer.from('preserve-existing-temporary-file');
+  const collaboration = { ...structuredClone(INITIAL_COLLABORATION), rev: 7 };
+  const fixture = await startServer(t, {
+    omitDb: true,
+    prepareData(dataDir) {
+      writeFileSync(path.join(dataDir, 'collaboration.json'), JSON.stringify(collaboration));
+      writeFileSync(path.join(dataDir, 'db.json.tmp'), sentinel);
+    }
+  });
+
+  assert.deepEqual(JSON.parse(readFileSync(path.join(fixture.dataDir, 'db.json'), 'utf8')), {
+    users: [],
+    creds: [],
+    subs: [],
+    invites: [],
+    aiProviders: []
+  });
+  assert.deepEqual(readFileSync(path.join(fixture.dataDir, 'db.json.tmp')), sentinel);
+  assert.equal(readdirSync(fixture.dataDir).some(name => name.startsWith('db.json.bootstrap-')), false);
+  assert.deepEqual(JSON.parse(readFileSync(path.join(fixture.dataDir, 'collaboration.json'), 'utf8')), collaboration);
+
+  const ready = await fetch(`${fixture.url}/api/ready`);
+  assert.equal(ready.status, 200);
+  assert.deepEqual(await ready.json(), { ok: true });
+});
 
 function adminCookie(version = 0) {
   const payload = `admin-a:${Date.now() + 60_000}:${version}`;
