@@ -1,10 +1,32 @@
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const native = vi.hoisted(() => ({
+  readFile: vi.fn(), writeFile: vi.fn(), cancel: vi.fn(), checkPermissions: vi.fn(),
+  requestPermissions: vi.fn(), schedule: vi.fn(), share: vi.fn(),
+}))
+
+vi.mock('@capacitor/filesystem', () => ({
+  Filesystem: { readFile: native.readFile, writeFile: native.writeFile },
+  Directory: { Data: 'data', Cache: 'cache' }, Encoding: { UTF8: 'utf8' },
+}))
+vi.mock('@capacitor/local-notifications', () => ({ LocalNotifications: {
+  cancel: native.cancel, checkPermissions: native.checkPermissions,
+  requestPermissions: native.requestPermissions, schedule: native.schedule,
+} }))
+vi.mock('@capacitor/share', () => ({ Share: { share: native.share } }))
 
 import { setLang } from './i18n.js'
-import { reminderNotifications } from './mobile.js'
+import { nativeLoad, nativeSave, reminderNotifications, shareExport, syncReminder } from './mobile.js'
 
 describe('reminderNotifications', () => {
   beforeAll(() => setLang('pt'))
+  beforeEach(() => {
+    vi.clearAllMocks()
+    native.cancel.mockResolvedValue(undefined)
+    native.checkPermissions.mockResolvedValue({ display: 'granted' })
+    native.requestPermissions.mockResolvedValue({ display: 'granted' })
+    native.schedule.mockResolvedValue(undefined)
+  })
 
   it('uses the session count and workout selector destination when a weekday has multiple options', () => {
     const state = {
@@ -28,5 +50,65 @@ describe('reminderNotifications', () => {
       extra: { url: '#/workout', optionCount: 3 },
       schedule: { on: { weekday: 2, hour: 8, minute: 30 }, allowWhileIdle: true },
     })
+  })
+
+  it('loads and saves the private native snapshot without leaking storage failures', async () => {
+    native.readFile.mockResolvedValueOnce({ data: '{"unit":"kg"}' })
+
+    await expect(nativeLoad()).resolves.toEqual({ unit: 'kg' })
+    expect(native.readFile).toHaveBeenCalledWith(expect.objectContaining({ directory: 'data', encoding: 'utf8' }))
+
+    await nativeSave({ unit: 'lb' })
+    expect(native.writeFile).toHaveBeenCalledWith(expect.objectContaining({ directory: 'data', data: '{"unit":"lb"}', encoding: 'utf8' }))
+
+    native.readFile.mockRejectedValueOnce(new Error('missing'))
+    await expect(nativeLoad()).resolves.toBeNull()
+    native.writeFile.mockRejectedValueOnce(new Error('full'))
+    await expect(nativeSave({ unit: 'kg' })).resolves.toBeUndefined()
+  })
+
+  it('keeps reminders disabled without prompting and clears previous schedules', async () => {
+    await expect(syncReminder({ reminder: { on: false } })).resolves.toBe(true)
+
+    expect(native.cancel).toHaveBeenCalledOnce()
+    expect(native.checkPermissions).not.toHaveBeenCalled()
+    expect(native.schedule).not.toHaveBeenCalled()
+  })
+
+  it('schedules the available sessions after permission is granted', async () => {
+    const state = {
+      reminder: { on: true, time: '06:45' }, routines: [{ id: 'manual', name: 'Manual' }],
+      week: { 1: 'manual' }, dayPlan: {}, sourceSchedules: { personal: [], ai: [] },
+    }
+
+    await expect(syncReminder(state)).resolves.toBe(true)
+
+    expect(native.schedule).toHaveBeenCalledWith({ notifications: [expect.objectContaining({
+      id: 101, body: 'Hoje, Manual está no plano — vamos!',
+      schedule: { on: { weekday: 2, hour: 6, minute: 45 }, allowWhileIdle: true },
+    })] })
+  })
+
+  it('requests permission only after an interactive action and fails closed otherwise', async () => {
+    const state = { reminder: { on: true }, routines: [{ id: 'manual', name: 'Manual' }], week: { 1: 'manual' }, dayPlan: {}, sourceSchedules: {} }
+    native.checkPermissions.mockResolvedValue({ display: 'prompt' })
+
+    await expect(syncReminder(state, false)).resolves.toBe(false)
+    expect(native.requestPermissions).not.toHaveBeenCalled()
+
+    await expect(syncReminder(state, true)).resolves.toBe(true)
+    expect(native.requestPermissions).toHaveBeenCalledOnce()
+
+    native.checkPermissions.mockRejectedValueOnce(new Error('plugin unavailable'))
+    await expect(syncReminder(state, true)).resolves.toBe(false)
+  })
+
+  it('shares an export from the native cache directory', async () => {
+    native.writeFile.mockResolvedValue({ uri: 'file:///cache/first.json' })
+
+    await shareExport('{"ok":true}', 'first.json')
+
+    expect(native.writeFile).toHaveBeenCalledWith({ path: 'first.json', directory: 'cache', data: '{"ok":true}', encoding: 'utf8' })
+    expect(native.share).toHaveBeenCalledWith({ title: 'first.json', url: 'file:///cache/first.json' })
   })
 })
