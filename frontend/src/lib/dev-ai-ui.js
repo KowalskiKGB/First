@@ -31,6 +31,6 @@ export function usageKpis(usage = {}) {
 export function safeDevError(error, fallback) {
   if (error?.status === 401 || error?.status === 403) return 'Invalid Dev credential.'
   if (error?.status === 429) return 'Too many attempts. Try again later.'
-  if (error?.status === 502 && error?.message === 'The provider credential was rejected.') return error.message
+  if (error?.status === 422 && error?.message === 'The provider credential was rejected.') return error.message
   return fallback
 }

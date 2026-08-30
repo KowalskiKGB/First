@@ -421,7 +421,7 @@ globalThis.fetch = async url => {
   const models = await fetch(`${url}/api/dev/ai/models?provider=gemini`, { headers: { Cookie: devCookie } });
   const body = await models.json();
 
-  assert.equal(models.status, 502);
+  assert.equal(models.status, 422);
   assert.equal(body.error, 'The provider credential was rejected.');
   assert.doesNotMatch(JSON.stringify(body), /SENTINEL_UPSTREAM_DETAIL|key|secret|stack/i);
 });

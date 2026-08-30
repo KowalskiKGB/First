@@ -192,10 +192,11 @@ async function fetchJson(fetchImpl, url, options, timeoutMs = 45_000) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       const service = url.includes('generativelanguage.googleapis.com') ? 'Gemini model' : 'AI provider';
-      const error = new Error([401, 403].includes(response.status)
+      const credentialRejected = [401, 403].includes(response.status);
+      const error = new Error(credentialRejected
         ? PROVIDER_CREDENTIAL_REJECTED
         : `${service} request failed (${response.status})`);
-      error.status = 502;
+      error.status = credentialRejected ? 422 : 502;
       error.expose = true;
       throw error;
     }

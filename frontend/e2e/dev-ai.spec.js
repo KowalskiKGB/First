@@ -44,7 +44,7 @@ function devFixtures() {
         return json(route, { usage: { requests: longWindow ? 30 : 7, failures: longWindow ? 3 : 1, totalTokens: longWindow ? 5400 : 1200, latencyMs: longWindow ? 9000 : 2100 } })
       }
       if (pathname === '/api/dev/ai/models') {
-        if (searchParams.get('provider') === 'gemini') return json(route, { error: 'upstream credential material' }, 500)
+        if (searchParams.get('provider') === 'gemini') return json(route, { error: 'The provider credential was rejected.' }, 422)
         return json(route, { models: ['gpt-5', 'gpt-5-mini', 'o3'] })
       }
       if (pathname === '/api/dev/ai/provider' && method === 'PUT') {
@@ -147,9 +147,9 @@ test('Dev shows a sanitized Gemini model error without leaking upstream material
   const gemini = page.locator('form[aria-labelledby="provider-gemini"]')
   await gemini.getByRole('button', { name: 'Carregar modelos' }).click()
 
-  await expect(gemini.getByText('Não foi possível carregar os modelos. Tente novamente.').first()).toBeVisible()
+  await expect(gemini.getByText('A credencial foi recusada pelo provedor. Cole uma nova chave e tente novamente.').first()).toBeVisible()
   expect(await page.content()).not.toContain('upstream credential material')
   await page.screenshot({ path: testInfo.outputPath('dev-ai-gemini-error-desktop.png'), fullPage: true, animations: 'disabled', caret: 'hide' })
-  expect(errors.console).toEqual([expect.stringContaining('500 (Internal Server Error)')])
+  expect(errors.console).toEqual([expect.stringContaining('422 (Unprocessable Entity)')])
   expect(errors.page).toEqual([])
 })

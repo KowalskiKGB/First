@@ -935,7 +935,7 @@ const routes = {
     try {
       json(res, 200, { models: await listProviderModels(provider, { masterKey: AI_MASTER_KEY }) });
     } catch (error) {
-      json(res, error?.status === 502 ? 502 : 400, {
+      json(res, [422, 502].includes(error?.status) ? error.status : 400, {
         error: error?.expose ? error.message : 'Não foi possível carregar os modelos deste provedor.'
       });
     }

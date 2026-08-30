@@ -37,7 +37,7 @@ describe('Dev AI panel helpers', () => {
     expect(safeDevError({ status: 401, message: 'password=leaked' }, 'Operation failed')).toBe('Invalid Dev credential.')
     expect(safeDevError({ status: 403 }, 'Operation failed')).toBe('Invalid Dev credential.')
     expect(safeDevError({ status: 429, message: 'internal rate key' }, 'Operation failed')).toBe('Too many attempts. Try again later.')
-    expect(safeDevError({ status: 502, message: 'The provider credential was rejected.' }, 'Operation failed')).toBe('The provider credential was rejected.')
+    expect(safeDevError({ status: 422, message: 'The provider credential was rejected.' }, 'Operation failed')).toBe('The provider credential was rejected.')
     expect(safeDevError({ status: 500, message: 'upstream credential material' }, 'Operation failed')).toBe('Operation failed')
   })
 })

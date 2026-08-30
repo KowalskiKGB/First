@@ -362,7 +362,9 @@ test('provider HTTP errors are sanitized and never include the complete key', as
     schema,
     prompt: 'private',
     fetchImpl: async () => new Response(JSON.stringify({ error: { message: `invalid ${completeKey}` } }), { status: 401 })
-  }), error => error.message === 'The provider credential was rejected.' && !error.message.includes(completeKey));
+  }), error => error.status === 422
+    && error.message === 'The provider credential was rejected.'
+    && !error.message.includes(completeKey));
 });
 
 test('HTTP 200 structured failures carry normalized usage without retaining raw output', async () => {
