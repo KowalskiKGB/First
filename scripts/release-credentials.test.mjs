@@ -4,15 +4,19 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import { verifyDevPassword } from '../api/dev-auth.js'
+import { generateReleaseCredentials } from './generate-release-credentials.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 const cli = path.join(root, 'scripts', 'generate-release-credentials.mjs')
@@ -69,8 +73,9 @@ test('generator separates owner credentials from the ephemeral Coolify handoff',
     }
     assert.match(credentials, /Troque a credencial após o primeiro acesso/)
     assert.match(credentials, /Gerado em: `\d{4}-\d{2}-\d{2}T/)
-    assert.match(result.stdout, /Credenciais gravadas:/)
-    assert.match(result.stdout, /Handoff efêmero gravado:/)
+    assert.equal(result.stdout.trim(), 'Release credentials generated successfully.')
+    assert.equal(result.stdout.includes(credentialsPath), false)
+    assert.equal(result.stdout.includes(handoffPath), false)
 
     if (process.platform !== 'win32') {
       assert.equal(statSync(credentialsPath).mode & 0o777, 0o600)
@@ -111,4 +116,84 @@ test('generator requires explicit absolute output paths', () => {
 
   assert.notEqual(result.status, 0)
   assert.match(result.stderr, /absolute output paths/i)
+})
+
+test('generator removes owned temporary files when the second private write fails', () => {
+  const sandbox = mkdtempSync(path.join(tmpdir(), 'first-release-write-fault-'))
+  const handoffDirectory = path.join(sandbox, 'handoff')
+  mkdirSync(handoffDirectory)
+  const credentialsPath = path.join(sandbox, 'owner.md')
+  const handoffPath = path.join(handoffDirectory, 'coolify.json')
+  const sentinel = path.join(sandbox, 'keep.txt')
+  writeFileSync(sentinel, 'do-not-touch\n')
+  let writes = 0
+  let leakedOutput = ''
+  const originalWrite = process.stdout.write
+  process.stdout.write = chunk => {
+    leakedOutput += String(chunk)
+    return true
+  }
+  try {
+    assert.throws(() => generateReleaseCredentials([
+      '--url', 'https://first.example.test',
+      '--credentials-out', credentialsPath,
+      '--handoff-out', handoffPath,
+    ], {
+      writeFileSync: (...args) => {
+        writes += 1
+        if (writes === 2) throw new Error('injected private write failure')
+        return writeFileSync(...args)
+      },
+    }), /injected private write failure/)
+
+    assert.equal(existsSync(credentialsPath), false)
+    assert.equal(existsSync(handoffPath), false)
+    assert.deepEqual(readdirSync(sandbox).sort(), ['handoff', 'keep.txt'])
+    assert.deepEqual(readdirSync(handoffDirectory), [])
+    assert.equal(readFileSync(sentinel, 'utf8'), 'do-not-touch\n')
+    assert.equal(leakedOutput, '')
+  } finally {
+    process.stdout.write = originalWrite
+    rmSync(sandbox, { recursive: true, force: true })
+  }
+})
+
+test('generator removes all owned artifacts when the second atomic rename fails', () => {
+  const sandbox = mkdtempSync(path.join(tmpdir(), 'first-release-rename-fault-'))
+  const handoffDirectory = path.join(sandbox, 'handoff')
+  mkdirSync(handoffDirectory)
+  const credentialsPath = path.join(sandbox, 'owner.md')
+  const handoffPath = path.join(handoffDirectory, 'coolify.json')
+  const sentinel = path.join(handoffDirectory, 'keep.txt')
+  writeFileSync(sentinel, 'do-not-touch\n')
+  let renames = 0
+  let leakedOutput = ''
+  const originalWrite = process.stdout.write
+  process.stdout.write = chunk => {
+    leakedOutput += String(chunk)
+    return true
+  }
+  try {
+    assert.throws(() => generateReleaseCredentials([
+      '--url', 'https://first.example.test',
+      '--credentials-out', credentialsPath,
+      '--handoff-out', handoffPath,
+    ], {
+      renameSync: (...args) => {
+        renames += 1
+        if (renames === 2) throw new Error('injected atomic rename failure')
+        return renameSync(...args)
+      },
+    }), /injected atomic rename failure/)
+
+    assert.equal(existsSync(credentialsPath), false)
+    assert.equal(existsSync(handoffPath), false)
+    assert.deepEqual(readdirSync(sandbox).sort(), ['handoff'])
+    assert.deepEqual(readdirSync(handoffDirectory), ['keep.txt'])
+    assert.equal(readFileSync(sentinel, 'utf8'), 'do-not-touch\n')
+    assert.equal(leakedOutput, '')
+  } finally {
+    process.stdout.write = originalWrite
+    rmSync(sandbox, { recursive: true, force: true })
+  }
 })
