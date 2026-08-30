@@ -102,6 +102,11 @@ test('the deployment template is complete and builds only this repository', () =
   assert.doesNotMatch(html, /duarte-santos\.ch/i)
 
   const nginx = read('web/nginx.conf')
+  assert.equal(
+    read('nginx.conf').replaceAll('\r\n', '\n'),
+    nginx.replaceAll('\r\n', '\n'),
+    'the compatibility nginx config must mirror the deployed config',
+  )
   assert.match(nginx, /real_ip_header X-Real-IP;/)
   assert.match(nginx, /zone=auth_limit:10m rate=60r\/m;/)
   assert.match(

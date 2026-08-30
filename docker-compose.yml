@@ -96,7 +96,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.middlewares.gzip.compress=true"
-      - "traefik.http.middlewares.first-bootstrap-auth.basicauth.users=${FIRST_BASIC_AUTH_USERS:?FIRST_BASIC_AUTH_USERS is required to protect exercise media}"
+      - "traefik.http.middlewares.first-bootstrap-auth.basicauth.users=${FIRST_BASIC_AUTH_USERS:?FIRST_BASIC_AUTH_USERS is required by the optional bootstrap middleware template}"
       # Android must fetch Digital Asset Links without credentials to verify passkeys.
       - "traefik.http.routers.first-assetlinks-${COOLIFY_RESOURCE_UUID:-first}.entrypoints=https"
       - "traefik.http.routers.first-assetlinks-${COOLIFY_RESOURCE_UUID:-first}.rule=Host(`first.rocketxsistemas.com.br`) && Path(`/.well-known/assetlinks.json`)"
