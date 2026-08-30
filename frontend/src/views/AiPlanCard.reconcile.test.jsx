@@ -187,6 +187,26 @@ describe('AiPlanCard initial applied-plan reconciliation', () => {
     expect(harness.overview.error).toBeNull()
   })
 
+  it('hydrates canonical kg weight in the student-selected pounds unit', async () => {
+    harness.state = { ...initialState(), unit: 'lb' }
+    harness.context = {
+      ...harness.context,
+      measurements: { weight: { value: 80, unit: 'kg' }, waist: { value: 91, unit: 'cm' } },
+    }
+
+    await mountAndLoad()
+    harness.effects = []
+    harness.stateCursor = 0
+    renderToStaticMarkup(<AiPlanCard />)
+    harness.overview.onOpen()
+    harness.stateCursor = 0
+    renderToStaticMarkup(<AiPlanCard />)
+
+    expect(harness.wizard.unit).toBe('lb')
+    expect(harness.wizard.draft.weight).toBe(176.4)
+    expect(harness.wizard.draft.waistCm).toBe(91)
+  })
+
   it('rejects an invalid completed wizard draft before syncing state or calling the API', async () => {
     await mountAndLoad()
     harness.effects = []

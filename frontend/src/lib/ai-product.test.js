@@ -35,6 +35,21 @@ describe('AI product flow helpers', () => {
     })
   })
 
+  it('converts only body weight into the selected unit without round-trip drift', () => {
+    const pounds = draftFromAiContext(context, 'lb')
+    const kilograms = draftFromAiContext({
+      ...context,
+      measurements: { ...context.measurements, weight: { value: pounds.weight, unit: 'lb' } },
+    }, 'kg')
+    const payload = canonicalDraftPayloads(pounds, 5, '2026-08-29', 'lb').measurements[0]
+
+    expect(pounds.weight).toBe(136.7)
+    expect(pounds.waistCm).toBe(72)
+    expect(kilograms.weight).toBe(62)
+    expect(kilograms.waistCm).toBe(72)
+    expect(Math.round(payload.value * 0.45359237 * 10) / 10).toBe(62)
+  })
+
   it('blocks incomplete data and requires a guardian only for minors', () => {
     const draft = draftFromAiContext({ profile: null, gym: null, measurements: {} })
     expect(Object.keys(validateWizardStep(draft, 1))).toEqual(['ageBand', 'heightCm', 'weight'])
