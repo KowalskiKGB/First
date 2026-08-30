@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 import crypto from 'node:crypto'
 import {
-  chmodSync,
+  closeSync,
   existsSync,
+  fchmodSync,
+  linkSync,
+  openSync,
   realpathSync,
+  renameSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
@@ -12,6 +16,18 @@ import { fileURLToPath } from 'node:url'
 import { hashDevPassword } from '../api/dev-auth.js'
 
 const repository = realpathSync(fileURLToPath(new URL('../', import.meta.url)))
+const defaultRuntime = {
+  closeSync,
+  existsSync,
+  fchmodSync,
+  linkSync,
+  openSync,
+  realpathSync,
+  renameSync,
+  stdout: process.stdout,
+  unlinkSync,
+  writeFileSync,
+}
 
 function fail(message) {
   throw new Error(message)
@@ -32,11 +48,11 @@ function parseArguments(argv) {
   return Object.fromEntries([...values].map(([name, value]) => [name.slice(2), value]))
 }
 
-function canonicalTarget(value, label) {
+function canonicalTarget(value, label, runtime) {
   if (!path.isAbsolute(value)) fail('credentials and handoff require explicit absolute output paths')
-  const parent = realpathSync(path.dirname(value))
+  const parent = runtime.realpathSync(path.dirname(value))
   const target = path.join(parent, path.basename(value))
-  if (existsSync(target)) fail(`${label} output already exists; rotate it explicitly before generating another`)
+  if (runtime.existsSync(target)) fail(`${label} output already exists; rotate it explicitly before generating another`)
   return target
 }
 
@@ -52,11 +68,57 @@ function validateUrl(value) {
   return url.origin
 }
 
-function privateWrite(target, contents) {
-  writeFileSync(target, contents, { encoding: 'utf8', flag: 'wx', mode: 0o600 })
-  try { chmodSync(target, 0o600) } catch {
-    // Windows does not expose POSIX mode bits; exclusive creation still applies.
+function privateSibling(target, phase, runtime) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const suffix = crypto.randomBytes(16).toString('hex')
+    const candidate = path.join(path.dirname(target), `.${path.basename(target)}.${phase}-${process.pid}-${suffix}`)
+    if (!runtime.existsSync(candidate)) return candidate
   }
+  fail('could not reserve a private temporary output name')
+}
+
+function privateWrite(target, contents, runtime, owned) {
+  const descriptor = runtime.openSync(target, 'wx', 0o600)
+  owned.add(target)
+  try {
+    runtime.writeFileSync(descriptor, contents, { encoding: 'utf8' })
+    try { runtime.fchmodSync(descriptor, 0o600) } catch {
+      // Windows does not expose POSIX mode bits; exclusive creation still applies.
+    }
+  } finally {
+    runtime.closeSync(descriptor)
+  }
+}
+
+function preparePrivateOutput(target, contents, runtime, owned) {
+  const partial = privateSibling(target, 'partial', runtime)
+  const ready = privateSibling(target, 'ready', runtime)
+  privateWrite(partial, contents, runtime, owned)
+  if (runtime.existsSync(ready)) fail('private temporary output collision')
+  owned.add(ready)
+  runtime.renameSync(partial, ready)
+  owned.delete(partial)
+  return ready
+}
+
+function publishPrivateOutput(ready, target, runtime, owned) {
+  if (runtime.existsSync(target)) fail('output appeared while credentials were being generated')
+  runtime.linkSync(ready, target)
+  owned.add(target)
+  runtime.unlinkSync(ready)
+  owned.delete(ready)
+}
+
+function cleanupOwned(runtime, owned) {
+  let failed = false
+  for (const target of owned) {
+    try {
+      if (runtime.existsSync(target)) runtime.unlinkSync(target)
+    } catch {
+      failed = true
+    }
+  }
+  return !failed
 }
 
 function credentialDocument({ url, username, password, generatedAt }) {
@@ -73,10 +135,11 @@ function credentialDocument({ url, username, password, generatedAt }) {
   ].join('\n') + '\n'
 }
 
-export function generateReleaseCredentials(argv = process.argv.slice(2)) {
+export function generateReleaseCredentials(argv = process.argv.slice(2), overrides = {}) {
+  const runtime = { ...defaultRuntime, ...overrides }
   const options = parseArguments(argv)
-  const credentialsPath = canonicalTarget(options['credentials-out'], 'credentials')
-  const handoffPath = canonicalTarget(options['handoff-out'], 'handoff')
+  const credentialsPath = canonicalTarget(options['credentials-out'], 'credentials', runtime)
+  const handoffPath = canonicalTarget(options['handoff-out'], 'handoff', runtime)
   if (credentialsPath === handoffPath) fail('credentials and handoff outputs must be different files')
   const allowedLocalCredentials = path.join(repository, 'CREDENCIAIS_TESTE.md')
   if (insideRepository(credentialsPath) && credentialsPath !== allowedLocalCredentials) {
@@ -93,21 +156,28 @@ export function generateReleaseCredentials(argv = process.argv.slice(2)) {
     AI_CONFIG_MASTER_KEY: crypto.randomBytes(32).toString('hex'),
   }
   const generatedAt = new Date().toISOString()
-  let credentialsWritten = false
-  let handoffWritten = false
+  const owned = new Set()
   try {
-    privateWrite(credentialsPath, credentialDocument({ url, username, password, generatedAt }))
-    credentialsWritten = true
-    privateWrite(handoffPath, `${JSON.stringify(handoff, null, 2)}\n`)
-    handoffWritten = true
+    const credentialsReady = preparePrivateOutput(
+      credentialsPath,
+      credentialDocument({ url, username, password, generatedAt }),
+      runtime,
+      owned,
+    )
+    const handoffReady = preparePrivateOutput(
+      handoffPath,
+      `${JSON.stringify(handoff, null, 2)}\n`,
+      runtime,
+      owned,
+    )
+    publishPrivateOutput(credentialsReady, credentialsPath, runtime, owned)
+    publishPrivateOutput(handoffReady, handoffPath, runtime, owned)
   } catch (error) {
-    if (credentialsWritten) unlinkSync(credentialsPath)
-    if (handoffWritten) unlinkSync(handoffPath)
+    if (!cleanupOwned(runtime, owned)) throw new Error('release credential generation failed and private artifact cleanup was incomplete')
     throw error
   }
 
-  process.stdout.write(`Credenciais gravadas: ${credentialsPath}\n`)
-  process.stdout.write(`Handoff efêmero gravado: ${handoffPath}\n`)
+  runtime.stdout.write('Release credentials generated successfully.\n')
   return { credentialsPath, handoffPath }
 }
 

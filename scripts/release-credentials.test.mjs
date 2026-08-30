@@ -118,6 +118,26 @@ test('generator requires explicit absolute output paths', () => {
   assert.match(result.stderr, /absolute output paths/i)
 })
 
+test('generator never replaces a preexisting output', () => {
+  const sandbox = mkdtempSync(path.join(tmpdir(), 'first-release-existing-'))
+  const credentialsPath = path.join(sandbox, 'owner.md')
+  const handoffPath = path.join(sandbox, 'coolify.json')
+  writeFileSync(credentialsPath, 'operator-owned\n')
+  try {
+    const result = run([
+      '--url', 'https://first.example.test',
+      '--credentials-out', credentialsPath,
+      '--handoff-out', handoffPath,
+    ])
+
+    assert.notEqual(result.status, 0)
+    assert.equal(readFileSync(credentialsPath, 'utf8'), 'operator-owned\n')
+    assert.equal(existsSync(handoffPath), false)
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true })
+  }
+})
+
 test('generator removes owned temporary files when the second private write fails', () => {
   const sandbox = mkdtempSync(path.join(tmpdir(), 'first-release-write-fault-'))
   const handoffDirectory = path.join(sandbox, 'handoff')
@@ -141,8 +161,9 @@ test('generator removes owned temporary files when the second private write fail
     ], {
       writeFileSync: (...args) => {
         writes += 1
+        const result = writeFileSync(...args)
         if (writes === 2) throw new Error('injected private write failure')
-        return writeFileSync(...args)
+        return result
       },
     }), /injected private write failure/)
 
@@ -181,8 +202,9 @@ test('generator removes all owned artifacts when the second atomic rename fails'
     ], {
       renameSync: (...args) => {
         renames += 1
+        const result = renameSync(...args)
         if (renames === 2) throw new Error('injected atomic rename failure')
-        return renameSync(...args)
+        return result
       },
     }), /injected atomic rename failure/)
 

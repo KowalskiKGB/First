@@ -13,14 +13,20 @@ case "$FIRST_HEALTH_URL" in
 esac
 
 repo_dir=$(pwd -P)
-archive_dir=$(cd -- "$(dirname -- "$FIRST_RESTORE_ARCHIVE")" && pwd -P)
-archive="$archive_dir/$(basename -- "$FIRST_RESTORE_ARCHIVE")"
-case "$archive_dir/" in
-  "$repo_dir/"*) echo "FIRST_RESTORE_ARCHIVE must be outside the repository" >&2; exit 64 ;;
+if ! archive=$(realpath -- "$FIRST_RESTORE_ARCHIVE"); then
+  echo "FIRST_RESTORE_ARCHIVE could not be resolved" >&2
+  exit 64
+fi
+case "$archive" in
+  "$repo_dir"|"$repo_dir"/*) echo "FIRST_RESTORE_ARCHIVE must be outside the repository" >&2; exit 64 ;;
 esac
 test -f "$archive"
 
 manifest=$(mktemp "${TMPDIR:-/tmp}/first-restore-manifest.XXXXXX")
+if ! entry_types=$(mktemp "${TMPDIR:-/tmp}/first-restore-types.XXXXXX"); then
+  rm -f -- "$manifest"
+  exit 1
+fi
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 stage_name=".first-restore-stage-$stamp-$$"
 recovery_name=".first-recovery-$stamp-$$"
@@ -32,10 +38,17 @@ swap_started=0
 
 wait_for_health() {
   for ((attempt = 1; attempt <= 30; attempt += 1)); do
-    if curl --fail --silent --show-error "$FIRST_HEALTH_URL" >/dev/null; then return 0; fi
+    if curl --fail --silent --show-error --connect-timeout 5 --max-time 10 "$FIRST_HEALTH_URL" >/dev/null; then return 0; fi
     sleep 2
   done
   return 1
+}
+
+stop_api_writer() {
+  local running_services
+  docker compose stop api >/dev/null || return 1
+  running_services=$(docker compose ps --status running --services) || return 1
+  ! printf '%s\n' "$running_services" | grep -Fxq api
 }
 
 rollback_volume() {
@@ -67,8 +80,11 @@ restart_or_rollback() {
   trap - EXIT INT TERM
   rolled_back=0
   if [ "$status" -ne 0 ] && [ "$recovery_ready" -eq 1 ] && [ "$swap_started" -eq 1 ]; then
-    docker compose stop api >/dev/null || true
-    if rollback_volume; then
+    if ! stop_api_writer; then
+      status=1
+      api_should_run=0
+      echo "Automatic rollback was not attempted: writer stop could not be confirmed; live data remains untouched. Preserve /data/$recovery_name and perform manual recovery." >&2
+    elif rollback_volume; then
       rolled_back=1
       echo "Restore failed; the retained recovery copy was restored." >&2
     else
@@ -85,16 +101,27 @@ restart_or_rollback() {
       echo "Rollback completed but the restored service did not become healthy." >&2
     fi
   fi
-  rm -f -- "$manifest"
+  rm -f -- "$manifest" "$entry_types"
   exit "$status"
 }
 trap restart_or_rollback EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-# Validate structure and traversal before stopping the live writer.
-tar -tzf "$archive" > "$manifest"
+# Validate structure, entry types, and traversal before stopping the live writer.
+if ! tar -tzf "$archive" > "$manifest" || ! LC_ALL=C tar -tvzf "$archive" > "$entry_types"; then
+  echo "Archive listing could not be parsed safely" >&2
+  exit 65
+fi
 test -s "$manifest"
+test -s "$entry_types"
+if ! awk '
+  substr($0, 1, 1) != "-" && substr($0, 1, 1) != "d" { unsafe = 1 }
+  END { exit (NR == 0 || unsafe) }
+' "$entry_types"; then
+  echo "Archive contains a link or unsupported archive entry type" >&2
+  exit 65
+fi
 if grep -Eq '(^/|(^|/)\.\.(/|$))' "$manifest"; then
   echo "Archive contains an unsafe path" >&2
   exit 65
@@ -111,7 +138,11 @@ if ! docker compose ps --status running --services | grep -Fxq api; then
   exit 69
 fi
 api_should_run=1
-docker compose stop api
+if ! stop_api_writer; then
+  api_should_run=0
+  echo "API writer stop could not be confirmed; restore aborted without data changes." >&2
+  exit 70
+fi
 
 # Extract completely into staging while the current /data remains untouched.
 docker compose run --rm --no-deps --entrypoint sh api -ceu '
@@ -121,7 +152,10 @@ docker compose run --rm --no-deps --entrypoint sh api -ceu '
   mkdir -m 700 "$stage"
   tar -C "$stage" -xzf -
   test -f "$stage/db.json"
+  test ! -L "$stage/db.json"
   test -f "$stage/secret"
+  test ! -L "$stage/secret"
+  test -z "$(find "$stage" -type l -print -quit)"
 ' -- "$stage_name" < "$archive"
 
 # Retain a complete recovery copy before the first live path is moved.
@@ -138,7 +172,9 @@ docker compose run --rm --no-deps --entrypoint sh api -ceu '
     cp -a -- "$entry" "$recovery/"
   done
   test -f "$recovery/db.json"
+  test ! -L "$recovery/db.json"
   test -f "$recovery/secret"
+  test ! -L "$recovery/secret"
 ' -- "$stage_name" "$recovery_name" "$retired_name" "$failed_name"
 recovery_ready=1
 
@@ -164,7 +200,9 @@ docker compose run --rm --no-deps --entrypoint sh api -ceu '
   done
   rmdir "$stage"
   test -f /data/db.json
+  test ! -L /data/db.json
   test -f /data/secret
+  test ! -L /data/secret
 ' -- "$stage_name" "$recovery_name" "$retired_name" "$failed_name"
 
 docker compose start api >/dev/null
@@ -182,5 +220,5 @@ if ! docker compose run --rm --no-deps --entrypoint sh api -ceu '
 fi
 
 trap - EXIT INT TERM
-rm -f -- "$manifest"
+rm -f -- "$manifest" "$entry_types"
 printf 'Restore healthy. Retain recovery until final smoke: /data/%s\n' "$recovery_name"

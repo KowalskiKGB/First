@@ -207,7 +207,7 @@ Use o gerador versionado, que reutiliza `hashDevPassword()` de `api/dev-auth.js`
 usuário `first_dev_<24 hex>`, uma senha de 32 bytes em base64url, um hash scrypt compatível e uma
 master key independente de 32 bytes. Os dois caminhos de saída são obrigatórios e absolutos; o
 handoff é recusado se apontar para dentro do repositório. Arquivos existentes nunca são
-sobrescritos e o stdout contém somente status e caminhos, não valores.
+sobrescritos e o stdout contém somente um status genérico, sem valores ou caminhos dos artefatos.
 
 Linux/macOS:
 
@@ -261,7 +261,9 @@ e execute o gerador novamente. Ele nunca cria ou recebe chave comercial de IA.
 
 ## Backup, restore e deploy
 
-Os scripts abaixo exigem Bash e devem ser executados na raiz do checkout que contém o Compose.
+Os scripts abaixo exigem Bash, `realpath`, `awk`, `curl` e um `tar` cuja listagem detalhada identifica
+o tipo do item no primeiro caractere (GNU tar e BusyBox tar atendem) e devem ser executados na raiz
+do checkout que contém o Compose.
 Escolha um diretório absoluto em disco/volume de backup, fora do repositório. O script recusa
 caminhos relativos ou internos ao checkout, detecta se a API estava ativa, para o único writer JSON
 e usa uma trap para reiniciá-lo em sucesso, erro ou interrupção. O arquivo só aparece com o nome
@@ -276,11 +278,19 @@ Copie o `.tgz` validado para outro host/objeto protegido e teste o restore em um
 separada. Não use `./backups`: além de misturar dados com código, uma limpeza do checkout pode
 eliminar a única cópia.
 
-O restore exige arquivo absoluto fora do checkout e a URL HTTPS de health. Antes de parar a API,
-ele valida o tar, rejeita caminhos absolutos/traversal e exige `db.json` e `secret`. Com a API
-parada, extrai tudo em staging e cria uma cópia completa de recovery do `/data` atual. Só então
-move os dados atuais e instala o staging. Erro de troca, startup ou health aciona rollback para a
-cópia retida; falha no próprio rollback mantém a API parada para intervenção.
+O restore resolve o próprio arquivo com `realpath`, exige que o destino canônico fique fora do
+checkout e exige a URL HTTPS de health. Antes de parar a API, ele valida as duas listagens do tar,
+rejeita caminhos absolutos/traversal, symlinks e hardlinks, tipos especiais e exige `db.json` e
+`secret`. A parada do writer só é considerada confirmada quando `docker compose stop api` termina
+com sucesso e `api` deixa de aparecer entre os serviços ativos. Com a API parada, o script extrai
+tudo em staging, rejeita links novamente e cria uma cópia completa de recovery do `/data` atual.
+Só então move os dados atuais e instala o staging.
+
+Cada tentativa de health usa `curl --connect-timeout 5 --max-time 10`. Erro de troca, startup ou
+health aciona rollback para a cópia retida, mas o rollback só toca `/data` depois de confirmar
+novamente a parada do writer. Se essa confirmação falhar, o script não altera mais os dados, não
+declara rollback bem-sucedido, preserva a recovery e termina diferente de zero com instrução de
+recuperação manual. Falha na mutação do próprio rollback mantém a API parada para intervenção.
 
 ```bash
 export FIRST_RESTORE_ARCHIVE=/srv/first-backups/first-data-AAAAmmddTHHMMSSZ.tgz

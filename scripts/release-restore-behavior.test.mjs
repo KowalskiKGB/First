@@ -76,12 +76,14 @@ function createHarness(t, extraEntries = []) {
   const archive = path.join(sandbox, 'first-data-fixture.tgz')
   const events = path.join(sandbox, 'events.log')
   const stopCount = path.join(sandbox, 'stop-count')
+  const apiState = path.join(sandbox, 'api-state')
   const fakeBin = path.join(sandbox, 'bin')
   const runner = path.join(sandbox, 'run-restore.sh')
   mkdirSync(fakeBin)
   writeArchive(archive, extraEntries)
   writeFileSync(events, '')
   writeFileSync(stopCount, '0\n')
+  writeFileSync(apiState, 'running\n')
   writeExecutable(runner, '#!/usr/bin/env bash\nset -Eeuo pipefail\nexport PATH="$FIRST_FAKE_BIN:$PATH"\nexec "$FIRST_RESTORE_SCRIPT"\n')
 
   writeExecutable(path.join(fakeBin, 'docker'), String.raw`
@@ -95,7 +97,7 @@ shift || true
 case "$command" in
   ps)
     printf '%s\n' ps >> "$events"
-    printf '%s\n' api
+    if grep -Fxq running "$FIRST_FAKE_API_STATE"; then printf '%s\n' api; fi
     ;;
   stop)
     count=$(cat "$FIRST_FAKE_STOP_COUNT")
@@ -107,9 +109,11 @@ case "$command" in
       printf 'stop-failed:%s\n' "$count" >> "$events"
       exit 42
     fi
+    printf '%s\n' stopped > "$FIRST_FAKE_API_STATE"
     ;;
   start)
     printf '%s\n' start >> "$events"
+    printf '%s\n' running > "$FIRST_FAKE_API_STATE"
     ;;
   run)
     all="$*"
@@ -162,6 +166,7 @@ exit 0
       timeout: 10_000,
       env: {
         ...process.env,
+        FIRST_FAKE_API_STATE: shellPath(apiState),
         FIRST_FAKE_BIN: shellPath(fakeBin),
         FIRST_FAKE_EVENTS: shellPath(events),
         FIRST_FAKE_STOP_COUNT: shellPath(stopCount),
