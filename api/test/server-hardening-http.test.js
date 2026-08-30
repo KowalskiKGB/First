@@ -246,6 +246,22 @@ test('Dev session hides the configured username until the second layer is unlock
   assert.deepEqual(await unlocked.json(), { unlocked: true, username });
 });
 
+test('internal media authorization denies anonymous requests and accepts a valid app session', async t => {
+  const { url } = await startServer(t);
+
+  const anonymous = await fetch(`${url}/api/internal/media-auth`);
+  assert.equal(anonymous.status, 401);
+  assert.equal(await anonymous.text(), '');
+  assert.equal(anonymous.headers.get('cache-control'), 'private, no-store');
+
+  const authenticated = await fetch(`${url}/api/internal/media-auth`, {
+    headers: { Cookie: adminCookie() }
+  });
+  assert.equal(authenticated.status, 204);
+  assert.equal(await authenticated.text(), '');
+  assert.equal(authenticated.headers.get('cache-control'), 'private, no-store');
+});
+
 test('readiness reports only status and fails when collaboration storage becomes invalid', async t => {
   const { dataDir, url } = await startServer(t);
   const ready = await fetch(`${url}/api/ready`);

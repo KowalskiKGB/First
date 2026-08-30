@@ -91,8 +91,8 @@ services:
       - "80"
     volumes:
       - first-media:/usr/share/nginx/html/media:ro
-    # The media router always requires Basic Auth because the visual files are licensed
-    # separately. The same credential can temporarily guard the whole host during bootstrap.
+    # Signed app sessions protect exercise media inside Nginx. Basic Auth remains available
+    # only as an optional temporary guard for the whole host during bootstrap.
     labels:
       - "traefik.enable=true"
       - "traefik.http.middlewares.gzip.compress=true"
@@ -107,7 +107,7 @@ services:
       - "traefik.http.routers.first-media-${COOLIFY_RESOURCE_UUID:-first}.entrypoints=https"
       - "traefik.http.routers.first-media-${COOLIFY_RESOURCE_UUID:-first}.rule=Host(`first.rocketxsistemas.com.br`) && PathPrefix(`/media/`)"
       - "traefik.http.routers.first-media-${COOLIFY_RESOURCE_UUID:-first}.priority=1100"
-      - "traefik.http.routers.first-media-${COOLIFY_RESOURCE_UUID:-first}.middlewares=gzip,first-bootstrap-auth"
+      - "traefik.http.routers.first-media-${COOLIFY_RESOURCE_UUID:-first}.middlewares=gzip"
       - "traefik.http.routers.first-media-${COOLIFY_RESOURCE_UUID:-first}.tls=true"
       - "traefik.http.routers.first-media-${COOLIFY_RESOURCE_UUID:-first}.service=first-secure-${COOLIFY_RESOURCE_UUID:-first}"
       - "traefik.http.routers.first-secure-${COOLIFY_RESOURCE_UUID:-first}.entrypoints=https"

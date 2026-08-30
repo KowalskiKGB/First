@@ -39,6 +39,10 @@ test('the deployment template is complete and builds only this repository', () =
   assert.match(compose, /priority=1000/)
   assert.match(compose, /priority=1100/)
   assert.match(compose, /priority=1200/)
+  assert.doesNotMatch(
+    compose,
+    /routers\.first-media-\$\{COOLIFY_RESOURCE_UUID[^\n]+\.middlewares=[^\n]*first-bootstrap-auth/,
+  )
   assert.doesNotMatch(compose, /first-media-[^\n]+\.tls\.certresolver/)
   assert.doesNotMatch(compose, /first-secure-[^\n]+\.tls\.certresolver/)
 
@@ -100,7 +104,14 @@ test('the deployment template is complete and builds only this repository', () =
   const nginx = read('web/nginx.conf')
   assert.match(nginx, /real_ip_header X-Real-IP;/)
   assert.match(nginx, /zone=auth_limit:10m rate=60r\/m;/)
-  assert.match(nginx, /location \^~ \/media\/[\s\S]*Cache-Control "private, no-store"/)
+  assert.match(
+    nginx,
+    /location = \/_internal\/media-auth \{[\s\S]*internal;[\s\S]*proxy_pass http:\/\/api:3000\/api\/internal\/media-auth;[\s\S]*proxy_set_header Cookie \$http_cookie;/,
+  )
+  assert.match(
+    nginx,
+    /location \^~ \/media\/ \{[\s\S]*auth_request \/_internal\/media-auth;[\s\S]*Cache-Control "private, no-store"/,
+  )
 
   const serviceWorker = read('frontend/public/sw.js')
   assert.match(serviceWorker, /const CACHE = 'first-rt-v2'/)

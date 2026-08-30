@@ -409,6 +409,10 @@ const routes = {
     const ready = isReady();
     json(res, ready ? 200 : 503, { ok: ready });
   },
+  'GET /api/internal/media-auth': async (req, res) => {
+    res.writeHead(readSession(req) ? 204 : 401, { 'Cache-Control': 'private, no-store' });
+    res.end();
+  },
 
   // Public config the login screen needs before anyone is signed in.
   'GET /api/config': async (req, res) => json(res, 200, { invite_only: INVITE_ONLY }),
