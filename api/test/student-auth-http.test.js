@@ -299,6 +299,60 @@ test('password auth mutations reject untrusted origins and throttle repeated log
   assert.equal(otherClient.status, 200);
 });
 
+test('registration throttling distinguishes clients behind the same Cloudflare edge', async t => {
+  const { url } = await startServer(t);
+  const edgeHeaders = {
+    'X-Real-IP': '173.245.48.10',
+    'CF-Connecting-IP': '198.51.100.10'
+  };
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const response = await post(url, '/api/auth/register', {
+      email: `borda-${attempt}@example.com`,
+      fullName: `Aluno Borda ${attempt}`,
+      password: 'abc123'
+    }, edgeHeaders);
+    assert.equal(response.status, 200, `attempt ${attempt + 1}`);
+  }
+
+  const throttled = await post(url, '/api/auth/register', {
+    email: 'borda-limite@example.com', fullName: 'Aluno Limite', password: 'abc123'
+  }, edgeHeaders);
+  assert.equal(throttled.status, 429);
+
+  const otherClient = await post(url, '/api/auth/register', {
+    email: 'outro-cliente@example.com', fullName: 'Outro Cliente', password: 'abc123'
+  }, {
+    'X-Real-IP': '173.245.48.10',
+    'CF-Connecting-IP': '198.51.100.11'
+  });
+  assert.equal(otherClient.status, 200);
+});
+
+test('registration throttling ignores a spoofed Cloudflare client header from a non-Cloudflare peer', async t => {
+  const { url } = await startServer(t);
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const response = await post(url, '/api/auth/register', {
+      email: `origem-direta-${attempt}@example.com`,
+      fullName: `Origem Direta ${attempt}`,
+      password: 'abc123'
+    }, {
+      'X-Real-IP': '203.0.113.200',
+      'CF-Connecting-IP': `198.51.100.${attempt + 20}`
+    });
+    assert.equal(response.status, 200, `attempt ${attempt + 1}`);
+  }
+
+  const throttled = await post(url, '/api/auth/register', {
+    email: 'origem-direta-limite@example.com', fullName: 'Origem Direta Limite', password: 'abc123'
+  }, {
+    'X-Real-IP': '203.0.113.200',
+    'CF-Connecting-IP': '198.51.100.99'
+  });
+  assert.equal(throttled.status, 429);
+});
+
 test('email and password changes require the current password and rotate login credentials', async t => {
   const { url } = await startServer(t);
   const registered = await post(url, '/api/auth/register', {

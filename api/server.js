@@ -3,6 +3,7 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import { BlockList, isIP } from 'node:net';
 import path from 'node:path';
 import {
   generateRegistrationOptions, verifyRegistrationResponse,
@@ -232,6 +233,26 @@ function normalizedIp(value) {
   const ip = String(value || '').trim();
   return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
 }
+// Definitive list: https://www.cloudflare.com/ips/ (checked 2026-08-30).
+const CLOUDFLARE_EDGE_CIDRS = [
+  '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22',
+  '104.16.0.0/13', '104.24.0.0/14', '108.162.192.0/18',
+  '131.0.72.0/22', '141.101.64.0/18', '162.158.0.0/15',
+  '172.64.0.0/13', '173.245.48.0/20', '188.114.96.0/20',
+  '190.93.240.0/20', '197.234.240.0/22', '198.41.128.0/17',
+  '2400:cb00::/32', '2606:4700::/32', '2803:f800::/32',
+  '2405:b500::/32', '2405:8100::/32', '2a06:98c0::/29',
+  '2c0f:f248::/32'
+];
+const cloudflareEdges = new BlockList();
+for (const cidr of CLOUDFLARE_EDGE_CIDRS) {
+  const [address, prefix] = cidr.split('/');
+  cloudflareEdges.addSubnet(address, Number(prefix), isIP(address) === 6 ? 'ipv6' : 'ipv4');
+}
+function isCloudflareEdgeAddress(value) {
+  const family = isIP(value);
+  return Boolean(family && cloudflareEdges.check(value, family === 6 ? 'ipv6' : 'ipv4'));
+}
 function isTrustedProxyAddress(value) {
   const ip = normalizedIp(value);
   if (ip === '127.0.0.1' || ip === '::1' || ip === 'localhost') return true;
@@ -246,8 +267,11 @@ function isTrustedProxyAddress(value) {
 }
 function requestAddress(req) {
   const remote = normalizedIp(req.socket.remoteAddress || 'unknown');
+  const cloudflareIp = normalizedIp(firstHeader(req.headers['cf-connecting-ip']));
   const realIp = normalizedIp(firstHeader(req.headers['x-real-ip']));
-  return isTrustedProxyAddress(remote) && realIp ? realIp : remote;
+  const cloudflareClientIp = isCloudflareEdgeAddress(realIp) && isIP(cloudflareIp) ? cloudflareIp : '';
+  const proxiedIp = cloudflareClientIp || (isIP(realIp) ? realIp : '');
+  return isTrustedProxyAddress(remote) && proxiedIp ? proxiedIp : remote;
 }
 setInterval(() => {
   const now = Date.now();
