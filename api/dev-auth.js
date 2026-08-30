@@ -65,8 +65,8 @@ export function createDevAuth({ env = process.env, signingSecret, origin, now = 
   return Object.freeze({
     credential,
     authenticate: (username, password) => !!credential && username === credential.username && verifyDevPassword(password, credential.passwordHash),
-    sessionCookie: username => `firstdev=${sign(`dev:${username}:${now() + DEV_SESSION_SECONDS * 1000}`)}; Path=/; Max-Age=${DEV_SESSION_SECONDS}; HttpOnly;${secure} SameSite=Strict`,
-    clearCookie: `firstdev=; Path=/; Max-Age=0; HttpOnly;${secure} SameSite=Strict`,
+    sessionCookie: username => `firstdev=${sign(`dev:${username}:${now() + DEV_SESSION_SECONDS * 1000}`)}; Path=/api/dev; Max-Age=${DEV_SESSION_SECONDS}; HttpOnly;${secure} SameSite=Strict`,
+    clearCookie: `firstdev=; Path=/api/dev; Max-Age=0; HttpOnly;${secure} SameSite=Strict`,
     readSession(req) {
       if (!credential) return null;
       const payload = verify(cookies(req).firstdev);

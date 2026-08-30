@@ -11,6 +11,7 @@ import {
 import webpush from 'web-push';
 import { AI_EQUIPMENT } from './ai.js';
 import { createAiJobRoutes, createAiJobService } from './ai-jobs.js';
+import { createAiRoutineRoutes, createAiRoutineService } from './ai-routines.js';
 import { bridgeAiUsageProperty } from './ai-usage.js';
 import { createDevAuth, hashDevPassword, isTrustedMutation, verifyDevPassword } from './dev-auth.js';
 import { reminderForState } from './lib/workout-schedule.js';
@@ -215,6 +216,7 @@ const restTimers = new Map(); // userId -> Timeout
 const devLoginAttempts = new Map();
 const studentLoginAttempts = new Map();
 const studentRegistrationAttempts = new Map();
+const aiRoutineAttempts = new Map();
 function withinLimit(store, key, limit, windowMs) {
   const now = Date.now();
   const entry = store.get(key);
@@ -249,7 +251,7 @@ function requestAddress(req) {
 }
 setInterval(() => {
   const now = Date.now();
-  for (const attempts of [devLoginAttempts, studentLoginAttempts, studentRegistrationAttempts]) {
+  for (const attempts of [devLoginAttempts, studentLoginAttempts, studentRegistrationAttempts, aiRoutineAttempts]) {
     for (const [key, entry] of attempts) if (entry.resetAt <= now) attempts.delete(key);
   }
 }, 60000).unref();
@@ -414,11 +416,11 @@ function readBody(req, max = COMMON_BODY) {
 }
 const b64uToBuf = s => Buffer.from(s, 'base64url');
 const STUDENT_REGISTER_FIELDS = new Set([
-  'email', 'fullName', 'password', 'weightKg', 'heightCm', 'measurements', 'goal', 'inviteCode', 'code'
+  'email', 'fullName', 'password', 'weightKg', 'targetWeightKg', 'heightCm', 'measurements', 'goal', 'inviteCode', 'code'
 ]);
 const STUDENT_LOGIN_FIELDS = new Set(['email', 'password']);
 const STUDENT_PROFILE_FIELDS = new Set([
-  'email', 'fullName', 'weightKg', 'heightCm', 'measurements', 'goal', 'currentPassword', 'newPassword'
+  'email', 'fullName', 'weightKg', 'targetWeightKg', 'heightCm', 'measurements', 'goal', 'currentPassword', 'newPassword'
 ]);
 const MEASUREMENT_LIMITS = Object.freeze({
   waistCm: [10, 300], chestCm: [10, 300], hipCm: [10, 300], neckCm: [10, 150],
@@ -480,6 +482,7 @@ function normalizeMeasurements(value) {
 function profileFields(body) {
   const profile = {};
   if (Object.hasOwn(body, 'weightKg')) profile.weightKg = boundedNumber(body.weightKg, 'weightKg', 20, 350);
+  if (Object.hasOwn(body, 'targetWeightKg')) profile.targetWeightKg = boundedNumber(body.targetWeightKg, 'targetWeightKg', 20, 350);
   if (Object.hasOwn(body, 'heightCm')) profile.heightCm = boundedNumber(body.heightCm, 'heightCm', 80, 250);
   if (Object.hasOwn(body, 'measurements')) profile.measurements = normalizeMeasurements(body.measurements);
   if (Object.hasOwn(body, 'goal')) {
@@ -494,6 +497,7 @@ function storedProfile(value) {
   if (!plainObject(value)) return {};
   const profile = {};
   if (Number.isFinite(value.weightKg)) profile.weightKg = value.weightKg;
+  if (Number.isFinite(value.targetWeightKg)) profile.targetWeightKg = value.targetWeightKg;
   if (Number.isFinite(value.heightCm)) profile.heightCm = value.heightCm;
   if (plainObject(value.measurements)) profile.measurements = { ...value.measurements };
   if (STUDENT_GOALS.has(value.goal)) profile.goal = value.goal;
@@ -525,6 +529,7 @@ function stateWithProfile(currentState, profile) {
   return {
     ...current,
     ...(Number.isFinite(profile.weightKg) ? { bodyweight } : {}),
+    ...(Number.isFinite(profile.targetWeightKg) ? { targetW: profile.targetWeightKg } : {}),
     aiProfile: {
       ...aiProfile,
       ...(Number.isFinite(profile.heightCm) ? { heightCm: profile.heightCm } : {}),
@@ -927,7 +932,13 @@ const routes = {
     const providerName = new URL(req.url, 'http://x').searchParams.get('provider');
     const provider = db.aiProviders.find(item => item.provider === providerName);
     if (!provider) return json(res, 404, { error: 'provider not configured' });
-    json(res, 200, { models: await listProviderModels(provider, { masterKey: AI_MASTER_KEY }) });
+    try {
+      json(res, 200, { models: await listProviderModels(provider, { masterKey: AI_MASTER_KEY }) });
+    } catch (error) {
+      json(res, error?.status === 502 ? 502 : 400, {
+        error: error?.expose ? error.message : 'Não foi possível carregar os modelos deste provedor.'
+      });
+    }
   },
 
   'DELETE /api/dev/ai/provider': async (req, res) => {
@@ -1096,6 +1107,7 @@ const aiJobs = createAiJobService({
   runStructured: (provider, input) => runStructuredOutput(provider, { ...input, masterKey: AI_MASTER_KEY }),
   appendUsage: (usage, details) => {
     db.aiUsage = recordAiUsage(db.aiUsage, usage, details);
+    saveDb();
   },
   notifyApplied: (collaboration, { studentId, planId, now }) => notifyAiPlanApplied({
     collaboration,
@@ -1107,6 +1119,17 @@ const aiJobs = createAiJobService({
 });
 aiJobs.recoverInterrupted();
 aiJobs.drain().catch(() => console.error('AI job queue startup failed'));
+
+const aiRoutines = createAiRoutineService({
+  store: collaborationStore,
+  readState,
+  getActiveProvider: () => aiConfigurationEnabled() ? activeProvider(db.aiProviders) : null,
+  runStructured: (provider, input) => runStructuredOutput(provider, { ...input, masterKey: AI_MASTER_KEY }),
+  appendUsage: (usage, details) => {
+    db.aiUsage = recordAiUsage(db.aiUsage, usage, details);
+    saveDb();
+  }
+});
 
 Object.assign(routes, createPersonalRoutes({
   dataDir: DATA,
@@ -1123,6 +1146,16 @@ Object.assign(routes, createPersonalRoutes({
   readBody,
   json,
   requireTrustedWrite
+}), createAiRoutineRoutes({
+  service: aiRoutines,
+  readSession,
+  readBody,
+  json,
+  beforeGenerate: (req, res, user) => {
+    if (withinLimit(aiRoutineAttempts, user.id, 6, 60 * 60000)) return true;
+    json(res, 429, { error: 'Muitas gerações de IA em pouco tempo. Tente novamente em alguns minutos.' });
+    return false;
+  }
 }));
 
 const TRUSTED_WRITE_EXEMPTIONS = new Set([

@@ -6,7 +6,7 @@ describe('starter routines', () => {
   it('creates visible routine names in pt-BR instead of legacy English day labels', () => {
     const names = starterRoutines().map(routine => routine.name)
 
-    expect(names).toEqual(['Treino Push', 'Treino Pull', 'Treino de Pernas'])
-    expect(names.join(' ')).not.toMatch(/Push Day|Pull Day|Leg Day/i)
+    expect(names).toEqual(['Dia de Empurrar', 'Dia de Puxar', 'Dia de Pernas'])
+    expect(names.join(' ')).not.toMatch(/Push|Pull|Leg Day/i)
   })
 })

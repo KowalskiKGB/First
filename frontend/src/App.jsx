@@ -8,6 +8,7 @@ import { AccountAccess } from './components/AccountAccess.jsx'
 import { api } from './lib/api.js'
 import { ACCENTS, todayISO } from './lib/format.js'
 import { DEFAULT_LANG, setLang, t, useLang } from './lib/i18n.js'
+import { MOBILE, registerAndroidBackButton } from './lib/mobile.js'
 import { setNav } from './lib/nav.js'
 import { useWakeLock } from './lib/wakelock.js'
 import { startFlow } from './sheets.jsx'
@@ -49,6 +50,7 @@ function registrationBody(values) {
     fullName: values.fullName,
     password: values.password,
     ...(Number.isFinite(optionalNumber(values.weightKg)) ? { weightKg: optionalNumber(values.weightKg) } : {}),
+    ...(Number.isFinite(optionalNumber(values.targetWeightKg)) ? { targetWeightKg: optionalNumber(values.targetWeightKg) } : {}),
     ...(Number.isFinite(optionalNumber(values.heightCm)) ? { heightCm: optionalNumber(values.heightCm) } : {}),
     ...(Object.keys(measurements).length ? { measurements } : {}),
     ...(values.goal ? { goal: values.goal } : {}),
@@ -58,6 +60,7 @@ function registrationBody(values) {
 
 function mergeRegistrationProfile(profile = {}, values = {}) {
   const weightKg = optionalNumber(profile.weightKg ?? values.weightKg)
+  const targetWeightKg = optionalNumber(profile.targetWeightKg ?? values.targetWeightKg)
   const heightCm = optionalNumber(profile.heightCm ?? values.heightCm)
   const measurements = { ...(profile.measurements || {}) }
   for (const key of ['waistCm', 'armCm']) {
@@ -80,14 +83,39 @@ function mergeRegistrationProfile(profile = {}, values = {}) {
         ? state.bodyweight.map(entry => entry.d === date ? { ...entry, w: value, t: timestamp } : entry)
         : [...state.bodyweight, { d: date, w: value, t: timestamp }]
     }
+    if (Number.isFinite(targetWeightKg)) {
+      state.targetW = state.unit === 'lb' ? Math.round(targetWeightKg * 22.046226218) / 10 : targetWeightKg
+    }
   }, false)
 }
+
+const localKg = (value, unit) => unit === 'lb' ? Number(value) / 2.2046226218 : Number(value)
+const oneDecimal = value => Math.round(Number(value) * 10) / 10
+
+function registrationInitialValues(state = {}) {
+  const bodyweight = Array.isArray(state.bodyweight) ? state.bodyweight : []
+  const latest = bodyweight.slice().sort((a, b) => String(b?.d || '').localeCompare(String(a?.d || '')))[0]
+  const profile = state.aiProfile || {}
+  const measurements = profile.measurements || {}
+  const goal = profile.goal === 'lose_weight' ? 'weight_loss' : profile.goal === 'gain_muscle' ? 'muscle_gain' : profile.goal || ''
+  return {
+    ...(Number.isFinite(Number(latest?.w)) ? { weightKg: oneDecimal(localKg(latest.w, state.unit)) } : {}),
+    ...(Number.isFinite(Number(state.targetW)) ? { targetWeightKg: oneDecimal(localKg(state.targetW, state.unit)) } : {}),
+    ...(Number.isFinite(Number(profile.heightCm)) ? { heightCm: Number(profile.heightCm) } : {}),
+    ...(Number.isFinite(Number(measurements.waistCm)) ? { waistCm: Number(measurements.waistCm) } : {}),
+    ...(Number.isFinite(Number(measurements.armCm)) ? { armCm: Number(measurements.armCm) } : {}),
+    ...(goal ? { goal } : {}),
+  }
+}
+
+const validAuthUser = user => !!user && typeof user.id === 'string' && !!user.id && typeof user.name === 'string' && !!user.name.trim()
 
 function AccountSheet({ initialMode, close }) {
   const [mode, setMode] = useState(initialMode)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [inviteOnly, setInviteOnly] = useState(false)
+  const [initialValues] = useState(() => registrationInitialValues(useStore.getState().S))
 
   useEffect(() => {
     let current = true
@@ -106,15 +134,20 @@ function AccountSheet({ initialMode, close }) {
         method: 'POST',
         body: JSON.stringify(registering ? registrationBody(values) : { email: values.email, password: values.password }),
       })
+      let authenticatedUser = response?.user
+      if (!validAuthUser(authenticatedUser)) {
+        try { authenticatedUser = (await api('/api/me'))?.user } catch { authenticatedUser = null }
+      }
+      if (!validAuthUser(authenticatedUser)) throw new Error('The account response could not be confirmed. Please sign in again.')
       const store = useStore.getState()
-      store.setUser(response.user)
+      store.setUser(authenticatedUser)
       if (registering) {
         mergeRegistrationProfile(response.profile, values)
         await useStore.getState().pushState()
-        useUI.getState().toast(t(hadLocalData ? 'Profile created — data from this device moved into it' : 'Welcome, {0}', response.user.name))
+        useUI.getState().toast(t(hadLocalData ? 'Profile created — data from this device moved into it' : 'Welcome, {0}', authenticatedUser.name))
       } else {
         await store.pullState()
-        useUI.getState().toast(t('Welcome back, {0}', response.user.name))
+        useUI.getState().toast(t('Welcome back, {0}', authenticatedUser.name))
       }
       close()
     } catch (requestError) {
@@ -124,7 +157,7 @@ function AccountSheet({ initialMode, close }) {
     }
   }
 
-  return <AccountAccess mode={mode} onModeChange={setMode} onSubmit={submit} busy={busy} error={error} inviteOnly={inviteOnly} onClose={close} />
+  return <AccountAccess mode={mode} onModeChange={setMode} onSubmit={submit} busy={busy} error={error} initialValues={initialValues} inviteOnly={inviteOnly} onClose={close} />
 }
 
 function AccountAccessListener() {
@@ -213,6 +246,15 @@ function Shell() {
 function StudentApp() {
   const boot = useStore(s => s.boot)
   useEffect(() => { boot() }, [boot])
+  useEffect(() => {
+    if (!MOBILE) return undefined
+    return registerAndroidBackButton({
+      loadApp: async () => (await import('@capacitor/app')).App,
+      getSheets: () => useUI.getState().sheets,
+      closeSheet: id => useUI.getState().closeSheet(id),
+      goBack: () => window.history.back(),
+    })
+  }, [])
   return <>
     <AccountAccessListener />
     <HashRouter><Shell /></HashRouter>

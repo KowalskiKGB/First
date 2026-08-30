@@ -58,6 +58,11 @@ function ProviderCard({ definition, slot, onChanged }) {
 
   useEffect(() => { setDraft(emptyProviderDraft(slot)) }, [slot.provider, slot.selectedModel, slot.keyFingerprint, slot.testedAt])
   const visibleModels = useMemo(() => filterProviderModels(models, query), [models, query])
+  const providerPayload = () => ({
+    provider: draft.provider,
+    ...(draft.selectedModel ? { selectedModel: draft.selectedModel } : {}),
+    ...(draft.apiKey ? { apiKey: draft.apiKey } : {}),
+  })
   const run = async (kind, action, fallback = 'The operation could not be completed.') => {
     setBusy(kind); setError('')
     try { await action() }
@@ -67,7 +72,7 @@ function ProviderCard({ definition, slot, onChanged }) {
   const save = event => {
     event.preventDefault()
     run('save', async () => {
-      await api('/api/dev/ai/provider', { method: 'PUT', body: JSON.stringify(draft) })
+      await api('/api/dev/ai/provider', { method: 'PUT', body: JSON.stringify(providerPayload()) })
       setDraft(current => ({ ...current, apiKey: '' }))
       await onChanged?.()
     })
@@ -75,6 +80,11 @@ function ProviderCard({ definition, slot, onChanged }) {
   const loadModels = () => run('models', async () => {
     setModelState('loading')
     try {
+      if (draft.apiKey && !draft.selectedModel) {
+        await api('/api/dev/ai/provider', { method: 'PUT', body: JSON.stringify(providerPayload()) })
+        setDraft(current => ({ ...current, apiKey: '' }))
+        await onChanged?.()
+      }
       const data = await api(`/api/dev/ai/models?provider=${encodeURIComponent(definition.provider)}`)
       setModels(data.models || []); setModelState((data.models || []).length ? 'ready' : 'empty')
     } catch (requestError) {
@@ -89,8 +99,13 @@ function ProviderCard({ definition, slot, onChanged }) {
     await api('/api/dev/ai/active', { method: 'PUT', body: JSON.stringify({ provider: definition.provider }) })
     await onChanged?.()
   })
+  const deactivate = () => run('activate', async () => {
+    await api('/api/dev/ai/active', { method: 'PUT', body: JSON.stringify({ provider: null }) })
+    await onChanged?.()
+  })
 
   const tested = slot.testStatus === 'success'
+  const hasUnsavedConfiguration = !!draft.apiKey || draft.selectedModel !== (slot.selectedModel || '')
   return (
     <form className={`dev-provider-card${slot.active ? ' is-active' : ''}`} onSubmit={save} aria-labelledby={`provider-${definition.provider}`}>
       <div className="dev-provider-head">
@@ -104,7 +119,7 @@ function ProviderCard({ definition, slot, onChanged }) {
       </dl>
 
       {error ? <p className="form-error" role="alert">{error}</p> : null}
-      <label><span>{t('Model')}</span><TextField name={`${definition.provider}-model`} value={draft.selectedModel} onChange={event => setDraft({ ...draft, selectedModel: event.target.value })} autoComplete="off" required /></label>
+      <label><span>{t('Model')}</span><TextField name={`${definition.provider}-model`} value={draft.selectedModel} onChange={event => setDraft({ ...draft, selectedModel: event.target.value })} autoComplete="off" /></label>
       <div className="model-picker">
         <div className="model-picker-tools">
           <SearchField name={`${definition.provider}-model-search`} value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} clearLabel={t('Clear search')} autoComplete="off" placeholder={t('Search loaded models…')} />
@@ -117,8 +132,8 @@ function ProviderCard({ definition, slot, onChanged }) {
       <p className="dev-secret-note"><Icon name="lock" />{t('The saved key is never displayed again.')}</p>
       <div className="dev-provider-actions">
         <Button disabled={!!busy}>{busy === 'save' ? t('Saving…') : t('Save configuration')}</Button>
-        <Button type="button" onClick={test} disabled={!!busy || !slot.configured}>{busy === 'test' ? t('Testing…') : t('Test structured output')}</Button>
-        <Button type="button" variant="primary" onClick={activate} disabled={!!busy || slot.active || !canActivateProvider(slot, draft)}>{slot.active ? t('Active globally') : busy === 'activate' ? t('Activating…') : t('Activate globally')}</Button>
+        <Button type="button" onClick={test} disabled={!!busy || !slot.configured || !slot.selectedModel || hasUnsavedConfiguration}>{busy === 'test' ? t('Testing…') : t('Test structured output')}</Button>
+        <Button type="button" variant="primary" onClick={slot.active ? deactivate : activate} disabled={!!busy || (!slot.active && !canActivateProvider(slot, draft))}>{slot.active ? busy === 'activate' ? t('Deactivating…') : t('Deactivate globally') : busy === 'activate' ? t('Activating…') : t('Activate globally')}</Button>
       </div>
     </form>
   )

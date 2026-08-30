@@ -115,7 +115,7 @@ for (const viewport of VIEWPORTS) test(`Dev configures, tests and activates one 
   await expect(page.locator('#tabbar')).toHaveCount(0)
 
   expect(fixtures.writes.filter(write => write.pathname === '/api/dev/ai/provider').map(write => write.body)).toEqual([
-    { provider: 'openai', selectedModel: '', apiKey: 'test-provider-key-never-render-again' },
+    { provider: 'openai', apiKey: 'test-provider-key-never-render-again' },
     { provider: 'openai', selectedModel: 'gpt-5-mini' },
   ])
   expect(fixtures.writes.find(write => write.pathname === '/api/dev/ai/provider/test').body).toEqual({ provider: 'openai' })

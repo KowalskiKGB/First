@@ -361,6 +361,22 @@ const kgFromLocal = (weight, unit) => unit === 'lb' ? weight * 0.45359237 : weig
 const localFromKg = (weight, unit) => unit === 'lb' ? weight / 0.45359237 : weight
 const rounded = value => Math.round(Number(value) * 10) / 10
 const normalizedGoal = goal => goal === 'lose_weight' ? 'weight_loss' : goal === 'gain_muscle' ? 'muscle_gain' : goal || ''
+const heightInMetres = heightCm => {
+  const value = Number(heightCm)
+  return Number.isFinite(value) && value > 0
+    ? (value / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : ''
+}
+const normalizeHeightInput = input => {
+  const value = String(input ?? '').trim().replace('.', ',')
+  const digits = value.replace(/\D/g, '')
+  if (/^\d{3,4}$/.test(digits) && !value.startsWith('1,')) return `${digits[0]},${digits.slice(1, 3)}`
+  return value.slice(0, 4)
+}
+const heightInCentimetres = heightM => {
+  const value = Number(String(heightM).replace(',', '.'))
+  return Number.isFinite(value) && value > 0 ? Math.round(value > 3 ? value : value * 100) : null
+}
 
 function profileDraft(user, S, profile = {}) {
   const latestWeight = (S.bodyweight || []).slice(-1)[0]?.w
@@ -372,7 +388,8 @@ function profileDraft(user, S, profile = {}) {
     currentPassword: '',
     newPassword: '',
     weightKg: profile.weightKg ?? (latestWeight ? rounded(kgFromLocal(latestWeight, S.unit)) : ''),
-    heightCm: profile.heightCm ?? localProfile.heightCm ?? '',
+    targetWeightKg: profile.targetWeightKg ?? (S.targetW ? rounded(kgFromLocal(S.targetW, S.unit)) : ''),
+    heightM: heightInMetres(profile.heightCm ?? localProfile.heightCm),
     waistCm: measurements.waistCm ?? '',
     armCm: measurements.armCm ?? '',
     goal: normalizedGoal(profile.goal ?? localProfile.goal),
@@ -425,7 +442,10 @@ export function ProfileEditor({ close }) {
     if (!user?.email && draft.newPassword && !email) { fail('profile-email', t('Enter a valid email.')); return }
     if (!user?.email && email && !draft.newPassword) { fail('profile-new-password', t('Create a password to add an email.')); return }
     if (!validOptional(draft.weightKg, 20, 350)) { fail('profile-weight', t('Enter a valid weight.')); return }
-    if (!validOptional(draft.heightCm, 80, 250)) { fail('profile-height', t('Enter a valid height.')); return }
+    if (!validOptional(draft.targetWeightKg, 20, 350)) { fail('profile-target-weight', t('Enter a valid weight.')); return }
+    const hasHeight = draft.heightM !== '' && draft.heightM != null
+    const heightCm = hasHeight ? heightInCentimetres(draft.heightM) : null
+    if (hasHeight && (heightCm == null || heightCm < 80 || heightCm > 250)) { fail('profile-height', t('Enter a valid height.')); return }
     if (!validOptional(draft.waistCm, 10, 250)) { fail('profile-waist', t('Enter valid body measurements.')); return }
     if (!validOptional(draft.armCm, 10, 250)) { fail('profile-arm', t('Enter valid body measurements.')); return }
 
@@ -438,7 +458,8 @@ export function ProfileEditor({ close }) {
     if (email || user?.email) payload.email = email
     if (draft.goal) payload.goal = draft.goal
     if (draft.weightKg !== '' && draft.weightKg != null) payload.weightKg = Number(draft.weightKg)
-    if (draft.heightCm !== '' && draft.heightCm != null) payload.heightCm = Number(draft.heightCm)
+    if (draft.targetWeightKg !== '' && draft.targetWeightKg != null) payload.targetWeightKg = Number(draft.targetWeightKg)
+    if (heightCm != null) payload.heightCm = heightCm
     if (draft.currentPassword) payload.currentPassword = draft.currentPassword
     if (draft.newPassword) payload.newPassword = draft.newPassword
 
@@ -455,6 +476,9 @@ export function ProfileEditor({ close }) {
           heightCm: nextProfile.heightCm ?? state.aiProfile?.heightCm ?? '',
           goal: normalizedGoal(nextProfile.goal),
           measurements: { ...(state.aiProfile?.measurements || {}), ...(nextProfile.measurements || {}) },
+        }
+        if (nextProfile.targetWeightKg > 0) {
+          state.targetW = rounded(localFromKg(nextProfile.targetWeightKg, state.unit))
         }
         if (nextProfile.weightKg > 0) {
           const date = todayISO()
@@ -489,11 +513,20 @@ export function ProfileEditor({ close }) {
         <legend>{t('Body and goal')}</legend>
         <div className="personal-form-grid compact">
           <label className="form-field"><span>{t('Current weight')} (kg)</span><NumberField className="field" name="profile-weight" autoComplete="off" value={draft.weightKg} nullable onChange={weightKg => patch({ weightKg })} aria-invalid={invalidField === 'profile-weight' || undefined} aria-describedby={invalidField === 'profile-weight' ? 'profile-form-error' : undefined} /></label>
-          <label className="form-field"><span>{t('Height (cm)')}</span><NumberField className="field" name="profile-height" autoComplete="off" value={draft.heightCm} decimal={false} nullable onChange={heightCm => patch({ heightCm })} aria-invalid={invalidField === 'profile-height' || undefined} aria-describedby={invalidField === 'profile-height' ? 'profile-form-error' : undefined} /></label>
+          <label className="form-field"><span>{t('Target weight')} (kg)</span><NumberField className="field" name="profile-target-weight" autoComplete="off" value={draft.targetWeightKg} nullable onChange={targetWeightKg => patch({ targetWeightKg })} aria-invalid={invalidField === 'profile-target-weight' || undefined} aria-describedby={invalidField === 'profile-target-weight' ? 'profile-form-error' : undefined} /></label>
+          <label className="form-field"><span>{t('Height')} (m)</span><TextField name="profile-height" type="text" inputMode="decimal" autoComplete="off" placeholder="1,77" value={draft.heightM} onChange={event => patch({ heightM: normalizeHeightInput(event.target.value) })} aria-invalid={invalidField === 'profile-height' || undefined} aria-describedby={invalidField === 'profile-height' ? 'profile-form-error' : undefined} /></label>
           <label className="form-field"><span>{t('Waist')} (cm)</span><NumberField className="field" name="profile-waist" autoComplete="off" value={draft.waistCm} nullable onChange={waistCm => patch({ waistCm })} aria-invalid={invalidField === 'profile-waist' || undefined} aria-describedby={invalidField === 'profile-waist' ? 'profile-form-error' : undefined} /></label>
           <label className="form-field"><span>{t('Arm')} (cm)</span><NumberField className="field" name="profile-arm" autoComplete="off" value={draft.armCm} nullable onChange={armCm => patch({ armCm })} aria-invalid={invalidField === 'profile-arm' || undefined} aria-describedby={invalidField === 'profile-arm' ? 'profile-form-error' : undefined} /></label>
         </div>
-        <label className="form-field"><span>{t('Main goal')}</span><select className="field" name="profile-goal" autoComplete="off" value={draft.goal} onChange={event => patch({ goal: event.target.value })}><option value="">{t('Choose later')}</option>{PROFILE_GOALS.map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select></label>
+        <fieldset className="profile-goal-options">
+          <legend>{t('Main goal')}</legend>
+          {[['', 'Choose later'], ...PROFILE_GOALS].map(([value, label]) => (
+            <label key={value || 'later'} className="profile-goal-option">
+              <input type="radio" name="profile-goal" value={value} checked={draft.goal === value} onChange={event => patch({ goal: event.target.value })} autoComplete="off" />
+              <span>{t(label)}</span>
+            </label>
+          ))}
+        </fieldset>
       </fieldset>
       <div className="form-actions">
         <Button type="submit" variant="primary" disabled={loading || busy}>{busy ? t('Saving…') : t('Save changes')}</Button>

@@ -77,7 +77,7 @@ export function summarizeRecentTraining(state = {}, now = new Date().toISOString
   };
 }
 
-function generationContext(collaboration, studentId, state, now) {
+export function generationContext(collaboration, studentId, state, now) {
   const profile = collaboration.trainingProfiles.find(item => item.studentId === studentId) || null;
   const gym = collaboration.gymProfiles.find(item => item.studentId === studentId) || null;
   return {

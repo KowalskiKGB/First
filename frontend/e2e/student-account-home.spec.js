@@ -63,18 +63,22 @@ test('student Home invites login, registers profile data, gates AI and exposes p
   })))
 
   await page.goto('/#/home')
-  await expect(page.getByRole('heading', { name: 'Olá!' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Fazer login' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Fazer login' })).toBeVisible()
   await expect(page.getByText(/PPL|Push\s*\/\s*Pull\s*\/\s*Legs/i)).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Montar treino com IA' }).first().click()
-  await expect(page.getByRole('heading', { name: 'Fazer login' })).toBeVisible()
+  await expect(page.locator('.account-access').getByRole('heading', { name: 'Fazer login' })).toBeVisible()
   await page.getByRole('button', { name: 'Cadastre-se' }).click()
   await page.locator('[name="fullName"]').fill('Beatriz Lima')
   await page.locator('[name="email"]').fill('beatriz@example.com')
   await page.locator('[name="password"]').fill('abc123')
   await expect(page.locator('[name="weightKg"]')).toHaveValue('82.4')
   await expect(page.locator('[name="targetWeightKg"]')).toHaveValue('75')
+  await expect(page.locator('[name="heightM"]')).toHaveValue('1,77')
+  await page.locator('[name="heightM"]').fill('177')
+  await expect(page.locator('[name="heightM"]')).toHaveValue('1,77')
+  await page.locator('[name="heightM"]').fill('177,5')
   await expect(page.locator('[name="heightM"]')).toHaveValue('1,77')
   await expect(page.getByRole('radio', { name: 'Ambos' })).toBeChecked()
   await page.locator('[name="waistCm"]').fill('91')
@@ -99,12 +103,18 @@ test('student Home invites login, registers profile data, gates AI and exposes p
   await expect(page.locator('#tabbar')).toBeHidden()
   await expect(page.locator('[name="ai-weight"]')).toHaveValue('82.4')
   await expect(page.locator('[name="ai-height"]')).toHaveValue('177')
+  await page.getByRole('button', { name: '18 anos ou mais' }).click()
+  await page.getByRole('button', { name: 'Continuar' }).click()
   await expect(page.locator('[name="ai-goal"]')).toHaveValue('both')
 
   await page.goto('/#/settings')
   await expect(page.getByRole('heading', { name: 'Perfil' })).toBeVisible()
   await page.getByRole('button', { name: /Beatriz Lima/ }).click()
   await expect(page.getByRole('heading', { name: 'Editar perfil' })).toBeVisible()
+  await expect(page.locator('[name="profile-target-weight"]')).toHaveValue('75')
+  await page.locator('[name="profile-target-weight"]').fill('74.5')
+  await page.locator('[name="profile-height"]').fill('178')
+  await expect(page.locator('[name="profile-height"]')).toHaveValue('1,78')
   await page.locator('[name="profile-full-name"]').fill(' ')
   await page.getByRole('button', { name: 'Salvar alterações' }).click()
   await expect(page.locator('[name="profile-full-name"]')).toBeFocused()
@@ -122,6 +132,8 @@ test('student Home invites login, registers profile data, gates AI and exposes p
     email: 'beatriz@example.com',
     currentPassword: 'abc123',
     newPassword: 'nova123',
+    targetWeightKg: 74.5,
+    heightCm: 178,
   })
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1)
   await page.screenshot({ path: testInfo.outputPath('student-account-home-mobile.png'), fullPage: true, animations: 'disabled', caret: 'hide' })

@@ -18,7 +18,7 @@ const openAccount = () => {
   window.dispatchEvent(new CustomEvent('first:account', { detail: { mode: 'login' } }))
 }
 
-// Home keeps the next workout obvious while making progress and AI setup useful at a glance.
+// Home is a compact training console: today first, week status second, AI as an action.
 export default function Home() {
   const nav = useNavigate()
   const S = useStore(store => store.S)
@@ -44,23 +44,31 @@ export default function Home() {
     const date = new Date(monday)
     date.setDate(monday.getDate() + index)
     const iso = isoOf(date)
-    const effective = effectiveRoutineId(S, iso)
+    const dayRoutine = scheduledRoutineOptions(S, iso)[0]?.routine || S.routines.find(item => item.id === effectiveRoutineId(S, iso))
     const override = S.dayPlan[iso] !== undefined
     const done = doneDays.has(iso)
     if (done) selectedWeekDone += 1
-    const dot = done ? ' done' : override && effective ? ' ovr' : effective ? ' plan' : ''
+    const dot = done ? ' done' : override && dayRoutine ? ' ovr' : dayRoutine ? ' plan' : ''
     const dateLabel = date.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })
-    const dayStatus = done ? t('Completed') : override && effective ? t('Rescheduled') : effective ? t('Planned') : t('Rest day')
+    const routineName = dayRoutine ? t(dayRoutine.name) : ''
+    const stateClass = done ? ' is-done' : override && dayRoutine ? ' is-rescheduled' : dayRoutine ? ' is-planned' : ' is-rest'
+    const dayStatus = done
+      ? t('completed')
+      : override && !dayRoutine ? t('rest day selected')
+        : override && dayRoutine ? `${t('rescheduled workout')} ${routineName}`
+          : dayRoutine ? `${t('planned workout')} ${routineName}`
+            : t('rest day')
     strip.push(
       <button
         type="button"
         key={iso}
-        className={`wday${iso === todayId ? ' today' : ''}`}
+        className={`wday home-week-day home-week-day-card${stateClass}${iso === todayId ? ' today' : ''}`}
         onClick={() => dayOverrideSheet(iso)}
         aria-label={`${dateLabel}: ${dayStatus}`}
       >
         <span className="lbl">{t(DAYS[date.getDay()])}</span>
         <span className="num">{date.getDate()}</span>
+        {routineName ? <span className="sr-only">{routineName}</span> : null}
         <span className={`dot${dot}`} />
       </button>,
     )
@@ -73,7 +81,6 @@ export default function Home() {
     : `${monday.getDate()} ${monday.toLocaleDateString(dateLocale(), { month: 'short' })} – ${sunday.getDate()} ${sunday.toLocaleDateString(dateLocale(), { month: 'short' })}`
   const completedThisWeek = [...doneDays].filter(date => weekKey(date) === weekKey(todayId)).length
   const plannedPerWeek = Array.from({ length: 7 }, (_, day) => scheduledRoutineOptionsForWeekday(S, day).length > 0).filter(Boolean).length
-  const selectedProgress = plannedPerWeek ? Math.min(selectedWeekDone / plannedPerWeek, 1) : 0
   const bwPoints = S.bodyweight.slice(-30).map(entry => ({ t: entry.t || new Date(entry.d).getTime(), y: entry.w, d: entry.d }))
   const readiness = [
     [t('Current weight'), Boolean(bw?.w)],
@@ -99,7 +106,7 @@ export default function Home() {
   return <div className="narrow home-dashboard">
     <header className="hdr home-header">
       <div>
-        <h1>{user?.name ? t('Hello, {0}', user.name) : t('Hello!')}</h1>
+        <h1>{user?.name ? t('Hello, {0}', user.name) : t('Sign in')}</h1>
         <div className="sub">{today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}</div>
       </div>
       <div className="home-header-actions">
@@ -111,13 +118,9 @@ export default function Home() {
     <section className="card home-week-card" aria-labelledby="home-week-title">
       <div className="home-card-heading">
         <div>
-          <span className="personal-eyebrow">{t('Training rhythm')}</span>
           <h2 id="home-week-title">{t('This week')}</h2>
         </div>
         <strong>{selectedWeekDone}{plannedPerWeek ? ` / ${plannedPerWeek}` : ''}</strong>
-      </div>
-      <div className="home-week-progress" role="progressbar" aria-label={t('This week')} aria-valuemin="0" aria-valuemax={Math.max(plannedPerWeek, selectedWeekDone, 1)} aria-valuenow={selectedWeekDone}>
-        <span style={{ transform: `scaleX(${selectedProgress})` }} />
       </div>
       <div className="home-week-nav">
         <button className="iconbtn" onClick={() => setWeekOffset(value => value - 1)} aria-label={t('Previous week')}><Icon name="chevronLeft" /></button>
@@ -132,7 +135,7 @@ export default function Home() {
           </span>
           <div>
             <div className="lbl2">{t('Today')}</div>
-            <div className="ttl">{S.active ? t('{0} — in progress', S.active.name) : routine ? routine.name : t('Rest day')}{todayOvr && routine ? ` · ${t('rescheduled')}` : ''}</div>
+            <div className="ttl">{S.active ? t('{0} — in progress', t(S.active.name)) : routine ? t(routine.name) : t('Rest day')}{todayOvr && routine ? ` · ${t('rescheduled')}` : ''}</div>
           </div>
         </div>
         {S.active ? <span className="tag home-resume-tag">{t('Resume')}</span>
@@ -145,8 +148,8 @@ export default function Home() {
       <div className="home-ai-heading">
         <span className="home-ai-icon"><Icon name="sparkles" /></span>
         <div>
-          <span className="personal-eyebrow">{t('Adaptive weekly plan')}</span>
-          <h2 id="home-ai-title">{S.aiLastGeneration ? t('Review your AI workout') : t('Build workout with AI')}</h2>
+          <span className="personal-eyebrow">{t('Your weekly routine')}</span>
+          <h2 id="home-ai-title">{t('Weekly workout with AI')}</h2>
           <p>{S.aiLastGeneration
             ? t('Version {0} is active. Update only when you choose.', S.aiLastGeneration.version)
             : user ? t('Measurements, goals and gym equipment in four short steps.') : t('Sign in to generate a workout with AI.')}</p>
@@ -160,20 +163,8 @@ export default function Home() {
       </div> : <div className="home-ai-guest-note"><Icon name="shield" /><span>{t('Your workouts. Your weights. Your profile.')}</span></div>}
 
       <Button variant="primary" icon="sparkles" onClick={onAi}>{t('Build workout with AI')}</Button>
+      {!S.routines.length && !S.active ? <button type="button" className="text-action home-manual-link" onClick={() => nav('/plan')}>{t('Build my own plan')}</button> : null}
     </section>
-
-    {!S.routines.length && !S.active ? <section className="card home-empty-plan">
-      <div className="home-empty-icon"><Icon name="clipboard" /></div>
-      <div>
-        <span className="personal-eyebrow">{t('Your weekly routine')}</span>
-        <h2>{t('Your first workout starts here')}</h2>
-        <p>{t('Use your data to build a personalized week, or create every detail manually.')}</p>
-      </div>
-      <div className="home-empty-actions">
-        <Button variant="primary" icon="sparkles" onClick={onAi}>{t('Build workout with AI')}</Button>
-        <Button onClick={() => nav('/plan')}>{t('Build my own plan')}</Button>
-      </div>
-    </section> : null}
 
     <section className="card home-weight-card">
       <div className="row between home-weight-heading">

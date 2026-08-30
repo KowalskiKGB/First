@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createAiRoutineService } from '../ai-routines.js';
+import { createAiRoutineRoutes, createAiRoutineService } from '../ai-routines.js';
 
 const NOW = '2026-08-30T12:00:00.000Z';
 const catalogue = [
@@ -131,4 +131,77 @@ test('rejects a provider response containing an exercise outside the focused sho
     service.generate({ studentId: 'student-a', focus: 'legs' }),
     /não permitido|equipamento/i
   );
+});
+
+test('HTTP routine route requires a student session and never exposes provider errors', async () => {
+  const responses = [];
+  const json = (_res, status, body) => responses.push({ status, body });
+  const anonymous = createAiRoutineRoutes({
+    service: { generate: async () => { throw new Error('must not run'); } },
+    readSession: () => null,
+    readBody: async () => ({ focus: 'legs' }),
+    json
+  });
+  await anonymous['POST /api/ai/routine']({}, {});
+  assert.deepEqual(responses.pop(), { status: 401, body: { error: 'not signed in' } });
+
+  const authenticated = createAiRoutineRoutes({
+    service: { generate: async () => { throw new Error('SENTINEL_PROVIDER_PRIVATE_ERROR'); } },
+    readSession: () => ({ id: 'student-a' }),
+    readBody: async () => ({ focus: 'legs' }),
+    json
+  });
+  await authenticated['POST /api/ai/routine']({}, {});
+  assert.deepEqual(responses.pop(), {
+    status: 400,
+    body: { error: 'Não foi possível criar a rotina com IA.' }
+  });
+});
+
+test('HTTP routine route can reject generation before reading the request body', async () => {
+  let bodyReads = 0;
+  let serviceCalls = 0;
+  const responses = [];
+  const routes = createAiRoutineRoutes({
+    service: { generate: async () => { serviceCalls += 1; } },
+    readSession: () => ({ id: 'student-a' }),
+    readBody: async () => { bodyReads += 1; return { focus: 'legs' }; },
+    json: (_res, status, body) => responses.push({ status, body }),
+    beforeGenerate: (_req, res) => {
+      responses.push({ status: 429, body: { error: 'rate limited' } });
+      return false;
+    }
+  });
+
+  await routes['POST /api/ai/routine']({}, {});
+
+  assert.equal(bodyReads, 0);
+  assert.equal(serviceCalls, 0);
+  assert.deepEqual(responses.pop(), { status: 429, body: { error: 'rate limited' } });
+});
+
+test('HTTP routine route rate-limits authenticated generation before spending provider tokens', async () => {
+  let calls = 0;
+  const responses = [];
+  const routes = createAiRoutineRoutes({
+    service: { generate: async () => { calls += 1; } },
+    readSession: () => ({ id: 'student-a' }),
+    readBody: async () => ({ focus: 'legs' }),
+    beforeGenerate: () => {
+      responses.push({
+        status: 429,
+        body: { error: 'Limite de gerações atingido. Tente novamente mais tarde.' }
+      });
+      return false;
+    },
+    json: (_res, status, body) => responses.push({ status, body })
+  });
+
+  await routes['POST /api/ai/routine']({}, {});
+
+  assert.equal(calls, 0);
+  assert.deepEqual(responses.pop(), {
+    status: 429,
+    body: { error: 'Limite de gerações atingido. Tente novamente mais tarde.' }
+  });
 });

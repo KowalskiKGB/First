@@ -10,10 +10,42 @@ const EMPTY_VALUES = {
   password: '',
   inviteCode: '',
   weightKg: '',
-  heightCm: '',
+  targetWeightKg: '',
+  heightM: '',
   waistCm: '',
   armCm: '',
   goal: '',
+}
+
+const GOALS = [
+  ['', 'Choose later'],
+  ['weight_loss', 'Lose weight'],
+  ['muscle_gain', 'Gain muscle'],
+  ['both', 'Both'],
+]
+
+const heightInMetres = heightCm => {
+  const value = Number(heightCm)
+  return Number.isFinite(value) && value > 0
+    ? (value / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : ''
+}
+
+const normalizeHeightInput = input => {
+  const value = String(input ?? '').trim().replace('.', ',')
+  const digits = value.replace(/\D/g, '')
+  if (/^\d{3,4}$/.test(digits) && !value.startsWith('1,')) return `${digits[0]},${digits.slice(1, 3)}`
+  return value.slice(0, 4)
+}
+
+const heightInCentimetres = heightM => {
+  const value = Number(String(heightM).replace(',', '.'))
+  return Number.isFinite(value) && value > 0 ? Math.round(value > 3 ? value : value * 100) : null
+}
+
+function accessDraft(initialValues) {
+  const { heightCm, ...values } = initialValues
+  return { ...EMPTY_VALUES, ...values, heightM: values.heightM != null ? normalizeHeightInput(values.heightM) : heightInMetres(heightCm) }
 }
 
 function registrationPayload(values) {
@@ -23,9 +55,11 @@ function registrationPayload(values) {
     password: values.password,
   }
   if (values.inviteCode?.trim()) payload.inviteCode = values.inviteCode.trim().toUpperCase()
-  for (const key of ['weightKg', 'heightCm', 'waistCm', 'armCm', 'goal']) {
+  for (const key of ['weightKg', 'targetWeightKg', 'waistCm', 'armCm', 'goal']) {
     if (values[key] !== '' && values[key] != null) payload[key] = values[key]
   }
+  const heightCm = heightInCentimetres(values.heightM)
+  if (heightCm) payload.heightCm = heightCm
   return payload
 }
 
@@ -40,7 +74,7 @@ export function AccountAccess({
   onClose,
 }) {
   const prefix = useId()
-  const [values, setValues] = useState(() => ({ ...EMPTY_VALUES, ...initialValues }))
+  const [values, setValues] = useState(() => accessDraft(initialValues))
   const register = mode === 'register'
   const field = name => ({
     value: values[name] ?? '',
@@ -70,7 +104,8 @@ export function AccountAccess({
       {error ? <p className="form-error" role="alert">{error}</p> : null}
 
       <form className="account-access-form" onSubmit={submit}>
-        <fieldset disabled={busy}>
+        <fieldset className="account-access-section" disabled={busy}>
+          <legend>{t('Access')}</legend>
           {register ? (
             <label htmlFor={`${prefix}-fullName`}>
               <span>{t('Full name')}</span>
@@ -96,47 +131,52 @@ export function AccountAccess({
               <small>{t('This app is invite-only — enter the code you were given.')}</small>
             </label>
           ) : null}
+        </fieldset>
 
           {register ? (
-            <div className="account-access-profile">
+            <fieldset className="account-access-section account-access-profile" disabled={busy}>
+              <legend>{t('Body and goal')}</legend>
               <div className="account-access-profile-copy">
                 <strong>{t('Help us personalize your training')}</strong>
                 <span>{t('These details are optional and can be changed in your profile.')}</span>
               </div>
               <div className="account-access-measures">
-                <label htmlFor={`${prefix}-weightKg`}>
-                  <span>{t('Current weight')}</span>
-                  <NumberField id={`${prefix}-weightKg`} name="weightKg" inputMode="decimal" autoComplete="off" decimal nullable placeholder={t('kg')} {...numberField('weightKg')} />
+                <label className="measure-card" htmlFor={`${prefix}-weightKg`}>
+                  <span>{t('Current weight')} (kg)</span>
+                  <NumberField id={`${prefix}-weightKg`} name="weightKg" aria-label={`${t('Current weight')} em kg`} autoComplete="off" decimal nullable placeholder="kg" {...numberField('weightKg')} />
                 </label>
-                <label htmlFor={`${prefix}-heightCm`}>
-                  <span>{t('Height')}</span>
-                  <NumberField id={`${prefix}-heightCm`} name="heightCm" inputMode="decimal" autoComplete="off" decimal nullable placeholder={t('cm')} {...numberField('heightCm')} />
+                <label className="measure-card" htmlFor={`${prefix}-targetWeightKg`}>
+                  <span>{t('Target weight')} (kg)</span>
+                  <NumberField id={`${prefix}-targetWeightKg`} name="targetWeightKg" aria-label={`${t('Target weight')} em kg`} autoComplete="off" decimal nullable placeholder="kg" {...numberField('targetWeightKg')} />
                 </label>
-                <label htmlFor={`${prefix}-waistCm`}>
-                  <span>{t('Waist')}</span>
-                  <NumberField id={`${prefix}-waistCm`} name="waistCm" inputMode="decimal" autoComplete="off" decimal nullable placeholder={t('cm')} {...numberField('waistCm')} />
+                <label className="measure-card" htmlFor={`${prefix}-heightM`}>
+                  <span>{t('Height')} (m)</span>
+                  <TextField id={`${prefix}-heightM`} name="heightM" type="text" inputMode="decimal" aria-label={`${t('Height')} em metros`} autoComplete="off" placeholder="1,77" value={values.heightM} onChange={event => setValues(current => ({ ...current, heightM: normalizeHeightInput(event.target.value) }))} />
                 </label>
-                <label htmlFor={`${prefix}-armCm`}>
-                  <span>{t('Arm')}</span>
-                  <NumberField id={`${prefix}-armCm`} name="armCm" inputMode="decimal" autoComplete="off" decimal nullable placeholder={t('cm')} {...numberField('armCm')} />
+                <label className="measure-card" htmlFor={`${prefix}-waistCm`}>
+                  <span>{t('Waist')} (cm)</span>
+                  <NumberField id={`${prefix}-waistCm`} name="waistCm" aria-label={`${t('Waist')} em cm`} autoComplete="off" decimal nullable placeholder="cm" {...numberField('waistCm')} />
+                </label>
+                <label className="measure-card" htmlFor={`${prefix}-armCm`}>
+                  <span>{t('Arm')} (cm)</span>
+                  <NumberField id={`${prefix}-armCm`} name="armCm" aria-label={`${t('Arm')} em cm`} autoComplete="off" decimal nullable placeholder="cm" {...numberField('armCm')} />
                 </label>
               </div>
-              <label htmlFor={`${prefix}-goal`}>
-                <span>{t('Main goal')}</span>
-                <select id={`${prefix}-goal`} className="field" name="goal" autoComplete="off" {...field('goal')}>
-                  <option value="">{t('Choose later')}</option>
-                  <option value="weight_loss">{t('Lose weight')}</option>
-                  <option value="muscle_gain">{t('Gain muscle')}</option>
-                  <option value="both">{t('Both')}</option>
-                </select>
-              </label>
-            </div>
+              <fieldset className="account-access-goals">
+                <legend>{t('Main goal')}</legend>
+                {GOALS.map(([value, label]) => (
+                  <label key={value || 'later'} className="account-access-goal">
+                    <input type="radio" name="goal" value={value} checked={values.goal === value} onChange={event => setValues(current => ({ ...current, goal: event.target.value }))} autoComplete="off" />
+                    <span>{t(label)}</span>
+                  </label>
+                ))}
+              </fieldset>
+            </fieldset>
           ) : null}
 
           <Button type="submit" variant="primary" className="account-access-submit" disabled={busy}>
             {busy ? t('Please wait…') : t(register ? 'Create my account' : 'Sign in')}
           </Button>
-        </fieldset>
       </form>
 
       <button

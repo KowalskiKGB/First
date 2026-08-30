@@ -342,6 +342,35 @@ function AddToRoutine({ ex, close }) {
 }
 export const addToRoutineSheet = ex => ui().openSheet(close => <AddToRoutine ex={ex} close={close} />)
 
+const AI_ROUTINE_FOCUSES = [
+  ['legs', 'Legs', ['upper legs', 'lower legs'], 'legs'],
+  ['push', 'Push', ['chest', 'shoulders', 'upper arms'], 'barbell'],
+  ['pull', 'Pull', ['back', 'upper arms'], 'pullup'],
+  ['full_body', 'Full body', ['chest', 'back', 'upper legs'], 'dumbbell'],
+  ['core', 'Core', ['waist'], 'target'],
+  ['cardio', 'Cardio', ['cardio'], 'figureRun'],
+]
+
+function AiRoutineChoice({ onManual, onAi, close }) {
+  const chooseManual = () => { close(); onManual?.() }
+  const chooseAi = choice => { close(); onAi?.({ focus: choice[0] }) }
+  return <>
+    <h3>{t('New routine')}</h3>
+    <div className="muted small" style={{ marginBottom: 12 }}>{t('Choose how to create this routine.')}</div>
+    <div className="list">
+      <button type="button" className="item" onClick={chooseManual}>
+        <span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="dumbbell" /></span>
+        <div className="grow"><div className="tt">{t('Manual')}</div><div className="ss">{t('Create an empty editable routine.')}</div></div><Icon name="plus" className="chev" />
+      </button>
+      {AI_ROUTINE_FOCUSES.map(choice => <button type="button" key={choice[0]} className="item" onClick={() => chooseAi(choice)}>
+        <span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name={choice[3]} /></span>
+        <div className="grow"><div className="tt">IA · {t(choice[1])}</div><div className="ss">{t('Generate an editable routine for this focus.')}</div></div><Icon name="sparkles" className="chev" />
+      </button>)}
+    </div>
+  </>
+}
+export const generateAiRoutineSheet = opts => ui().openSheet(close => <AiRoutineChoice {...opts} close={close} />)
+
 /* ============================ custom exercises (issue #11) ============================ */
 // Name + body part is all it takes — the exercise then behaves like any built-in one
 // (planning, logging, PRs, stats), just without an animation.

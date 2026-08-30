@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const source = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
 const jobsSource = fs.readFileSync(new URL('../ai-jobs.js', import.meta.url), 'utf8');
+const dockerfile = fs.readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
 
 const routeBody = route => {
   const start = source.indexOf(`'${route}'`);
@@ -23,6 +24,8 @@ test('server exposes the authoritative Dev AI and usage contracts', () => {
   for (const route of ['POST /api/ai/jobs', 'GET /api/ai/job', 'POST /api/ai/plan/rollback']) {
     assert.notEqual(jobsSource.indexOf(`'${route}'`), -1, route);
   }
+  assert.notEqual(source.indexOf('createAiRoutineRoutes'), -1);
+  assert.notEqual(fs.readFileSync(new URL('../ai-routines.js', import.meta.url), 'utf8').indexOf("'POST /api/ai/routine'"), -1);
 });
 
 test('every Dev or AI mutation wired in server requires the trusted-origin guard', () => {
@@ -48,6 +51,10 @@ test('server source contains neither persisted initial passwords nor provider ke
 
 test('activation fails closed when the AI master key is unavailable', () => {
   assert.match(routeBody('PUT /api/dev/ai/active'), /aiConfigurationEnabled\(\)/);
+});
+
+test('production API image includes the AI routine endpoint module', () => {
+  assert.match(dockerfile, /ai-routines\.js/);
 });
 
 test('generation never forwards raw provider error messages to DTOs or 5xx logs', () => {

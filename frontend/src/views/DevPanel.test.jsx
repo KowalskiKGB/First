@@ -125,7 +125,7 @@ describe('Dev AI panel UI contracts', () => {
     expect(harness.api).toHaveBeenCalledWith('/api/dev/ai/provider', { method: 'PUT', body: JSON.stringify(draft) })
     expect(harness.api).toHaveBeenCalledWith('/api/dev/ai/provider/test', { method: 'POST', body: JSON.stringify({ provider: 'openai' }) })
     expect(harness.api).toHaveBeenCalledWith('/api/dev/ai/active', { method: 'PUT', body: JSON.stringify({ provider: 'openai' }) })
-    expect(onChanged).toHaveBeenCalledTimes(4)
+    expect(onChanged).toHaveBeenCalledTimes(3)
     expect(harness.setters[0]).toHaveBeenCalled()
     expect(harness.setters[1]).toHaveBeenCalledWith(['gpt-5-mini'])
     const clearKey = harness.setters[0].mock.calls.map(([value]) => value).find(value => typeof value === 'function')
@@ -148,7 +148,7 @@ describe('Dev AI panel UI contracts', () => {
 
     expect(harness.api).toHaveBeenNthCalledWith(1, '/api/dev/ai/provider', {
       method: 'PUT',
-      body: JSON.stringify({ provider: 'openai', selectedModel: '', apiKey: 'secret' }),
+      body: JSON.stringify({ provider: 'openai', apiKey: 'secret' }),
     })
     expect(harness.api).toHaveBeenNthCalledWith(2, '/api/dev/ai/models?provider=openai')
     expect(harness.setters[1]).toHaveBeenCalledWith(['gpt-5-mini'])
@@ -186,7 +186,7 @@ describe('Dev AI panel UI contracts', () => {
 
     expect(harness.setters[3]).toHaveBeenCalledWith('error')
     expect(harness.setters[5]).toHaveBeenCalledWith(expect.any(String))
-    expect(renderToStaticMarkup(form)).toContain('Active globally')
+    expect(renderToStaticMarkup(form)).toContain('Deactivate globally')
     expect(renderToStaticMarkup(form)).toContain('Visible error')
 
     harness.reset([{ provider: 'gemini', selectedModel: '', apiKey: '' }, [], '', 'empty', '', ''])

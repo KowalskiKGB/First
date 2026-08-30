@@ -59,6 +59,9 @@ vi.mock('../lib/i18n.js', () => ({
       'Build workout with AI': 'Montar treino com IA',
       'Create your week with AI': 'Montar treino com IA',
       'Set up my AI workout': 'Montar treino com IA',
+      'Push Day': 'Dia de Empurrar',
+      'Pull Day': 'Dia de Puxar',
+      'Leg Day': 'Dia de Pernas',
     }
     return args.reduce((text, arg, index) => text.replaceAll(`{${index}}`, arg), pt[message] || message)
   },
@@ -181,9 +184,9 @@ describe('Plan weekly schedule', () => {
 
     const markup = renderToStaticMarkup(<Plan />)
 
-    expect(markup).toContain('Treino Push')
-    expect(markup).toContain('Treino Pull')
-    expect(markup).toContain('Treino de Pernas')
+    expect(markup).toContain('Dia de Empurrar')
+    expect(markup).toContain('Dia de Puxar')
+    expect(markup).toContain('Dia de Pernas')
     expect(markup).not.toMatch(/Push Day|Pull Day|Leg Day/i)
   })
 

@@ -76,9 +76,12 @@ export function providerSlotsDto(records = [], usage = []) {
 export function upsertProvider(records = [], input, masterKeyHex, now = new Date().toISOString()) {
   const provider = requireProvider(input?.provider);
   if ('baseUrl' in (input || {}) || 'baseURL' in (input || {})) throw new Error('custom base URL is not supported');
-  const selectedModel = String(input?.selectedModel || '').trim().slice(0, 120);
-  if (!selectedModel) throw new Error('selectedModel required');
   const existing = records.find(record => record.provider === provider);
+  const hasSelectedModel = Object.hasOwn(input || {}, 'selectedModel');
+  const selectedModel = hasSelectedModel
+    ? String(input.selectedModel || '').trim().slice(0, 120)
+    : existing?.selectedModel || '';
+  if (hasSelectedModel && !selectedModel) throw new Error('selectedModel required');
   const apiKey = String(input?.apiKey || '').trim();
   if (!existing?.apiKeyEnc && !apiKey) throw new Error('apiKey required');
   if (apiKey) masterKey(masterKeyHex);
@@ -100,6 +103,7 @@ export function upsertProvider(records = [], input, masterKeyHex, now = new Date
 }
 
 export function activateProvider(records = [], providerValue, now = new Date().toISOString()) {
+  if (providerValue === null) return deactivateProviders(records, now);
   const provider = requireProvider(providerValue);
   const target = records.find(record => record.provider === provider);
   if (!target?.apiKeyEnc || target.testStatus !== 'success' || !target.testedAt) {
@@ -107,6 +111,13 @@ export function activateProvider(records = [], providerValue, now = new Date().t
   }
   const nextRecords = records.map(record => ({ ...record, active: record.provider === provider, updatedAt: record.provider === provider ? now : record.updatedAt }));
   return { records: nextRecords, provider: publicSlot(nextRecords.find(record => record.provider === provider), []) };
+}
+
+export function deactivateProviders(records = [], now = new Date().toISOString()) {
+  return {
+    records: records.map(record => ({ ...record, active: false, updatedAt: record.active ? now : record.updatedAt })),
+    provider: null
+  };
 }
 
 export function activeProvider(records = []) {
@@ -178,7 +189,13 @@ async function fetchJson(fetchImpl, url, options, timeoutMs = 45_000) {
   try {
     const response = await fetchImpl(url, { ...options, signal: controller.signal });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(`AI provider request failed (${response.status})`);
+    if (!response.ok) {
+      const service = url.includes('generativelanguage.googleapis.com') ? 'Gemini model' : 'AI provider';
+      const error = new Error(`${service} request failed (${response.status})`);
+      error.status = 502;
+      error.expose = true;
+      throw error;
+    }
     return data;
   } finally {
     clearTimeout(timer);
@@ -263,6 +280,7 @@ export async function testProvider(records, providerValue, options) {
   const provider = requireProvider(providerValue);
   const slot = records.find(record => record.provider === provider);
   if (!slot?.apiKeyEnc) throw new Error('provider is not configured');
+  if (!slot.selectedModel) throw new Error('selectedModel required');
   const testedAt = options.now?.() || new Date().toISOString();
   let usage;
   try {
@@ -303,7 +321,10 @@ export async function listProviderModels(slot, { masterKey: masterKeyHex, fetchI
     const request = modelRequest(slot, apiKey, cursor);
     const data = await fetchJson(fetchImpl, request.url, { headers: request.headers }, 20_000);
     const rows = slot.provider === 'gemini' ? data.models || [] : data.data || [];
-    models.push(...rows.map(model => String(model.id || model.name || '').replace(/^models\//, '')).filter(Boolean));
+    const compatible = slot.provider === 'gemini'
+      ? rows.filter(model => !Array.isArray(model.supportedGenerationMethods) || model.supportedGenerationMethods.includes('generateContent'))
+      : rows;
+    models.push(...compatible.map(model => String(model.id || model.name || '').replace(/^models\//, '')).filter(Boolean));
     cursor = slot.provider === 'gemini' ? data.nextPageToken || '' : (data.has_more ? data.last_id || '' : '');
   } while (cursor);
   return [...new Set(models)].sort();

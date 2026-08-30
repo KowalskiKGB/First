@@ -17,6 +17,41 @@ export const MOBILE = import.meta.env.VITE_MOBILE === '1'
 
 const FILE = `${APP_SLUG}-state.json`
 
+// Registers Android's hardware-back listener without importing the native plugin in
+// web builds. Dependencies stay explicit so React can clean up an in-flight dynamic
+// import safely under StrictMode.
+export function registerAndroidBackButton({ loadApp, getSheets, closeSheet, goBack }) {
+  let disposed = false
+  let handle = null
+  let removed = false
+
+  const remove = async () => {
+    disposed = true
+    if (!handle || removed) return
+    removed = true
+    try { await handle.remove() } catch { /* native teardown is best-effort */ }
+  }
+
+  let loading
+  try { loading = Promise.resolve(loadApp()) } catch { loading = Promise.reject() }
+  void loading.then(async app => {
+    handle = await app.addListener('backButton', ({ canGoBack }) => {
+      if (disposed) return
+      const sheets = getSheets() || []
+      const top = sheets.at(-1)
+      if (top) {
+        if (!top.locked) closeSheet(top.id)
+        return
+      }
+      if (canGoBack) goBack()
+      else void app.exitApp()
+    })
+    if (disposed) await remove()
+  }).catch(() => {})
+
+  return remove
+}
+
 export async function nativeLoad() {
   try {
     const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem')

@@ -118,7 +118,7 @@ describe('Home schedule summary', () => {
     const markup = renderToStaticMarkup(<Home />)
 
     expect(markup).toContain('AI Monday')
-    expect(markup).toContain('aria-label="Monday 31 August: Rescheduled"')
+    expect(markup).toContain('aria-label="Monday 31 August: rescheduled workout AI Monday"')
     expect(markup).not.toContain('<div class="ttl">Rest day')
     expect(markup).toContain('class="dot ovr"')
   })
@@ -129,7 +129,7 @@ describe('Home schedule summary', () => {
     expect(markup.match(/<button[^>]*class="wday/g)).toHaveLength(7)
     expect(markup).toMatch(/<button[^>]*class="today-row"/)
     expect(markup).toMatch(/<button[^>]*class="card tappable"/)
-    expect(markup).toContain('aria-label="Monday 31 August: Planned"')
+    expect(markup).toContain('aria-label="Monday 31 August: planned workout Manual Monday"')
     expect(markup).toContain('aria-label="Open training calendar"')
   })
 
@@ -147,7 +147,7 @@ describe('Home schedule summary', () => {
     const markup = renderToStaticMarkup(tree)
     const signIn = findElements(tree, element => ['button', 'a'].includes(element.type) && elementText(element).includes('Faça login'))[0]
 
-    expect(markup).toContain('Olá!')
+    expect(markup).toContain('Faça login')
     expect(markup).not.toContain('class="sub capitalize"')
     expect(signIn).toBeDefined()
     expect(markup).not.toMatch(/<h1[^>]*>Workout<\/h1>/)
