@@ -231,6 +231,21 @@ describe('AI job flow', () => {
     expect(result).toEqual({ context: { rev: 11 }, status: { configured: true } })
   })
 
+  it('rejects the complete invalid wizard draft before the first remote write', async () => {
+    const request = vi.fn()
+    const draft = {
+      ageBand: 'adult', heightCm: 170, weight: 74, waistCm: 9, chestCm: '', hipCm: '', armCm: '', thighCm: '', calfCm: '',
+      goal: 'Força', experience: 'intermediario', availableDays: [1, 3], minutesPerSession: 45, focusAreas: [],
+      gymName: 'Centro', genericEquipment: [], specificMachines: [{ name: 'Leg press', category: '', exerciseIds: [] }],
+      favoriteExerciseIds: [], avoidedExerciseIds: [], limitations: '', acuteRisk: false, medicalRestriction: false,
+      consent: true, guardianConsent: false,
+    }
+
+    await expect(persistAiWizardContext({ request, draft, rev: 7, observedAt: '2026-08-29' }))
+      .rejects.toMatchObject({ name: 'AiWizardValidationError', step: 1 })
+    expect(request).not.toHaveBeenCalled()
+  })
+
   it('requires explicit age, consent, guardian consent, days and gym', () => {
     const profile = {
       heightCm: 170, goal: 'Força', experience: 'iniciante', minutesPerSession: 45,

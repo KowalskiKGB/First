@@ -127,4 +127,27 @@ describe('AiWizard accessibility', () => {
     expect(event.preventDefault).toHaveBeenCalledOnce()
     expect(harness.setStep).toHaveBeenCalledOnce()
   })
+
+  it('associates specific-machine errors with the machine name and exercise picker', () => {
+    harness.hook = 0
+    harness.step = 3
+    harness.errors = {
+      specificMachineName0: 'Enter the machine name.',
+      specificMachineExercises0: 'Choose at least one supported exercise.',
+      genericEquipment: 'Choose at least one available equipment item.',
+    }
+    const markup = renderToStaticMarkup(<AiWizard
+      draft={{ ...draft, gymName: 'Academia', specificMachines: [{ name: '', category: '', exerciseIds: [] }] }}
+      onDraft={() => {}} onClose={() => {}} onSubmit={() => {}} busy={false}
+    />)
+    const name = markup.match(/<input[^>]*name="specific-machine-name-0"[^>]*>/)?.[0]
+    const exercises = markup.match(/<input[^>]*name="specific-machine-exercises-0"[^>]*>/)?.[0]
+
+    expect(name).toContain('aria-invalid="true"')
+    expect(name).toContain('aria-describedby="ai-error-specificMachineName0"')
+    expect(exercises).toContain('aria-invalid="true"')
+    expect(exercises).toContain('aria-describedby="ai-error-specificMachineExercises0"')
+    expect(markup).toContain('Enter the machine name.')
+    expect(markup).toContain('Choose at least one supported exercise.')
+  })
 })

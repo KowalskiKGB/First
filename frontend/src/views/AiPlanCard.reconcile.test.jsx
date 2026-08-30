@@ -140,6 +140,31 @@ describe('AiPlanCard initial applied-plan reconciliation', () => {
     expect(harness.pushState).not.toHaveBeenCalled()
   })
 
+  it('keeps provider status unknown after an initial load failure and retries explicitly', async () => {
+    harness.api.mockRejectedValue(new Error('network unavailable'))
+
+    await mountAndLoad()
+    harness.effects = []
+    harness.stateCursor = 0
+    renderToStaticMarkup(<AiPlanCard />)
+
+    expect(harness.overview.status).toBeNull()
+    expect(harness.overview.error).toBe('Could not load AI workout data.')
+    expect(harness.overview.onRetry).toEqual(expect.any(Function))
+
+    harness.api.mockImplementation(async path => path === '/api/ai/context'
+      ? harness.context
+      : path === '/api/ai/status'
+        ? { configured: true }
+        : (() => { throw new Error(`unexpected ${path}`) })())
+    await harness.overview.onRetry()
+    harness.stateCursor = 0
+    renderToStaticMarkup(<AiPlanCard />)
+
+    expect(harness.overview.status).toEqual({ configured: true })
+    expect(harness.overview.error).toBeNull()
+  })
+
   it('enables rollback from retained server history in a fresh browser and reconciles the restored plan', async () => {
     const previousPlan = {
       ...plan,

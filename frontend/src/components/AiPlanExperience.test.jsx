@@ -46,4 +46,16 @@ describe('student AI product experience', () => {
     expect(markup).toContain('Height (cm)')
     expect(markup).toContain('Current weight')
   })
+
+  it('shows a contextual load error with an explicit retry instead of provider absence copy', () => {
+    const markup = renderToStaticMarkup(<AiPlanOverview
+      plan={null} status={null} error="Could not load AI workout data."
+      onRetry={() => {}} onOpen={() => {}} onRollback={() => {}} onCopy={() => {}}
+    />)
+
+    expect(markup).toContain('role="alert"')
+    expect(markup).toContain('Could not load AI workout data.')
+    expect(markup).toContain('Try again')
+    expect(markup).not.toContain('AI generation will be available after a provider is configured by the administrator.')
+  })
 })

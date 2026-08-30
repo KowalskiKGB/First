@@ -57,6 +57,49 @@ describe('AI product flow helpers', () => {
     expect(validateWizardStep({ ...draft, ageBand: 'under14', consent: true, guardianConsent: true }, 4)).toEqual({})
   })
 
+  it('rejects server-invalid numeric bounds while keeping optional measurements optional', () => {
+    const draft = draftFromAiContext(context)
+
+    expect(Object.keys(validateWizardStep({
+      ...draft, heightCm: 170.5, weight: 19, waistCm: 9, chestCm: '',
+    }, 1))).toEqual(['heightCm', 'weight', 'waistCm'])
+    expect(validateWizardStep({ ...draft, weight: 800, waistCm: '' }, 1, 'lb')).toHaveProperty('weight')
+    expect(validateWizardStep({ ...draft, heightCm: '170', weight: '70', waistCm: '' }, 1)).toEqual({})
+  })
+
+  it('requires every specific machine to have a bounded name and known exercises', () => {
+    const draft = { ...draftFromAiContext(context), genericEquipment: [] }
+
+    expect(Object.keys(validateWizardStep({
+      ...draft, specificMachines: [{ name: '', category: '', exerciseIds: [] }],
+    }, 3))).toEqual(['specificMachineName0', 'specificMachineExercises0', 'genericEquipment'])
+    expect(validateWizardStep({
+      ...draft, specificMachines: [{ name: 'Leg press', category: 'Pernas', exerciseIds: ['0003'] }],
+    }, 3)).toEqual({})
+    expect(validateWizardStep({
+      ...draft, specificMachines: [{ name: 'Leg press', category: '', exerciseIds: ['missing-id'] }],
+    }, 3)).toHaveProperty('specificMachineExercises0')
+  })
+
+  it('rejects server-invalid text, collection and integer limits', () => {
+    const draft = {
+      ...draftFromAiContext(context),
+      goal: 'x'.repeat(161),
+      availableDays: [1, 7],
+      minutesPerSession: 45.5,
+      focusAreas: Array.from({ length: 13 }, (_, index) => `focus-${index}`),
+      limitations: 'x'.repeat(1001),
+    }
+
+    expect(validateWizardStep(draft, 2)).toEqual(expect.objectContaining({
+      goal: expect.any(String),
+      availableDays: expect.any(String),
+      minutesPerSession: expect.any(String),
+      focusAreas: expect.any(String),
+    }))
+    expect(validateWizardStep(draft, 3)).toHaveProperty('limitations')
+  })
+
   it('keeps safe empty defaults and clones partially populated machine links', () => {
     expect(draftFromAiContext()).toMatchObject({
       gymName: '', genericEquipment: [], specificMachines: [], availableDays: [], focusAreas: [],
