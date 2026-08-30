@@ -31,7 +31,7 @@ vi.mock('./components/Icon.jsx', () => ({
   default: ({ name, className = '' }) => <i data-icon={name} className={className} />,
 }))
 
-import { calendarSheet, dayOverrideSheet, SessionPicker } from './sheets.jsx'
+import { calendarSheet, dayAssignSheet, dayOverrideSheet, SessionPicker } from './sheets.jsx'
 
 const managedRestState = () => ({
   routines: [{ id: 'ai-monday', name: 'AI Monday', emoji: 'sparkles', ex: [] }],
@@ -64,6 +64,23 @@ describe('schedule sheets with rest preference and managed availability', () => 
     expect(markup).not.toContain('Rest / skip this day')
     expect(markup.slice(routineStart, restStart)).toContain('data-icon="check"')
     expect(markup.slice(restStart)).not.toContain('data-icon="check"')
+  })
+
+  it('uses native buttons for routine, rest and weekly-plan choices', () => {
+    dayOverrideSheet('2026-08-31')
+
+    const markup = openedMarkup()
+    expect(markup).not.toContain('<div class="item"')
+    expect(markup.match(/<button class="item"/g)).toHaveLength(3)
+  })
+
+  it('uses native buttons for weekly rest and routine choices', () => {
+    harness.state.routines.push({ id: 'manual-monday', name: 'Manual Monday', emoji: 'sparkles', ex: [] })
+    dayAssignSheet(1)
+
+    const markup = openedMarkup()
+    expect(markup).not.toContain('<div class="item"')
+    expect(markup.match(/<button class="item"/g)).toHaveLength(2)
   })
 
   it('marks the managed availability as rescheduled in the calendar', () => {

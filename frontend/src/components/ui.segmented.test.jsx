@@ -10,6 +10,12 @@ const OPTIONS = [
 ]
 
 describe('Segmented', () => {
+  it('does not submit a surrounding form when an option is selected', () => {
+    const markup = renderToStaticMarkup(<Segmented options={OPTIONS} value="first" onChange={vi.fn()} />)
+
+    expect(markup.match(/type="button"/g)).toHaveLength(2)
+  })
+
   it('has no visual selection until its controlled value matches an option', () => {
     const neutral = renderToStaticMarkup(<Segmented options={OPTIONS} value={null} onChange={vi.fn()} />)
     expect(neutral).not.toContain('seg-sel')

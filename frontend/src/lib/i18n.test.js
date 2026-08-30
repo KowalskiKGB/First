@@ -54,6 +54,7 @@ describe('Brazilian Portuguese defaults', () => {
       'Training profile and priorities',
       'Gym and equipment',
       'Applied AI plan',
+      'Personal guidance:',
     ]
 
     expect(aiWorkspaceKeys.every(key => typeof pt[key] === 'string' && pt[key].trim() && pt[key] !== key)).toBe(true)

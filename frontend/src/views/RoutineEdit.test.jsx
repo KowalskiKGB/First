@@ -136,4 +136,16 @@ describe('RoutineEdit prescribed routine', () => {
     copyButton.onClick()
     expect(harness.state.routines[1]).toEqual({ id: 'copy-1', name: 'Treino IA', emoji: 'sparkles', ex: [{ id: '0043', sets: 3, reps: 10 }] })
   })
+
+  it('gives the superset icon button an accessible name', () => {
+    harness.routineId = 'manual-routine'
+    harness.state.routines = [{
+      id: 'manual-routine', name: 'Treino manual', emoji: 'dumbbell', prog: 'linear',
+      ex: [{ id: '0043', sets: 3, reps: 10 }, { id: '0044', sets: 3, reps: 10 }],
+    }]
+
+    const markup = renderToStaticMarkup(<RoutineEdit />)
+
+    expect(markup).toContain('aria-label="Superset with exercise above"')
+  })
 })
