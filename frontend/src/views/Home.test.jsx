@@ -22,7 +22,19 @@ vi.mock('../store/useStore.js', () => ({
 }))
 vi.mock('../lib/i18n.js', () => ({
   dateLocale: () => 'en-GB',
-  t: (message, ...args) => args.reduce((value, arg, index) => value.replaceAll(`{${index}}`, arg), message),
+  t: (message, ...args) => {
+    const pt = {
+      'Hi {0}': 'Olá, {0}',
+      'Hello, {0}': 'Olá, {0}',
+      'Hello!': 'Olá!',
+      'Sign in': 'Faça login',
+      'This week': 'Esta semana',
+      'Build workout with AI': 'Montar treino com IA',
+      'Create your week with AI': 'Montar treino com IA',
+      'Set up my AI workout': 'Montar treino com IA',
+    }
+    return args.reduce((value, arg, index) => value.replaceAll(`{${index}}`, arg), pt[message] || message)
+  },
 }))
 vi.mock('../sheets.jsx', () => ({
   bwSheet: harness.bwSheet, goalSheet: harness.goalSheet, dayOverrideSheet: harness.dayOverrideSheet, calendarSheet: harness.calendarSheet,
@@ -55,6 +67,13 @@ function findElements(node, predicate, found = []) {
   if (predicate(node)) found.push(node)
   React.Children.forEach(node.props.children, child => findElements(child, predicate, found))
   return found
+}
+
+function elementText(node) {
+  if (node == null || typeof node === 'boolean') return ''
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (!React.isValidElement(node)) return ''
+  return React.Children.toArray(node.props.children).map(elementText).join('')
 }
 
 describe('Home schedule summary', () => {
@@ -110,6 +129,47 @@ describe('Home schedule summary', () => {
     expect(markup).toContain('aria-label="Open training calendar"')
   })
 
+  it('greets a signed-in student by name instead of showing the product name', () => {
+    harness.user = { id: 'student-1', name: 'Ana Souza' }
+
+    const markup = renderToStaticMarkup(<Home />)
+
+    expect(markup).toContain('Olá, Ana Souza')
+    expect(markup).not.toMatch(/<h1[^>]*>Workout<\/h1>/)
+  })
+
+  it('greets a guest and presents a prominent sign-in call to action', () => {
+    const tree = Home()
+    const markup = renderToStaticMarkup(tree)
+    const signIn = findElements(tree, element => ['button', 'a'].includes(element.type) && elementText(element).includes('Faça login'))[0]
+
+    expect(markup).toContain('Olá!')
+    expect(signIn).toBeDefined()
+    expect(markup).not.toMatch(/<h1[^>]*>Workout<\/h1>/)
+  })
+
+  it('presents the current week and AI workout invitation as distinct cards', () => {
+    harness.user = { id: 'student-1', name: 'Ana' }
+    harness.state = { ...baseState(), routines: [], week: {} }
+
+    const markup = renderToStaticMarkup(<Home />)
+
+    expect(markup).toContain('home-week-card')
+    expect(markup).toContain('home-ai-card')
+    expect(markup).toContain('Esta semana')
+    expect(markup).toContain('Montar treino com IA')
+    expect(markup).not.toMatch(/PPL|Push\s*\/\s*Pull\s*\/\s*Legs/i)
+  })
+
+  it('sends guests to authentication instead of allowing direct AI setup', () => {
+    const tree = Home()
+    const aiAction = findElements(tree, element => elementText(element).includes('Montar treino com IA') && (element.props.to || element.props.onClick))[0]
+
+    expect(aiAction).toBeDefined()
+    expect(aiAction.props.to).not.toBe('/plan')
+    expect(aiAction.props.to === '/login' || typeof aiAction.props.onClick === 'function').toBe(true)
+  })
+
   it('executes keyboard button actions for navigation, week paging and calendar dates', () => {
     const tree = Home()
     const byLabel = label => findElements(tree, element => element.props['aria-label'] === label)[0]
@@ -142,17 +202,21 @@ describe('Home schedule summary', () => {
     expect(harness.dayOverrideSheet).toHaveBeenCalledWith('2026-08-31')
   })
 
-  it('runs starter, custom-plan, goal and weight actions from their real controls', () => {
+  it('opens AI setup instead of loading a PPL starter, while keeping the manual, goal and weight actions', () => {
     harness.state = { ...baseState(), routines: [], week: {} }
     const tree = Home()
     const action = label => findElements(tree, element => element.props.children === label && typeof element.props.onClick === 'function')[0]
 
-    action('Load starter plan (PPL)').props.onClick()
+    const aiAction = action('Montar treino com IA')
+    expect(aiAction).toBeDefined()
+    expect(aiAction.props.icon).toBe('sparkles')
+    aiAction.props.onClick()
     action('Build my own plan').props.onClick()
     action('Goal').props.onClick()
     action('Log').props.onClick()
 
-    expect(harness.loadStarterPlan).toHaveBeenCalledOnce()
+    expect(harness.loadStarterPlan).not.toHaveBeenCalled()
+    expect(harness.navigate).toHaveBeenCalledWith('/plan', { state: { openAi: true } })
     expect(harness.navigate).toHaveBeenCalledWith('/plan')
     expect(harness.goalSheet).toHaveBeenCalledOnce()
     expect(harness.bwSheet).toHaveBeenCalledOnce()
@@ -168,7 +232,7 @@ describe('Home schedule summary', () => {
 
     const markup = renderToStaticMarkup(<Home />)
 
-    expect(markup).toContain('Hi Ana')
+    expect(markup).toContain('Olá, Ana')
     expect(markup).toContain('rescheduled')
     expect(markup).toContain('Version 4 is active')
     expect(markup).toContain('reached!')

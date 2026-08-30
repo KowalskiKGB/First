@@ -1,0 +1,266 @@
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import crypto from 'node:crypto';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import net from 'node:net';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import test from 'node:test';
+
+import { hashDevPassword } from '../dev-auth.js';
+
+const API_DIR = path.resolve(import.meta.dirname, '..');
+const ORIGIN = 'https://first.example';
+const SECRET = 's'.repeat(64);
+const DEV_SALT = Buffer.from('0123456789abcdef').toString('base64url');
+
+const emptyDb = () => ({
+  users: [], creds: [], subs: [], invites: [], aiProviders: [], aiUsage: []
+});
+
+async function availablePort() {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.once('error', reject);
+    probe.listen(0, '127.0.0.1', () => {
+      const { port } = probe.address();
+      probe.close(error => error ? reject(error) : resolve(port));
+    });
+  });
+}
+
+async function startServer(t, { db = emptyDb(), extraEnv = {} } = {}) {
+  const dataDir = mkdtempSync(path.join(tmpdir(), 'first-student-auth-'));
+  writeFileSync(path.join(dataDir, 'secret'), SECRET);
+  writeFileSync(path.join(dataDir, 'db.json'), JSON.stringify(db));
+  const port = await availablePort();
+  const child = spawn(process.execPath, ['server.js'], {
+    cwd: API_DIR,
+    env: {
+      ...process.env,
+      DATA_DIR: dataDir,
+      PORT: String(port),
+      NODE_ENV: 'test',
+      ORIGIN,
+      ...extraEnv
+    },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  let stderr = '';
+  child.stderr.on('data', chunk => { stderr += chunk; });
+  t.after(() => {
+    child.kill();
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+  const url = `http://127.0.0.1:${port}`;
+  for (let attempt = 0; attempt < 600; attempt += 1) {
+    if (child.exitCode !== null) throw new Error(`server exited ${child.exitCode}: ${stderr}`);
+    try {
+      const response = await fetch(`${url}/api/health`);
+      if (response.ok) return { dataDir, url };
+    } catch {}
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  throw new Error(`server did not start: ${stderr}`);
+}
+
+function post(url, route, body, headers = {}) {
+  return fetch(`${url}${route}`, {
+    method: 'POST',
+    headers: { Origin: ORIGIN, 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(body)
+  });
+}
+
+function put(url, route, body, headers = {}) {
+  return fetch(`${url}${route}`, {
+    method: 'PUT',
+    headers: { Origin: ORIGIN, 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(body)
+  });
+}
+
+function cookieFrom(response, name) {
+  const value = response.headers.get('set-cookie')?.split(';', 1)[0] || '';
+  assert.match(value, new RegExp(`^${name}=`));
+  return value;
+}
+
+function appCookie(userId, version = 0) {
+  const payload = `${userId}:${Date.now() + 60_000}:${version}`;
+  const mac = crypto.createHmac('sha256', SECRET).update(payload).digest('base64url');
+  return `gymsid=${payload}.${mac}`;
+}
+
+const completeStudent = {
+  email: '  ALUNA@example.com ',
+  fullName: '  Maria da Silva  ',
+  password: 'treino123',
+  weightKg: 72.4,
+  measurements: { waistCm: 82, hipCm: 101, armCm: 31, thighCm: 58 },
+  goal: 'both'
+};
+
+test('student registers with email/password and optional training profile without leaking the password', async t => {
+  const { dataDir, url } = await startServer(t);
+  const response = await post(url, '/api/auth/register', completeStudent);
+
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.match(response.headers.get('set-cookie') || '', /gymsid=.*HttpOnly.*Secure.*SameSite=Lax/i);
+  assert.deepEqual(body.user, {
+    id: body.user.id,
+    name: 'Maria da Silva',
+    email: 'aluna@example.com',
+    admin: false
+  });
+  assert.deepEqual(body.profile, {
+    weightKg: 72.4,
+    measurements: { waistCm: 82, hipCm: 101, armCm: 31, thighCm: 58 },
+    goal: 'both'
+  });
+  assert.equal('password' in body, false);
+  assert.equal('passwordHash' in body, false);
+
+  const persisted = readFileSync(path.join(dataDir, 'db.json'), 'utf8');
+  assert.equal(persisted.includes('treino123'), false);
+  assert.match(persisted, /scrypt:/);
+  assert.equal(JSON.parse(persisted).users[0].email, 'aluna@example.com');
+});
+
+test('student can log in case-insensitively and duplicate email registration is rejected', async t => {
+  const { url } = await startServer(t);
+  const registered = await post(url, '/api/auth/register', {
+    email: 'maria@example.com', fullName: 'Maria', password: 'abc123'
+  });
+  assert.equal(registered.status, 200);
+
+  const duplicate = await post(url, '/api/auth/register', {
+    email: ' MARIA@example.com ', fullName: 'Outra Maria', password: 'abc123'
+  });
+  assert.equal(duplicate.status, 409);
+
+  const wrong = await post(url, '/api/auth/login', { email: 'maria@example.com', password: 'errada' });
+  assert.equal(wrong.status, 401);
+
+  const login = await post(url, '/api/auth/login', { email: ' MARIA@EXAMPLE.COM ', password: 'abc123' });
+  assert.equal(login.status, 200);
+  const cookie = cookieFrom(login, 'gymsid');
+  assert.deepEqual(await login.json(), {
+    user: { id: (await (await fetch(`${url}/api/me`, { headers: { Cookie: cookie } })).json()).user.id, name: 'Maria', email: 'maria@example.com', admin: false }
+  });
+});
+
+test('authenticated student reads and edits only safe fields of their own profile', async t => {
+  const { url } = await startServer(t);
+  const registered = await post(url, '/api/auth/register', {
+    email: 'perfil@example.com', fullName: 'Nome Inicial', password: 'abc123'
+  });
+  assert.equal(registered.status, 200);
+  const cookie = cookieFrom(registered, 'gymsid');
+  const registeredBody = await registered.json();
+
+  const anonymous = await fetch(`${url}/api/profile`);
+  assert.equal(anonymous.status, 401);
+
+  const update = await put(url, '/api/profile', {
+    fullName: 'Nome Atualizado',
+    weightKg: 68.5,
+    measurements: { waistCm: 77, chestCm: 93 },
+    goal: 'weight_loss'
+  }, { Cookie: cookie });
+  assert.equal(update.status, 200);
+  assert.deepEqual(await update.json(), {
+    user: { id: registeredBody.user.id, name: 'Nome Atualizado', email: 'perfil@example.com', admin: false },
+    profile: { weightKg: 68.5, measurements: { waistCm: 77, chestCm: 93 }, goal: 'weight_loss' }
+  });
+
+  const unsafe = await put(url, '/api/profile', {
+    id: 'admin-a', admin: true, passwordHash: 'plaintext', fullName: 'Ataque'
+  }, { Cookie: cookie });
+  assert.equal(unsafe.status, 400);
+
+  const profile = await fetch(`${url}/api/profile`, { headers: { Cookie: cookie } });
+  assert.equal(profile.status, 200);
+  assert.deepEqual(await profile.json(), {
+    user: { id: registeredBody.user.id, name: 'Nome Atualizado', email: 'perfil@example.com', admin: false },
+    profile: { weightKg: 68.5, measurements: { waistCm: 77, chestCm: 93 }, goal: 'weight_loss' }
+  });
+});
+
+test('password auth mutations reject untrusted origins and throttle repeated login failures', async t => {
+  const { url } = await startServer(t);
+  const evilRegistration = await post(url, '/api/auth/register', {
+    email: 'origem@example.com', fullName: 'Origem', password: 'abc123'
+  }, { Origin: 'https://evil.example' });
+  assert.equal(evilRegistration.status, 403);
+
+  const registered = await post(url, '/api/auth/register', {
+    email: 'limite@example.com', fullName: 'Limite', password: 'abc123'
+  });
+  assert.equal(registered.status, 200);
+
+  const evilLogin = await post(url, '/api/auth/login', {
+    email: 'limite@example.com', password: 'abc123'
+  }, { Origin: 'https://evil.example' });
+  assert.equal(evilLogin.status, 403);
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const failed = await post(url, '/api/auth/login', {
+      email: 'limite@example.com', password: `errada-${attempt}`
+    });
+    assert.equal(failed.status, 401, `attempt ${attempt + 1}`);
+  }
+  const throttled = await post(url, '/api/auth/login', {
+    email: 'limite@example.com', password: 'abc123'
+  });
+  assert.equal(throttled.status, 429);
+});
+
+test('AI remains unavailable anonymously and becomes available to a password-authenticated student', async t => {
+  const { url } = await startServer(t);
+  const anonymous = await fetch(`${url}/api/ai/status`);
+  assert.equal(anonymous.status, 401);
+
+  const registered = await post(url, '/api/auth/register', {
+    email: 'ia@example.com', fullName: 'Aluna IA', password: 'abc123'
+  });
+  assert.equal(registered.status, 200);
+  const authenticated = await fetch(`${url}/api/ai/status`, {
+    headers: { Cookie: cookieFrom(registered, 'gymsid') }
+  });
+  assert.equal(authenticated.status, 200);
+});
+
+test('Dev authentication is isolated from app sessions and the Dev cookie alone unlocks provider APIs', async t => {
+  const username = 'first_dev_fixture';
+  const password = 'fixture-password';
+  const { url } = await startServer(t, {
+    db: { ...emptyDb(), users: [{ id: 'student-a', name: 'Aluno', email: 'aluno@example.com', sv: 0 }] },
+    extraEnv: {
+      DEV_PANEL_USER: username,
+      DEV_PANEL_PASSWORD_HASH: hashDevPassword(password, DEV_SALT)
+    }
+  });
+
+  const publicSession = await fetch(`${url}/api/dev/session`);
+  assert.equal(publicSession.status, 200);
+  assert.deepEqual(await publicSession.json(), { unlocked: false });
+
+  const appOnly = await fetch(`${url}/api/dev/ai/providers`, {
+    headers: { Cookie: appCookie('student-a') }
+  });
+  assert.equal(appOnly.status, 401);
+
+  const login = await post(url, '/api/dev/login', { username, password });
+  assert.equal(login.status, 200);
+  const devCookie = cookieFrom(login, 'firstdev');
+
+  const unlocked = await fetch(`${url}/api/dev/session`, { headers: { Cookie: devCookie } });
+  assert.equal(unlocked.status, 200);
+  assert.deepEqual(await unlocked.json(), { unlocked: true, username });
+
+  const providers = await fetch(`${url}/api/dev/ai/providers`, { headers: { Cookie: devCookie } });
+  assert.equal(providers.status, 200);
+  assert.equal(Array.isArray((await providers.json()).providers), true);
+});

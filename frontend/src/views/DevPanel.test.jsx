@@ -45,15 +45,18 @@ const flush = () => new Promise(resolve => setTimeout(resolve, 0))
 describe('Dev AI panel UI contracts', () => {
   beforeEach(() => harness.reset())
 
-  it('renders the second authentication layer and an explicit Dev logout', () => {
+  it('explains that the dedicated Dev credential is independent from app accounts', () => {
     const onChange = vi.fn()
     const login = DevLogin({ busy: true, values: { username: '', password: '' }, onChange, onSubmit: vi.fn(), error: 'Invalid' })
     findElements(login, element => element.props.name === 'dev-username')[0].props.onChange({ target: { value: 'first_dev' } })
     findElements(login, element => element.props.name === 'dev-password')[0].props.onChange({ target: { value: 'password' } })
     expect(onChange).toHaveBeenCalledWith({ username: 'first_dev', password: '' })
     expect(onChange).toHaveBeenCalledWith({ username: '', password: 'password' })
-    expect(renderToStaticMarkup(login)).toContain('Checking…')
-    expect(renderToStaticMarkup(login)).toContain('Invalid')
+    const markup = renderToStaticMarkup(login)
+    expect(markup).toContain('Use the dedicated Dev credential. Student and Personal accounts are not required.')
+    expect(markup).not.toContain('administrator passkey')
+    expect(markup).toContain('Checking…')
+    expect(markup).toContain('Invalid')
     expect(renderToStaticMarkup(<DevDashboard providers={[]} usage={{}} window="7d" onWindow={() => {}} onLogout={() => {}} />)).toContain('Log out of Dev')
   })
 
@@ -191,11 +194,10 @@ describe('Dev AI panel UI contracts', () => {
     await dashboard.props.onWindow('30d')
     await dashboard.props.onLogout()
     await dashboard.props.onChanged()
-    findElements(dashboardPanel, element => element.props['aria-label'] === 'Back')[0].props.onClick()
-
     expect(harness.api).toHaveBeenCalledWith('/api/dev/ai/usage?window=30d')
     expect(harness.api).toHaveBeenCalledWith('/api/dev/logout', { method: 'POST', body: '{}' })
-    expect(harness.navigate).toHaveBeenCalledWith('/settings')
+    expect(findElements(dashboardPanel, element => element.props['aria-label'] === 'Back')).toHaveLength(0)
+    expect(harness.navigate).not.toHaveBeenCalled()
     const lockSession = harness.setters[0].mock.calls.map(([value]) => value).find(value => typeof value === 'function')
     expect(lockSession(null)).toEqual({ unlocked: false })
   })

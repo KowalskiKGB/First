@@ -42,7 +42,16 @@ vi.mock('../components/Icon.jsx', () => ({ default: ({ name, ...props }) => <i d
 vi.mock('../components/ui.jsx', () => ({ Button: ({ children, ...props }) => <button {...props}>{children}</button> }))
 vi.mock('../lib/glyphs.js', () => ({ glyphOf: value => value, DEFAULT_GLYPH: 'dumbbell' }))
 vi.mock('../lib/format.js', () => ({ DAYN: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], exCount: String, uid: () => 'new' }))
-vi.mock('../lib/i18n.js', () => ({ t: (message, ...args) => args.reduce((text, arg, index) => text.replaceAll(`{${index}}`, arg), message) }))
+vi.mock('../lib/i18n.js', () => ({
+  t: (message, ...args) => {
+    const pt = {
+      'Build workout with AI': 'Montar treino com IA',
+      'Create your week with AI': 'Montar treino com IA',
+      'Set up my AI workout': 'Montar treino com IA',
+    }
+    return args.reduce((text, arg, index) => text.replaceAll(`{${index}}`, arg), pt[message] || message)
+  },
+}))
 vi.mock('./AiPlanCard.jsx', () => ({ default: () => null }))
 
 import Plan from './Plan.jsx'
@@ -78,7 +87,7 @@ describe('Plan weekly schedule', () => {
     expect(harness.navigate).toHaveBeenCalledWith('/plan/r/new')
   })
 
-  it('opens the selected weekday and offers the starter plan for an empty schedule', () => {
+  it('opens the selected weekday and offers AI setup instead of a PPL starter for an empty schedule', () => {
     const populatedTree = Plan()
     const monday = findElement(populatedTree, element => element.type === 'button' && element.props.className === 'item')
     monday.props.onClick()
@@ -86,12 +95,15 @@ describe('Plan weekly schedule', () => {
 
     harness.state = { ...stateFixture(), routines: [], week: {}, sourceSchedules: { personal: [], ai: [] } }
     const emptyTree = Plan()
-    const starter = findElement(emptyTree, element => element.props.children === 'Load starter plan (Push / Pull / Legs)')
+    const aiSetup = findElement(emptyTree, element => element.props.children === 'Montar treino com IA')
     const markup = renderToStaticMarkup(emptyTree)
 
     expect(markup).toContain('No routines yet.')
     expect(markup).toContain('Rest day')
-    starter.props.onClick()
-    expect(harness.loadStarterPlan).toHaveBeenCalledOnce()
+    expect(markup).toContain('Montar treino com IA')
+    expect(markup).not.toMatch(/PPL|Push\s*\/\s*Pull\s*\/\s*Legs/i)
+    expect(aiSetup).toBeDefined()
+    expect(aiSetup.props.icon).toBe('sparkles')
+    expect(harness.loadStarterPlan).not.toHaveBeenCalled()
   })
 })
