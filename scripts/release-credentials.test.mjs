@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import {
   existsSync,
+  ftruncateSync,
+  fsyncSync,
   linkSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -140,7 +143,7 @@ test('generator never replaces a preexisting output', () => {
   }
 })
 
-test('generator removes owned temporary files when the second private write fails', () => {
+test('generator wipes a published output through its descriptor when the second private write fails', () => {
   const sandbox = mkdtempSync(path.join(tmpdir(), 'first-release-write-fault-'))
   const handoffDirectory = path.join(sandbox, 'handoff')
   mkdirSync(handoffDirectory)
@@ -149,6 +152,7 @@ test('generator removes owned temporary files when the second private write fail
   const sentinel = path.join(sandbox, 'keep.txt')
   writeFileSync(sentinel, 'do-not-touch\n')
   let writes = 0
+  const generatedContents = []
   let leakedOutput = ''
   const originalWrite = process.stdout.write
   process.stdout.write = chunk => {
@@ -163,18 +167,29 @@ test('generator removes owned temporary files when the second private write fail
     ], {
       writeFileSync: (...args) => {
         writes += 1
+        generatedContents.push(String(args[1]))
         const result = writeFileSync(...args)
         if (writes === 2) throw new Error('injected private write failure')
         return result
       },
     }), /injected private write failure/)
 
-    assert.equal(existsSync(credentialsPath), false)
+    assert.equal(readFileSync(credentialsPath, 'utf8'), '', 'the owned published inode must retain no plaintext')
     assert.equal(existsSync(handoffPath), false)
-    assert.deepEqual(readdirSync(sandbox).sort(), ['handoff', 'keep.txt'])
+    assert.deepEqual(readdirSync(sandbox).sort(), ['handoff', 'keep.txt', 'owner.md'])
     assert.deepEqual(readdirSync(handoffDirectory), [])
     assert.equal(readFileSync(sentinel, 'utf8'), 'do-not-touch\n')
+    assert.ok(generatedContents.every(contents => contents.length > 0), 'the injected failure must occur after secret material was written')
     assert.equal(leakedOutput, '')
+
+    const retry = run([
+      '--url', 'https://first.example.test',
+      '--credentials-out', credentialsPath,
+      '--handoff-out', handoffPath,
+    ])
+    assert.notEqual(retry.status, 0)
+    assert.match(retry.stderr, /output already exists; rotate it explicitly/i)
+    assert.equal(readFileSync(credentialsPath, 'utf8'), '')
   } finally {
     process.stdout.write = originalWrite
     rmSync(sandbox, { recursive: true, force: true })
@@ -259,6 +274,54 @@ test('generator cleanup preserves a published file replaced before the second pu
     assert.equal(leakedOutput, '')
   } finally {
     process.stdout.write = originalWrite
+    rmSync(sandbox, { recursive: true, force: true })
+  }
+})
+
+test('generator never unlinks an external replacement racing after the owned-inode check', () => {
+  const sandbox = mkdtempSync(path.join(tmpdir(), 'first-release-post-check-race-'))
+  const handoffDirectory = path.join(sandbox, 'handoff')
+  mkdirSync(handoffDirectory)
+  const credentialsPath = path.join(sandbox, 'owner.md')
+  const handoffPath = path.join(handoffDirectory, 'coolify.json')
+  let failureTriggered = false
+  let raceInjected = false
+  let links = 0
+  try {
+    const replacePublishedPath = () => {
+      unlinkSync(credentialsPath)
+      writeFileSync(credentialsPath, 'external-after-identity-check\n', { flag: 'wx' })
+      raceInjected = true
+    }
+
+    assert.throws(() => generateReleaseCredentials([
+      '--url', 'https://first.example.test',
+      '--credentials-out', credentialsPath,
+      '--handoff-out', handoffPath,
+    ], {
+      linkSync: (source, target) => {
+        links += 1
+        if (links === 1) return linkSync(source, target)
+        failureTriggered = true
+        throw new Error('injected second publication failure after first output')
+      },
+      lstatSync: (target, options) => {
+        const identity = lstatSync(target, options)
+        if (failureTriggered && target === credentialsPath && !raceInjected) replacePublishedPath()
+        return identity
+      },
+      ftruncateSync: (descriptor, length) => {
+        if (failureTriggered && !raceInjected) replacePublishedPath()
+        return ftruncateSync(descriptor, length)
+      },
+      fsyncSync,
+    }), /injected second publication failure/)
+
+    assert.equal(raceInjected, true, 'the race must execute during failure cleanup')
+    assert.equal(readFileSync(credentialsPath, 'utf8'), 'external-after-identity-check\n')
+    assert.equal(existsSync(handoffPath), false)
+    assert.deepEqual(readdirSync(handoffDirectory), [])
+  } finally {
     rmSync(sandbox, { recursive: true, force: true })
   }
 })

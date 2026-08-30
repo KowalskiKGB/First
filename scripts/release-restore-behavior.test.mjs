@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -79,12 +80,13 @@ function createHarness(t, extraEntries = []) {
   const stopCount = path.join(sandbox, 'stop-count')
   const apiState = path.join(sandbox, 'api-state')
   const replaceMarker = path.join(sandbox, 'archive-replaced')
-  const snapshotRaceMarker = path.join(sandbox, 'snapshot-race-attempted')
   const fakeBin = path.join(sandbox, 'bin')
+  const runtimeRoot = path.join(sandbox, 'runtime')
   const stageBin = path.join(sandbox, 'stage-bin')
   const stageData = path.join(sandbox, 'stage-data')
   const runner = path.join(sandbox, 'run-restore.sh')
   mkdirSync(fakeBin)
+  mkdirSync(runtimeRoot, { mode: 0o700 })
   mkdirSync(stageBin)
   mkdirSync(stageData)
   writeArchive(archive, extraEntries)
@@ -108,27 +110,6 @@ case "$command" in
       /usr/bin/cp -- "$FIRST_FAKE_REPLACEMENT_ARCHIVE" "$FIRST_FAKE_REPLACE_SOURCE"
       : > "$FIRST_FAKE_REPLACE_MARKER"
       printf '%s\n' archive-replaced >> "$events"
-    fi
-    if [ -n "${'$'}{FIRST_FAKE_SNAPSHOT_DIR:-}" ]; then
-      snapshot_found=0
-      for snapshot in "$FIRST_FAKE_SNAPSHOT_DIR"/.first-restore-snapshot.*; do
-        [ -f "$snapshot" ] || continue
-        snapshot_found=1
-        printf 'snapshot-mode:%s\n' "$(stat -c %a "$snapshot")" >> "$events"
-      done
-      if [ "$snapshot_found" -eq 0 ]; then printf '%s\n' snapshot-path-absent >> "$events"; fi
-    fi
-    if [ -n "${'$'}{FIRST_FAKE_SNAPSHOT_RACE_DIR:-}" ] && [ ! -e "$FIRST_FAKE_SNAPSHOT_RACE_MARKER" ]; then
-      snapshot_found=0
-      for snapshot in "$FIRST_FAKE_SNAPSHOT_RACE_DIR"/.first-restore-snapshot.*; do
-        [ -f "$snapshot" ] || continue
-        snapshot_found=1
-        rm -f -- "$snapshot"
-        /usr/bin/cp -- "$FIRST_FAKE_SNAPSHOT_REPLACEMENT" "$snapshot"
-        printf '%s\n' snapshot-replaced >> "$events"
-      done
-      if [ "$snapshot_found" -eq 0 ]; then printf '%s\n' snapshot-path-absent >> "$events"; fi
-      : > "$FIRST_FAKE_SNAPSHOT_RACE_MARKER"
     fi
     if grep -Fxq running "$FIRST_FAKE_API_STATE"; then printf '%s\n' api; fi
     ;;
@@ -188,6 +169,33 @@ case "$command" in
     ;;
   *) exit 92 ;;
 esac
+`)
+
+  writeExecutable(path.join(fakeBin, 'rm'), String.raw`
+#!/usr/bin/env bash
+set -u
+snapshot=
+for candidate in "$@"; do
+  case "$candidate" in
+    "$FIRST_FAKE_RUNTIME_ROOT"/first-restore-private.*/snapshot) snapshot=$candidate ;;
+  esac
+done
+if [ -n "$snapshot" ]; then
+  private_dir=${'$'}{snapshot%/snapshot}
+  printf 'private-mode:%s\n' "$(stat -c %a "$private_dir")" >> "$FIRST_FAKE_EVENTS"
+  printf 'snapshot-mode:%s\n' "$(stat -c %a "$snapshot")" >> "$FIRST_FAKE_EVENTS"
+  if [ "${'$'}{FIRST_FAKE_CHECK_UNPRIVILEGED:-0}" = 1 ]; then
+    if su nobody -s /bin/sh -c "test ! -r '$snapshot' && test ! -x '$private_dir'"; then
+      printf '%s\n' private-access-denied >> "$FIRST_FAKE_EVENTS"
+    else
+      printf '%s\n' private-accessible >> "$FIRST_FAKE_EVENTS"
+    fi
+  fi
+  /bin/rm "$@"
+  if [ ! -e "$snapshot" ]; then printf '%s\n' snapshot-path-absent >> "$FIRST_FAKE_EVENTS"; fi
+  exit 0
+fi
+exec /bin/rm "$@"
 `)
 
   writeExecutable(path.join(stageBin, 'tar'), String.raw`
@@ -252,19 +260,20 @@ exit 0
         FIRST_FAKE_BIN: shellPath(fakeBin),
         FIRST_FAKE_EVENTS: shellPath(events),
         FIRST_FAKE_REPLACE_MARKER: shellPath(replaceMarker),
-        FIRST_FAKE_SNAPSHOT_RACE_MARKER: shellPath(snapshotRaceMarker),
+        FIRST_FAKE_RUNTIME_ROOT: shellPath(runtimeRoot),
         FIRST_FAKE_STAGE_BIN: shellPath(stageBin),
         FIRST_FAKE_STAGE_DATA: shellPath(stageData),
         FIRST_FAKE_STOP_COUNT: shellPath(stopCount),
         FIRST_HEALTH_URL: 'https://first.example.test/api/health',
         FIRST_RESTORE_ARCHIVE: shellPath(archive),
         FIRST_RESTORE_SCRIPT: shellPath(restoreScript),
+        TMPDIR: shellPath(runtimeRoot),
         ...extraEnv,
       },
     })
   }
 
-  return { archive, events, run, sandbox }
+  return { archive, events, run, runtimeRoot, sandbox }
 }
 
 function readEvents(target) {
@@ -388,36 +397,38 @@ test('source replacement after validation cannot change the private snapshot ext
     FIRST_FAKE_EXTRACTED_ARCHIVE: shellPath(extracted),
     FIRST_FAKE_REPLACEMENT_ARCHIVE: shellPath(replacement),
     FIRST_FAKE_REPLACE_SOURCE: shellPath(harness.archive),
-    FIRST_FAKE_SNAPSHOT_DIR: shellPath(harness.sandbox),
+    FIRST_FAKE_CHECK_UNPRIVILEGED: process.platform === 'linux' && process.getuid?.() === 0 && existsSync('/etc/alpine-release') ? '1' : '0',
   })
 
   assert.equal(result.status, 0, result.stderr)
   const events = readEvents(harness.events)
   assert.ok(events.includes('archive-replaced'), events.join(','))
   assert.ok(events.includes('snapshot-path-absent'), events.join(','))
+  if (process.platform !== 'win32') {
+    assert.ok(events.includes('private-mode:700'), events.join(','))
+    assert.ok(events.includes('snapshot-mode:600'), events.join(','))
+  }
+  if (process.platform === 'linux' && process.getuid?.() === 0 && existsSync('/etc/alpine-release')) {
+    assert.ok(events.includes('private-access-denied'), events.join(','))
+    assert.equal(events.includes('private-accessible'), false, events.join(','))
+  }
   assert.deepEqual(readFileSync(extracted), original)
-  assert.deepEqual(readdirSync(harness.sandbox).filter(name => name.startsWith('.first-restore-snapshot.')), [])
+  assert.deepEqual(readdirSync(harness.runtimeRoot), [])
 })
 
-test('snapshot pathname replacement cannot change the validated inode extracted', t => {
+test('canonical TMPDIR resolving inside the repository is rejected before API stop', t => {
   const harness = createHarness(t)
-  const replacement = path.join(harness.sandbox, 'snapshot-replacement.tgz')
-  const extracted = path.join(harness.sandbox, 'snapshot-extracted.tgz')
-  const original = readFileSync(harness.archive)
-  writeArchive(replacement, [], '{"snapshotReplacement":true}\n')
+  const unsafeRuntime = path.join(harness.sandbox, 'runtime-inside-repository')
+  symlinkSync(root, unsafeRuntime, 'dir')
 
   const result = harness.run({
-    FIRST_FAKE_EXTRACTED_ARCHIVE: shellPath(extracted),
-    FIRST_FAKE_SNAPSHOT_RACE_DIR: shellPath(harness.sandbox),
-    FIRST_FAKE_SNAPSHOT_REPLACEMENT: shellPath(replacement),
+    TMPDIR: shellPath(unsafeRuntime),
   })
 
-  assert.equal(result.status, 0, result.stderr)
+  assert.notEqual(result.status, 0)
   const events = readEvents(harness.events)
-  assert.ok(events.includes('snapshot-path-absent'), events.join(','))
-  assert.equal(events.includes('snapshot-replaced'), false, events.join(','))
-  assert.deepEqual(readFileSync(extracted), original)
-  assert.deepEqual(readdirSync(harness.sandbox).filter(name => name.startsWith('.first-restore-snapshot.')), [])
+  assert.equal(events.includes('stop:1'), false, events.join(','))
+  assert.match(result.stderr, /private restore runtime[^\n]+outside the repository/i)
 })
 
 test('empty-output find failure during staging aborts before live data mutation', t => {
