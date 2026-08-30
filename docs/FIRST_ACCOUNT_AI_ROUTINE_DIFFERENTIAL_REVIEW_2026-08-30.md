@@ -56,6 +56,7 @@ Identical in-flight requests are now coalesced by student, focus and context has
 - Custom provider base URLs remain rejected.
 - Gemini model listing uses `x-goog-api-key` header and filters for `generateContent` models.
 - A replacement provider key is saved before model listing even when the slot already has a selected model.
+- Provider authentication failures are mapped to a fixed safe message; raw Google responses and credential material remain hidden.
 - `/api/ai/routine` is protected by the server's common trusted-origin guard because it is a non-GET route and is not in `TRUSTED_WRITE_EXEMPTIONS`.
 - New AI routine generation has a six-per-hour authenticated student rate limit before body/provider work.
 - Identical in-flight routine requests share one provider call and one usage record; the in-memory guard matches the documented single-instance architecture.
@@ -73,8 +74,12 @@ Identical in-flight requests are now coalesced by student, focus and context has
 - Local Playwright smoke across mobile/tablet/desktop Home, mobile cadastro and desktop `/devadmin`: passed with no console errors and no horizontal overflow.
 - `npm run build:mobile`: passed through Vite build, media copy and Capacitor sync.
 - `gradlew clean assembleDebug --no-daemon --max-workers=1`: passed with 203 tasks.
-- Debug APK: generated at `frontend/android/app/build/outputs/apk/debug/app-debug.apk` (146,299,228 bytes; SHA-256 `B4DE81C17459CF07EA9D9EF3A014739BEC598EB6E2D0DC2F07F3C41A73E00174`) and verified with APK Signature Scheme v1/v2.
+- Debug APK: generated at `frontend/android/app/build/outputs/apk/debug/app-debug.apk` (146,699,479 bytes; SHA-256 `11E2886B442CDC93E18D6AD1C7B20D562B95ECDF98C48D031F79E52787BBDD8E`) and verified with APK Signature Scheme v1/v2.
 - `adb devices -l`: no phone attached at the final local verification, so no installation claim is made.
+
+## Production credential check
+
+The isolated `/devadmin` login and encrypted Gemini slot were reached successfully in production. The temporary credential supplied for this release was stored through the protected API and tested against Google's official models endpoint, which returned HTTP 401. Gemini therefore remains inactive and no generation call is enabled until a valid replacement key passes model loading and the required structured-output test. No credential value was written to Git, printed or included in this report.
 
 ## Methodology
 

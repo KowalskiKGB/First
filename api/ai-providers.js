@@ -5,6 +5,7 @@ export const AI_PROVIDER_NAMES = Object.freeze(['openai', 'gemini', 'anthropic']
 const MASTER_KEY_PATTERN = /^[0-9a-fA-F]{64}$/;
 const INVALID_STRUCTURED_OUTPUT = 'AI provider returned invalid structured output';
 const PROVIDER_TEST_FAILED = 'AI provider test failed';
+const PROVIDER_CREDENTIAL_REJECTED = 'The provider credential was rejected.';
 const PROVIDER_TEST_VALUE = Object.freeze({
   justification: 'Plano diagnostico seguro.',
   routines: [{
@@ -191,7 +192,9 @@ async function fetchJson(fetchImpl, url, options, timeoutMs = 45_000) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       const service = url.includes('generativelanguage.googleapis.com') ? 'Gemini model' : 'AI provider';
-      const error = new Error(`${service} request failed (${response.status})`);
+      const error = new Error([401, 403].includes(response.status)
+        ? PROVIDER_CREDENTIAL_REJECTED
+        : `${service} request failed (${response.status})`);
       error.status = 502;
       error.expose = true;
       throw error;

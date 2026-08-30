@@ -958,6 +958,7 @@ export default {
   'Loading…': 'Carregando…',
   'Load models': 'Carregar modelos',
   'Models could not be loaded. Try again.': 'Não foi possível carregar os modelos. Tente novamente.',
+  'The provider credential was rejected.': 'A credencial foi recusada pelo provedor. Cole uma nova chave e tente novamente.',
   'No compatible model was returned.': 'Nenhum modelo compatível foi retornado.',
   'Available models': 'Modelos disponíveis',
   'New API key': 'Nova chave de API',

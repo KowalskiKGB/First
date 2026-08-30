@@ -422,6 +422,6 @@ globalThis.fetch = async url => {
   const body = await models.json();
 
   assert.equal(models.status, 502);
-  assert.match(body.error, /Gemini.*model/i);
+  assert.equal(body.error, 'The provider credential was rejected.');
   assert.doesNotMatch(JSON.stringify(body), /SENTINEL_UPSTREAM_DETAIL|key|secret|stack/i);
 });
