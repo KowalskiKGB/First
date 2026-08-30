@@ -125,7 +125,7 @@ export function buildProviderRequest(providerValue, { apiKey, model, prompt, sch
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: systemPrompt() }] },
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: 'application/json', responseSchema: schema }
+        generationConfig: { responseMimeType: 'application/json', responseJsonSchema: schema }
       })
     }
   };

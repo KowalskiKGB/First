@@ -65,7 +65,8 @@ test('Gemini uses camelCase structured output fields and keeps key only in heade
   assert.equal(new URL(request.url).search, '');
   assert.equal(request.options.headers['x-goog-api-key'], 'gemini-complete-key');
   assert.equal(body.generationConfig.responseMimeType, 'application/json');
-  assert.deepEqual(body.generationConfig.responseSchema, schema);
+  assert.deepEqual(body.generationConfig.responseJsonSchema, schema);
+  assert.equal('responseSchema' in body.generationConfig, false);
   assert.equal('response_mime_type' in body.generationConfig, false);
 });
 
