@@ -7,6 +7,8 @@ import {
   resolveDevCredential
 } from '../dev-auth.js';
 
+const VALID_SALT = Buffer.from('0123456789abcdef').toString('base64url');
+
 test('production Dev auth requires first_dev_ username and an explicit scrypt hash', () => {
   assert.throws(() => resolveDevCredential({ NODE_ENV: 'production' }), /DEV_PANEL/);
   assert.throws(() => resolveDevCredential({
@@ -18,6 +20,23 @@ test('production Dev auth requires first_dev_ username and an explicit scrypt ha
   assert.throws(() => resolveDevCredential({ NODE_ENV: 'test', DEV_PANEL_USER: 'fixture-only' }), /required together/);
 });
 
+test('Dev password hashes require at least 16 salt bytes and exactly 32 hash bytes', () => {
+  const valid = hashDevPassword('long-test-password', VALID_SALT);
+  const [, , digest] = valid.split(':');
+
+  assert.doesNotThrow(() => resolveDevCredential({
+    NODE_ENV: 'production', DEV_PANEL_USER: 'first_dev_admin', DEV_PANEL_PASSWORD_HASH: valid
+  }));
+  assert.throws(() => resolveDevCredential({
+    NODE_ENV: 'production', DEV_PANEL_USER: 'first_dev_admin',
+    DEV_PANEL_PASSWORD_HASH: `scrypt:${Buffer.alloc(15).toString('base64url')}:${digest}`
+  }), /salt.*16 bytes/i);
+  assert.throws(() => resolveDevCredential({
+    NODE_ENV: 'production', DEV_PANEL_USER: 'first_dev_admin',
+    DEV_PANEL_PASSWORD_HASH: `scrypt:${VALID_SALT}:${Buffer.alloc(31).toString('base64url')}`
+  }), /hash.*32 bytes/i);
+});
+
 test('development does not generate or persist an initial password when credentials are absent', () => {
   assert.equal(resolveDevCredential({ NODE_ENV: 'test' }), null);
   assert.equal(JSON.stringify(resolveDevCredential({ NODE_ENV: 'test' })), 'null');
@@ -27,7 +46,7 @@ test('Dev session is four hours, HttpOnly, Strict, and Secure on HTTPS', () => {
   const env = {
     NODE_ENV: 'test',
     DEV_PANEL_USER: 'first_dev_fixture',
-    DEV_PANEL_PASSWORD_HASH: hashDevPassword('fixture-password', 'fixed-test-salt')
+    DEV_PANEL_PASSWORD_HASH: hashDevPassword('fixture-password', VALID_SALT)
   };
   const auth = createDevAuth({ env, signingSecret: 'test-signing-secret', origin: 'https://first.example', now: () => 1_000 });
   assert.equal(auth.authenticate('first_dev_fixture', 'fixture-password'), true);
@@ -52,7 +71,7 @@ test('HTTP Dev cookies omit Secure and reject expired or tampered sessions', () 
   let time = 1_000;
   const env = {
     NODE_ENV: 'test', DEV_PANEL_USER: 'fixture',
-    DEV_PANEL_PASSWORD_HASH: hashDevPassword('fixture-password', 'fixed-test-salt')
+    DEV_PANEL_PASSWORD_HASH: hashDevPassword('fixture-password', VALID_SALT)
   };
   const auth = createDevAuth({ env, signingSecret: 'test-signing-secret', origin: 'http://localhost:8080', now: () => time });
   const cookie = auth.sessionCookie('fixture');

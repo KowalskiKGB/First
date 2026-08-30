@@ -29,6 +29,7 @@ import {
   buildAiGenerationStatus,
   createCollaborationStore,
   createPersonalRoutes,
+  INITIAL_COLLABORATION,
   notifyAiPlanApplied
 } from './personal.js';
 
@@ -63,12 +64,24 @@ if (!fs.existsSync(secretFile)) fs.writeFileSync(secretFile, crypto.randomBytes(
 const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
 
 const dbFile = path.join(DATA, 'db.json');
-let db = { users: [], creds: [], subs: [], invites: [] };
-try { db = JSON.parse(fs.readFileSync(dbFile, 'utf8')); } catch {}
-db.subs = db.subs || [];
-db.invites = db.invites || [];
-db.aiProviders = db.aiProviders || [];
-db.aiUsage = db.aiUsage || [];
+const PRIMARY_DB_COLLECTIONS = ['users', 'creds', 'subs', 'invites', 'aiProviders', 'aiUsage'];
+function normalizePrimaryDb(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('db.json must contain an object');
+  const normalized = { ...value };
+  for (const key of PRIMARY_DB_COLLECTIONS) {
+    if (normalized[key] === undefined) normalized[key] = [];
+    else if (!Array.isArray(normalized[key])) throw new TypeError(`db.json ${key} must be an array`);
+  }
+  return normalized;
+}
+function loadPrimaryDb(file) {
+  try { return normalizePrimaryDb(JSON.parse(fs.readFileSync(file, 'utf8'))); }
+  catch (error) {
+    if (error?.code === 'ENOENT') return normalizePrimaryDb({});
+    throw error;
+  }
+}
+let db = loadPrimaryDb(dbFile);
 const isAdmin = user => !!user && (user.admin === true || ADMIN_UIDS.includes(user.id));
 function saveDb() { atomicWrite(dbFile, JSON.stringify(db, null, 2)); }
 function atomicWrite(file, content) {
@@ -82,6 +95,39 @@ function readState(uid) {
 }
 const collaborationStore = createCollaborationStore(DATA);
 bridgeAiUsageProperty({ db, store: collaborationStore, saveDb });
+
+function dataDirIsWritable() {
+  const probe = path.join(DATA, `.ready-${process.pid}-${crypto.randomBytes(8).toString('hex')}`);
+  let descriptor;
+  try {
+    descriptor = fs.openSync(probe, 'wx', 0o600);
+    fs.closeSync(descriptor);
+    descriptor = undefined;
+    fs.unlinkSync(probe);
+    return true;
+  } catch {
+    if (descriptor !== undefined) try { fs.closeSync(descriptor); } catch {}
+    try { fs.unlinkSync(probe); } catch {}
+    return false;
+  }
+}
+function isReady() {
+  try {
+    normalizePrimaryDb(db);
+    if (!fs.statSync(dbFile).isFile()) return false;
+    const persisted = loadPrimaryDb(dbFile);
+    normalizePrimaryDb(persisted);
+    const persistedSecret = fs.readFileSync(secretFile, 'utf8').trim();
+    if (persistedSecret !== SECRET || Buffer.byteLength(SECRET) < 32) return false;
+    const collaboration = collaborationStore.read();
+    if (collaboration.schemaVersion !== INITIAL_COLLABORATION.schemaVersion ||
+        !Number.isInteger(collaboration.rev) || collaboration.rev < 0) return false;
+    for (const [key, initial] of Object.entries(INITIAL_COLLABORATION)) {
+      if (Array.isArray(initial) && !Array.isArray(collaboration[key])) return false;
+    }
+    return dataDirIsWritable();
+  } catch { return false; }
+}
 
 /* ---------- push notifications (Web Push / VAPID) ---------- */
 const vapidFile = path.join(DATA, 'vapid.json');
@@ -307,6 +353,10 @@ setInterval(() => { for (const [k, v] of presence) if (Date.now() - v.updatedAt 
 /* ---------- routes ---------- */
 const routes = {
   'GET /api/health': async (req, res) => json(res, 200, { ok: true }),
+  'GET /api/ready': async (req, res) => {
+    const ready = isReady();
+    json(res, ready ? 200 : 503, { ok: ready });
+  },
 
   // Public config the login screen needs before anyone is signed in.
   'GET /api/config': async (req, res) => json(res, 200, { invite_only: INVITE_ONLY }),
@@ -463,7 +513,8 @@ const routes = {
   'GET /api/dev/session': async (req, res) => {
     const user = requireAdmin(req, res);
     if (!user) return;
-    json(res, 200, { unlocked: !!devAuth.readSession(req), username: devAuth.credential?.username || null });
+    const username = devAuth.readSession(req);
+    json(res, 200, { unlocked: !!username, ...(username ? { username } : {}) });
   },
 
   'POST /api/dev/login': async (req, res) => {
@@ -757,11 +808,19 @@ Object.assign(routes, createPersonalRoutes({
   requireTrustedWrite
 }));
 
+const TRUSTED_WRITE_EXEMPTIONS = new Set([
+  'POST /api/register/options',
+  'POST /api/register/verify',
+  'POST /api/login/options',
+  'POST /api/login/verify'
+]);
+
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const key = req.method + ' ' + url.pathname;
   const handler = routes[key];
   if (!handler) return json(res, 404, { error: 'not found' });
+  if (!['GET', 'HEAD'].includes(req.method) && !TRUSTED_WRITE_EXEMPTIONS.has(key) && !requireTrustedWrite(req, res)) return;
   try { await handler(req, res); }
   catch (e) {
     const status = e.expose && Number.isInteger(e.status) ? e.status : 500;
