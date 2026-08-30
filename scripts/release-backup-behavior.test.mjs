@@ -148,7 +148,7 @@ case "$command" in
     printf 'backup-dir-mode:%s\n' "$(stat -c %a "$FIRST_BACKUP_DIR")" >> "$FIRST_FAKE_EVENTS"
     was_running=0
     if grep -Fxq running "$FIRST_FAKE_API_STATE"; then was_running=1; fi
-    if [ "${'$'}{FIRST_FAKE_PS_BARRIER:-0}" = 1 ]; then
+    if [ "${'$'}{FIRST_FAKE_PS_BARRIER:-0}" = 1 ] && [ ! -e "$FIRST_FAKE_BARRIER/$instance" ]; then
       : > "$FIRST_FAKE_BARRIER/$instance"
       attempts=0
       while { [ ! -e "$FIRST_FAKE_BARRIER/one" ] || [ ! -e "$FIRST_FAKE_BARRIER/two" ]; } \
@@ -160,7 +160,9 @@ case "$command" in
     if [ "$was_running" -eq 1 ]; then printf '%s\n' api; fi
     ;;
   stop)
-    printf '%s\n' stopped > "$FIRST_FAKE_API_STATE"
+    if [ "${'$'}{FIRST_FAKE_STOP_UNCONFIRMED:-0}" != 1 ]; then
+      printf '%s\n' stopped > "$FIRST_FAKE_API_STATE"
+    fi
     ;;
   start)
     printf '%s\n' running > "$FIRST_FAKE_API_STATE"
@@ -236,7 +238,7 @@ test('backup publishes a 0600 archive from a 0700 directory and restarts a runni
   assert.equal(listing.status, 0, listing.stderr)
   assert.match(listing.stdout, /(^|\n)\.\/db\.json(\r?\n|$)/)
   assert.match(listing.stdout, /(^|\n)\.\/secret(\r?\n|$)/)
-  assert.deepEqual(events.filter(event => event.startsWith('single:')), ['single:ps', 'single:stop', 'single:run', 'single:start'])
+  assert.deepEqual(events.filter(event => event.startsWith('single:')), ['single:ps', 'single:stop', 'single:ps', 'single:run', 'single:start'])
   assert.equal(readFileSync(harness.apiState, 'utf8'), 'running\n')
 })
 
@@ -246,7 +248,7 @@ test('backup leaves an originally stopped API stopped', t => {
 
   assert.equal(result.status, 0, result.stderr)
   assertPrivateResult(harness, [path.basename(harness.finalPath)])
-  assert.deepEqual(eventsFrom(harness.events).filter(event => event.startsWith('single:')), ['single:ps', 'single:stop', 'single:run'])
+  assert.deepEqual(eventsFrom(harness.events).filter(event => event.startsWith('single:')), ['single:ps', 'single:stop', 'single:ps', 'single:run'])
   assert.equal(readFileSync(harness.apiState, 'utf8'), 'stopped\n')
 })
 
@@ -282,6 +284,24 @@ test('backup rejects db.json and secret directories', t => {
   assert.ok(eventsFrom(harness.events).includes('single:start'))
 })
 
+test('backup aborts before reading data when a successful stop leaves the API running', t => {
+  const harness = createHarness(t)
+  const result = harness.run({ FIRST_FAKE_STOP_UNCONFIRMED: '1' })
+
+  assert.notEqual(result.status, 0, result.stdout)
+  const events = eventsFrom(harness.events)
+  assert.deepEqual(events.filter(event => event.startsWith('single:')), [
+    'single:ps',
+    'single:stop',
+    'single:ps',
+    'single:start',
+  ])
+  assert.equal(events.includes('single:run'), false)
+  assert.equal(existsSync(harness.finalPath), false)
+  assertPrivateResult(harness, [])
+  assert.equal(readFileSync(harness.apiState, 'utf8'), 'running\n')
+})
+
 test('backup lock admits only one concurrent invocation', { timeout: 15_000 }, async t => {
   const harness = createHarness(t)
   const extra = { FIRST_FAKE_PS_BARRIER: '1' }
@@ -291,7 +311,7 @@ test('backup lock admits only one concurrent invocation', { timeout: 15_000 }, a
   ])
 
   assert.equal(results.filter(result => result.status === 0).length, 1, JSON.stringify(results))
-  assert.equal(eventsFrom(harness.events).filter(event => event.endsWith(':ps')).length, 1)
+  assert.equal(eventsFrom(harness.events).filter(event => event.endsWith(':ps')).length, 2)
   assert.equal(existsSync(harness.finalPath), true)
   assertPrivateResult(harness, [path.basename(harness.finalPath)])
   assert.equal(readFileSync(harness.apiState, 'utf8'), 'running\n')

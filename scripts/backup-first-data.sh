@@ -42,6 +42,13 @@ finish_backup() {
   exit "$status"
 }
 
+stop_api_writer() {
+  local running_services
+  docker compose stop api >/dev/null || return 1
+  running_services=$(docker compose ps --status running --services) || return 1
+  ! printf '%s\n' "$running_services" | grep -Fxq api
+}
+
 if ! mkdir -m 700 -- "$lock_dir"; then
   echo "Another backup is already in progress; remove $lock_dir only after confirming no backup is running." >&2
   exit 75
@@ -79,7 +86,10 @@ if printf '%s\n' "$running_services" | grep -Fxq api; then
 fi
 
 # Quiesce the only JSON writer before reading any file from first-data.
-docker compose stop api
+if ! stop_api_writer; then
+  echo "API writer stop could not be confirmed; backup aborted without reading data." >&2
+  exit 70
+fi
 docker compose run --rm --no-deps --entrypoint tar api -C /data \
   --exclude='./.first-restore-stage-*' \
   --exclude='./.first-recovery-*' \
