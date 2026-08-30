@@ -26,7 +26,7 @@ Range reviewed: `5dada46..HEAD` plus the uncommitted follow-up changes on `feat/
 
 ### Medium - fixed: passkey-only profiles could not edit body data
 
-**File:** `frontend/src/views/Settings.jsx:412`
+**File:** `frontend/src/views/Settings.jsx:412`, `api/server.js:645`
 **Risk:** Behavioral regression for existing users created before e-mail/password accounts.
 
 The first profile editor version made `profile-email` required and validated it on every save. Existing passkey-only users with no e-mail would be unable to update weight, measures, goal or other profile data without adding e-mail/password immediately.

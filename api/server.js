@@ -658,7 +658,7 @@ const routes = {
     if (email && db.users.some(item => item.id !== user.id && String(item.email || '').toLowerCase() === email)) {
       return json(res, 409, { error: 'email already registered' });
     }
-    if ((changesEmail || changesPassword) && user.passwordHash) {
+    if (changesCredentials && user.passwordHash) {
       const currentPassword = typeof body.currentPassword === 'string' && body.currentPassword.length <= 128
         ? body.currentPassword
         : '';
@@ -671,9 +671,6 @@ const routes = {
     }
     if (changesEmail && !user.passwordHash && !changesPassword) {
       return json(res, 400, { error: 'set a password when adding an email' });
-    }
-    if (changesPassword && !user.passwordHash && !email) {
-      return json(res, 400, { error: 'set an email when adding a password' });
     }
     const passwordHash = changesPassword
       ? hashDevPassword(normalizeStudentPassword(body.newPassword, 'newPassword'))

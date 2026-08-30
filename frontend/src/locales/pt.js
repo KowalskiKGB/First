@@ -1088,6 +1088,7 @@ export default {
   'this account has been disabled': 'Esta conta foi desativada.',
   'current password is incorrect': 'A senha atual está incorreta.',
   'set an email when adding a password': 'Informe um e-mail para adicionar uma senha.',
+  'set an email before adding a password': 'Informe um e-mail antes de adicionar uma senha.',
   'Body and goal': 'Corpo e objetivo',
   'Save changes': 'Salvar alterações',
 }
