@@ -5,6 +5,7 @@ import { Button } from '../components/ui.jsx'
 import { DAYN, exCount, uid } from '../lib/format.js'
 import { glyphOf, DEFAULT_GLYPH } from '../lib/glyphs.js'
 import { t } from '../lib/i18n.js'
+import { scheduledRoutineOptionsForWeekday } from '../lib/schedule.js'
 import { dayAssignSheet, loadStarterPlan, planToolsSheet } from '../sheets.jsx'
 import { useStore } from '../store/useStore.js'
 import AiPlanCard from './AiPlanCard.jsx'
@@ -12,6 +13,7 @@ import AiPlanCard from './AiPlanCard.jsx'
 export { default as AiPlanCard } from './AiPlanCard.jsx'
 
 const routineSource = routine => routine._aiGenerated === true ? 'IA' : routine._personalProgramId ? t('Personal') : t('My workout')
+const optionSource = source => source === 'ai' ? 'IA' : source === 'personal' ? t('Personal') : t('My workout')
 
 export default function Plan() {
   const navigate = useNavigate()
@@ -29,8 +31,8 @@ export default function Plan() {
       <AiPlanCard />
       <h4 className="sec">{t('Week schedule')}</h4>
       <div className="list plan-week-list">{[1, 2, 3, 4, 5, 6, 0].map(day => {
-        const routine = state.routines.find(item => item.id === state.week[day])
-        return <button type="button" key={day} className="item" onClick={() => dayAssignSheet(day)}><div className="grow"><div className="tt">{t(DAYN[day])}</div></div>{routine ? <span className="tag acc"><Icon name={glyphOf(routine.emoji)} />{routine.name}</span> : <span className="tag">{t('Manual preference: rest')}</span>}<Icon name="chevronRight" className="chev" /></button>
+        const options = scheduledRoutineOptionsForWeekday(state, day)
+        return <button type="button" key={day} className="item" onClick={() => dayAssignSheet(day)}><div className="grow"><div className="tt">{t(DAYN[day])}</div><div className="ss">{options.length ? options.map((option, index) => <span key={`${option.sourceType}-${option.planId || 'local'}-${option.routineId}-${option.version || 0}`}>{index ? ' · ' : ''}<span className={`plan-source-badge source-${option.sourceType}`}>{optionSource(option.sourceType)}</span> {option.routine.name}</span>) : t('Rest day')}</div></div><Icon name="chevronRight" className="chev" /></button>
       })}</div>
     </div><div>
       <div className="row between plan-routine-heading"><h4 className="sec">{t('Routines')}</h4><Button size="sm" variant="tinted" icon="plus" onClick={addRoutine}>{t('New')}</Button></div>

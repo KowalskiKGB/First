@@ -1,11 +1,16 @@
 import { useEffect, useRef } from 'react'
 import { useUI } from '../store/useUI.js'
 
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+const focusableWithin = root => [...root.querySelectorAll(FOCUSABLE)].filter(element => element.getClientRects().length > 0 && element.getAttribute('aria-hidden') !== 'true')
+
 // One bottom sheet (or centered dialog) with swipe-to-dismiss.
-function Sheet({ sheet }) {
-  const { closeSheet } = useUI()
+function Sheet({ sheet, active }) {
+  const closeSheet = useUI(state => state.closeSheet)
   const ref = useRef(null)
   const drag = useRef({ startY: null, delta: 0 })
+  const opener = useRef(typeof document === 'undefined' ? null : document.activeElement)
+  const titleId = `sheet-title-${sheet.id}`
 
   const onTouchStart = e => {
     const el = ref.current
@@ -39,24 +44,78 @@ function Sheet({ sheet }) {
   // non-passive touchmove so preventDefault works (bottom sheets only; centered dialogs have no ref)
   useEffect(() => {
     const el = ref.current
-    if (!el) return
+    if (!el || sheet.kind === 'center') return
     el.addEventListener('touchmove', onTouchMove, { passive: false })
     return () => el.removeEventListener('touchmove', onTouchMove)
   }, [])
 
   const close = () => closeSheet(sheet.id)
+  useEffect(() => {
+    const dialog = ref.current
+    if (!active || !dialog) return
+
+    const heading = dialog.querySelector('h1, h2, h3')
+    if (heading) {
+      heading.id ||= titleId
+      dialog.setAttribute('aria-labelledby', heading.id)
+    }
+    const [first] = focusableWithin(dialog)
+    const initialTarget = first || dialog
+    initialTarget.focus()
+
+    const onKeyDown = event => {
+      if (event.key === 'Escape') {
+        if (!sheet.locked) closeSheet(sheet.id)
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+      if (event.key !== 'Tab') return
+
+      const controls = focusableWithin(dialog)
+      if (!controls.length) {
+        event.preventDefault()
+        dialog.focus()
+        return
+      }
+      const first = controls[0]
+      const last = controls.at(-1)
+      if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [active, closeSheet, sheet.id, sheet.locked, titleId])
+
+  useEffect(() => () => {
+    if (opener.current instanceof HTMLElement && opener.current.isConnected) opener.current.focus()
+  }, [])
+
+  const dialogProps = {
+    ref,
+    role: 'dialog',
+    'aria-modal': active ? 'true' : undefined,
+    'aria-hidden': active ? undefined : 'true',
+    'aria-label': 'Diálogo',
+    tabIndex: -1,
+  }
   if (sheet.kind === 'center') {
     return (
       <div>
-        <div className="mback" onClick={() => { if (!sheet.locked) close() }} />
-        <div className="center">{sheet.render(close)}</div>
+        <div className="mback" aria-hidden="true" onClick={() => { if (!sheet.locked) close() }} />
+        <div className="center" {...dialogProps}>{sheet.render(close)}</div>
       </div>
     )
   }
   return (
     <div>
-      <div className="mback" onClick={() => { if (!sheet.locked) close() }} />
-      <div className="sheet" ref={ref} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+      <div className="mback" aria-hidden="true" onClick={() => { if (!sheet.locked) close() }} />
+      <div className="sheet" {...dialogProps} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         <div className="grab" />
         {sheet.render(close)}
       </div>
@@ -82,7 +141,7 @@ export default function Modals() {
   if (!sheets.length) return null
   return (
     <div id="modal-root" className="open">
-      {sheets.map(s => <Sheet key={s.id} sheet={s} />)}
+      {sheets.map((s, index) => <Sheet key={s.id} sheet={s} active={index === sheets.length - 1} />)}
     </div>
   )
 }

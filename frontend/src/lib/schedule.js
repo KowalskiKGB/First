@@ -115,6 +115,22 @@ function routineOptionsForWeekday(state, weekday, preference) {
     }
   }
 
+  const preferredId = typeof preference === 'string' ? preference : preference?.routineId
+  const preferredRoutine = preference !== 'rest' ? routines.get(preferredId) : null
+  if (preferredRoutine && !options.some(option => matchesPreference(preference, option))) {
+    const sourceType = preference?.sourceType || (preferredRoutine._personalProgramId ? 'personal' : preferredRoutine._aiGenerated ? 'ai' : 'manual')
+    const planId = sourceType === 'manual' ? null : preference?.planId || preferredRoutine._personalProgramId || preferredRoutine._aiPlanId || null
+    const version = sourceType === 'manual' ? null : Number(preference?.version || preferredRoutine._personalVersion || preferredRoutine._aiVersion) || 1
+    options.push({
+      routineId: preferredRoutine.id,
+      routine: preferredRoutine,
+      sourceType,
+      planId,
+      version,
+      label: sourceType === 'manual' ? 'Manual' : preferredRoutine._personalProgramName || state.aiLastGeneration?.name || preferredRoutine.name,
+    })
+  }
+
   const seen = new Set()
   return options
     .filter(option => {

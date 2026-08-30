@@ -36,6 +36,16 @@ describe('scheduledRoutineOptions', () => {
     expect(options.map(option => option.preferred)).toEqual([true, false, false])
   })
 
+  it('materializes an unscheduled dayPlan routine without hiding managed sessions', () => {
+    const base = coexistenceState({ '2026-08-31': 'manual-extra' })
+    const state = { ...base, routines: [...base.routines, { id: 'manual-extra', name: 'Manual extra', ex: [] }] }
+
+    const options = scheduledRoutineOptions(state, '2026-08-31')
+
+    expect(options.map(option => option.routineId)).toEqual(['manual-extra', 'manual', 'personal-a', 'ai-a'])
+    expect(options[0]).toMatchObject({ sourceType: 'manual', planId: null, version: null, preferred: true })
+  })
+
   it('keeps every option when rest is preferred', () => {
     const options = scheduledRoutineOptions(coexistenceState({ '2026-08-31': 'rest' }), '2026-08-31')
 
