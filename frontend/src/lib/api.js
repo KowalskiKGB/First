@@ -1,4 +1,5 @@
 // Backend + WebAuthn helpers (ported from the vanilla app).
+import { Capacitor, CapacitorHttp } from '@capacitor/core'
 import { getLang } from './i18n.js'
 
 const API_ROOT = String(import.meta.env.VITE_API_BASE || '').replace(/\/$/, '')
@@ -13,12 +14,35 @@ export const bioLabel = (language = getLang()) => language === 'pt'
 export const VAULT = IS_APPLE ? 'iCloud Keychain' : IS_ANDROID ? 'Google Password Manager' : 'your password manager'
 export const webauthnOK = () => !!(window.PublicKeyCredential && navigator.credentials)
 
+const responseError = (data, status) => {
+  const error = new Error(data?.error || ('HTTP ' + status))
+  error.status = status
+  return error
+}
+
+async function nativeApi(path, opts, headers) {
+  const body = opts?.body
+  const response = await CapacitorHttp.request({
+    url: API_ROOT + path,
+    method: String(opts?.method || 'GET').toUpperCase(),
+    headers,
+    ...(body == null ? {} : { data: body }),
+  })
+  let data = response.data ?? {}
+  if (typeof data === 'string') {
+    try { data = JSON.parse(data) } catch { data = {} }
+  }
+  if (response.status < 200 || response.status >= 300) throw responseError(data, response.status)
+  return data
+}
+
 export async function api(path, opts) {
   const headers = { 'Content-Type': 'application/json', ...(opts?.headers || {}) }
   if (MOBILE_API) headers['X-First-Client'] = 'capacitor'
+  if (MOBILE_API && Capacitor.isNativePlatform()) return nativeApi(path, opts, headers)
   const r = await fetch(API_ROOT + path, { credentials: 'include', ...opts, headers })
   const data = await r.json().catch(() => ({}))
-  if (!r.ok) { const e = new Error(data.error || ('HTTP ' + r.status)); e.status = r.status; throw e }
+  if (!r.ok) throw responseError(data, r.status)
   return data
 }
 
