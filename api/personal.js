@@ -590,7 +590,10 @@ export function buildAiContext({ collaboration, studentId }) {
   const profile = projectTrainingProfile(collaboration.trainingProfiles.find(item => item.studentId === studentId));
   const gym = projectGymProfile(collaboration.gymProfiles.find(item => item.studentId === studentId));
   const measurements = currentMeasurements(collaboration, studentId);
-  const plan = latestByVersion(collaboration.aiPlans.filter(item => item.studentId === studentId && item.status === 'applied'));
+  const aiPlans = collaboration.aiPlans.filter(item => item.studentId === studentId && item.source === 'ai')
+    .slice().sort((a, b) => (Number(b.version) || 0) - (Number(a.version) || 0) ||
+      String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')));
+  const plan = latestByVersion(aiPlans.filter(item => item.status === 'applied'));
   const job = collaboration.aiJobs.filter(item => item.studentId === studentId).slice()
     .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')))[0] || null;
   return {
@@ -600,6 +603,7 @@ export function buildAiContext({ collaboration, studentId }) {
     measurements,
     completeness: contextCompleteness(profile, gym, measurements),
     plan: projectAiPlan(plan),
+    planHistory: aiPlans.slice(0, 10).map(projectAiPlan),
     job: projectAiJob(job)
   };
 }

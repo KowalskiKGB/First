@@ -53,6 +53,7 @@ import AiPlanCard from './AiPlanCard.jsx'
 
 const plan = {
   id: 'plan-applied', version: 3, provider: 'openai', model: 'gpt-5-mini', contextHash: 'ctx-3',
+  source: 'ai', status: 'applied',
   justification: 'Plano concluído enquanto o app estava fechado.', appliedAt: '2026-08-29T18:00:00.000Z',
   routines: [{
     id: 'ai-routine', name: 'Força IA', exercises: [

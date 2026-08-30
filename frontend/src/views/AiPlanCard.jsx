@@ -143,15 +143,14 @@ export default function AiPlanCard() {
     toast(t('{0} routines copied to My workout.', managed.length))
   }
   const priorPlan = useMemo(() => {
-    const history = state.aiPlanHistory || []
-    const currentIndex = history.findIndex(item => item.planId === context?.plan?.id)
-    return currentIndex > 0 ? history[currentIndex - 1] : null
-  }, [state.aiPlanHistory, context?.plan?.id])
+    const current = context?.plan
+    return (context?.planHistory || []).find(item => item.source === 'ai' && item.id !== current?.id && item.version < current?.version) || null
+  }, [context?.plan, context?.planHistory])
   const rollback = async () => {
     if (!priorPlan) return
     setBusy(true)
     try {
-      await api('/api/ai/plan/rollback', { method: 'POST', body: JSON.stringify({ planId: priorPlan.planId }) })
+      await api('/api/ai/plan/rollback', { method: 'POST', body: JSON.stringify({ planId: priorPlan.id }) })
       const nextContext = await load(); await applyContext(nextContext)
       toast(t('Previous AI version restored.'))
     } catch (error) { toast(t(error.message || 'The previous version could not be restored.')) }

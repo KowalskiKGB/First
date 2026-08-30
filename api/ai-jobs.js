@@ -150,24 +150,36 @@ export function createAiJobService({
       generated = await runner(provider, { prompt, schema: AI_WORKOUT_SCHEMA });
       stage = 'validating';
       jobPatch(store, jobId, { stage, updatedAt: now() });
-      const beforeApply = store.read();
-      const version = nextVersion(beforeApply, job.studentId);
       const appliedAt = now();
-      const plan = validateAiWorkoutPlan(generated.value, {
-        studentId: job.studentId,
-        version,
-        contextHash,
-        profile: context.profile,
-        gym: context.gym,
-        candidates,
-        provider: provider.provider,
-        model: provider.selectedModel,
-        now: appliedAt,
-        existingIds: (beforeApply.aiPlans || []).flatMap(item => [item.id, ...(item.routines || []).map(routine => routine.id)])
-      });
       stage = 'applying';
       jobPatch(store, jobId, { stage, updatedAt: appliedAt });
       const applied = updateStore(store, collaboration => {
+        const currentState = typeof readState === 'function' ? readState(job.studentId) || {} : {};
+        const currentContext = generationContext(collaboration, job.studentId, currentState, started);
+        assertGenerationEligible(currentContext);
+        const currentCandidates = shortlistExercises({
+          profile: currentContext.profile,
+          gym: currentContext.gym,
+          recentExerciseIds: currentContext.trainingSummary.exerciseIds
+        });
+        const currentHash = computeContextHash(currentContext);
+        if (currentHash !== contextHash || currentCandidates.length !== candidates.length ||
+            currentCandidates.some((candidate, index) => candidate.id !== candidates[index]?.id)) {
+          throw new Error('AI generation context changed before application');
+        }
+        const version = nextVersion(collaboration, job.studentId);
+        const plan = validateAiWorkoutPlan(generated.value, {
+          studentId: job.studentId,
+          version,
+          contextHash: currentHash,
+          profile: currentContext.profile,
+          gym: currentContext.gym,
+          candidates: currentCandidates,
+          provider: provider.provider,
+          model: provider.selectedModel,
+          now: appliedAt,
+          existingIds: (collaboration.aiPlans || []).flatMap(item => [item.id, ...(item.routines || []).map(routine => routine.id)])
+        });
         const plans = collaboration.aiPlans.map(item => item.studentId === job.studentId && item.source === 'ai' && item.status === 'applied'
           ? { ...item, status: 'superseded', updatedAt: appliedAt }
           : item);
@@ -179,7 +191,7 @@ export function createAiJobService({
             status: 'applied',
             stage: 'applying',
             publicError: null,
-            contextHash,
+            contextHash: currentHash,
             planVersion: version,
             updatedAt: appliedAt
           } : item)
