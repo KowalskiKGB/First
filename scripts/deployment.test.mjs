@@ -158,3 +158,20 @@ test('docker compose accepts the documented production-safe environment', () => 
 
   assert.equal(result.status, 0, result.stderr || result.stdout)
 })
+
+test('mobile media publication retries transient Windows directory locks', async () => {
+  const { renameWithRetry } = await import(new URL('frontend/scripts/fs-retry.mjs', root))
+  const waits = []
+  let calls = 0
+  renameWithRetry('stage', 'media', {
+    attempts: 3,
+    rename() {
+      calls += 1
+      if (calls < 3) throw Object.assign(new Error('locked'), { code: 'EPERM' })
+    },
+    wait: delay => waits.push(delay),
+  })
+
+  assert.equal(calls, 3)
+  assert.deepEqual(waits, [250, 250])
+})

@@ -1,8 +1,9 @@
-import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, rmSync, statSync } from 'node:fs'
 import { dirname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { EXDB } from '../src/lib/exercises-data.js'
+import { renameWithRetry } from './fs-retry.mjs'
 
 const frontendRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const privateMediaRoot = resolve(frontendRoot, '..', 'media')
@@ -38,6 +39,6 @@ for (const exercise of EXDB) {
 }
 
 rmSync(outputRoot, { recursive: true, force: true })
-renameSync(stageRoot, outputRoot)
+renameWithRetry(stageRoot, outputRoot)
 
 console.log(`Copied ${EXDB.length} exercise images and ${EXDB.length} GIFs to frontend/dist/media`)
