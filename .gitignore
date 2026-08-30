@@ -21,7 +21,7 @@ frontend/android/app/build/
 
 # Local tooling
 graphify-out/
-CREDENCIAIS_TESTE.md
+CREDENCIAIS_TESTE*.md
 backups/
 first-data-*.tgz
 first-data-*.tgz.partial
