@@ -46,7 +46,12 @@ WEB_PORT=8080
 ```bash
 docker compose --env-file .env -f docker-compose.yml -f docker-compose.local.yml up -d --build
 curl http://localhost:8080/api/health
+curl http://localhost:8080/api/ready
 ```
+
+`/api/health` confirma que o processo responde. `/api/ready`, usado pelo healthcheck do Compose,
+também confirma banco principal, segredo, colaboração e escrita no diretório de dados, sem expor
+contagens ou dados.
 
 Uma resposta saudável contém `"ok": true`. Para encerrar:
 
@@ -330,7 +335,7 @@ Checklist de deploy:
 
 1. Confirme o backup íntegro e registre o commit anterior e o novo.
 2. Instale/rotacione as variáveis necessárias e faça deploy do SHA aprovado.
-3. Verifique `/api/health`, carregamento do shell, hash dos bundles, `sw.js` com revalidação e
+3. Verifique `/api/health`, `/api/ready`, carregamento do shell, hash dos bundles, `sw.js` com revalidação e
    ausência de assets antigos no cache; se necessário, remova o service worker antigo e recarregue.
 4. Entre como admin, destrave `/dev`, confirme três slots sem chave exposta e mantenha geração
    indisponível enquanto não houver chave comercial cadastrada e testada.
