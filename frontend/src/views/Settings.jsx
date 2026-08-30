@@ -1,26 +1,26 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useStore, DEF, hasData } from '../store/useStore.js'
+import { useStore, DEF } from '../store/useStore.js'
 import { useCollaboration } from '../store/useCollaboration.js'
 import { useUI } from '../store/useUI.js'
 import { ACCENTS, todayISO, localTZ } from '../lib/format.js'
 import { effortOf } from '../lib/history.js'
-import { api, webauthnOK, passkeyLogin, passkeyRegister, IS_ANDROID } from '../lib/api.js'
+import { api, IS_ANDROID } from '../lib/api.js'
 import { pushSupported, enablePush, disablePush, sendTestPush } from '../lib/push.js'
 import { wakeLockSupported } from '../lib/wakelock.js'
 import { DEFAULT_LANG, t, LANGS, INSTR_LANGS } from '../lib/i18n.js'
 import { APP_NAME, DEMO, REPO } from '../lib/demo.js'
 import { MOBILE, shareExport, syncReminder } from '../lib/mobile.js'
 import { mediaEnabled } from '../lib/exercises.js'
-import { loadStarterPlan, confirmSheet, importFromApp } from '../sheets.jsx'
+import { confirmSheet, importFromApp } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
-import { Section, Row, SelectRow, Switch, Segmented, Button, TextField } from '../components/ui.jsx'
+import { Section, Row, SelectRow, Switch, Segmented, Button, TextField, NumberField } from '../components/ui.jsx'
 
 export default function Settings() {
   const nav = useNavigate()
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
-  const { update, replaceState, setUser, pullState, pushState, signOut, signOutAll, resetDemo } = useStore()
+  const { update, replaceState, signOut, signOutAll, resetDemo } = useStore()
   const profile = useCollaboration(s => s.profile)
   const profileOwnerId = useCollaboration(s => s.ownerId)
   const context = useCollaboration(s => s.context)
@@ -57,11 +57,7 @@ export default function Settings() {
     }
     rd.readAsText(f)
   }
-  const signInHere = async () => {
-    try { const u = await passkeyLogin(); setUser(u); await pullState(); toast(t('Welcome back, {0}', u.name)) }
-    catch (e) { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') toast(e.message || t('Sign-in failed')) }
-  }
-  const registerHere = () => useUI.getState().openSheet(close => <RegisterInline close={close} setUser={setUser} pushState={pushState} pullState={pullState} toast={toast} />)
+  const editProfile = () => useUI.getState().openSheet(close => <ProfileEditor close={close} />)
   const choosePortal = next => {
     setContext(next, user)
     nav(next === 'trainer' ? '/personal' : '/home')
@@ -80,7 +76,7 @@ export default function Settings() {
   // local is touched: still signed in here, and say so rather than leaving a half-signed-out app.
   const signOutEverywhere = () => confirmSheet({
     title: t('Sign out everywhere?'),
-    message: t('Signs this profile out on every device, including this one. Your passkeys keep working — sign in with them again anytime.'),
+    message: t('Signs this profile out on every device, including this one. You can sign in again with your email and password.'),
     confirmText: t('Sign out everywhere'), danger: true,
     onConfirm: async () => {
       try { await signOutAll(); nav('/home'); toast(t('Signed out on all devices')) }
@@ -94,29 +90,19 @@ export default function Settings() {
       <div style={{ flex: 1, marginLeft: 10 }}><h1>{t('Settings')}</h1></div>
     </div>
 
-    {/* ---------- account ---------- */}
-    <Section title={DEMO ? t('Demo') : t('Account')}>
-      {DEMO ? <>
+    {/* Authentication starts on Home; Settings only edits an existing profile. */}
+    {DEMO ? <Section title={t('Demo')}>
         <Row icon="sparkles" iconTint="var(--acc)" title={t('You’re in the demo')} subtitle={t('Example data, stored only in this browser — change anything you like.')} />
         <Row icon="reset" iconTint="var(--blue)" title={t('Reset demo data')} accessory="chevron"
           onClick={() => confirmSheet({ title: t('Reset demo data?'), message: t('Puts the example plan, workouts and weigh-ins back the way they started.'), confirmText: t('Reset'), onConfirm: () => { resetDemo(); nav('/home'); toast(t('Demo data reset')) } })} />
-        <Row icon="rocket" iconTint="var(--indigo)" title={t('Self-host openGym').replace('openGym', APP_NAME)} subtitle={t('Passkey sign-in, sync across your devices, your own data.')} accessory="chevron"
+        <Row icon="rocket" iconTint="var(--indigo)" title={t('Self-host openGym').replace('openGym', APP_NAME)} subtitle={t('Sync across your devices while keeping control of your data.')} accessory="chevron"
           onClick={() => window.open(REPO, '_blank', 'noopener')} />
-      </> : <>
-        {MOBILE && !user ? <Row icon="lock" iconTint="var(--acc)" title={t('All data stays on this phone')} subtitle={t('No account, no cloud — back it up anytime with Export below.')} /> : null}
-        {user ? <>
-          <Row icon="personCircle" iconTint="var(--grey)" title={user.name} subtitle={t('Signed in with passkey — data syncs to this profile.')} />
-          {user.admin && <Row icon="wrench" iconTint="var(--indigo)" title={t('Admin dashboard')} accessory="chevron" onClick={() => nav('/admin')} />}
-          {user.admin && <Row icon="key" iconTint="var(--purple)" title={t('Dev panel')} subtitle={t('Providers and AI models')} accessory="chevron" onClick={() => nav('/dev')} />}
-          <Row icon="signOut" iconTint="var(--red)" title={t('Sign out')} danger onClick={() => confirmSheet({ title: t('Sign out?'), message: t('Your data is synced to your profile first, then cleared from this device.'), confirmText: t('Sign out'), danger: true, onConfirm: () => { signOut(); nav('/home') } })} />
-          <Row icon="shield" iconTint="var(--red)" title={t('Sign out everywhere')} subtitle={t('Ends this profile’s sessions on all your devices.')} danger onClick={signOutEverywhere} />
-        </> : webauthnOK() ? <>
-          <Row icon="sparkles" iconTint="var(--acc)" title={t('Create passkey profile')} subtitle={t('Keeps your data safe and separate per person.')} accessory="chevron" onClick={registerHere} />
-          <Row icon="person" iconTint="var(--blue)" title={t('Sign in with passkey')} accessory="chevron" onClick={signInHere} />
-        </> : <Row icon="lock" iconTint="var(--grey)" title={t('Passkeys not supported in this browser.')} />}
-      </>}
-    </Section>
-    {!user && !DEMO && <p className="sect-f" style={{ marginTop: -18, marginBottom: 22 }}>{t('Guest mode — data lives only in this browser.')}</p>}
+      </Section> : user ? <Section title={t('Profile')}>
+        <Row icon="personCircle" iconTint="var(--acc)" title={user.name} subtitle={user.email || t('Email not informed')} accessory="chevron" onClick={editProfile} />
+        {user.admin && <Row icon="wrench" iconTint="var(--indigo)" title={t('Admin dashboard')} accessory="chevron" onClick={() => nav('/admin')} />}
+        <Row icon="signOut" iconTint="var(--red)" title={t('Sign out')} danger onClick={() => confirmSheet({ title: t('Sign out?'), message: t('Your data is synced to your profile first, then cleared from this device.'), confirmText: t('Sign out'), danger: true, onConfirm: () => { signOut(); nav('/home') } })} />
+        <Row icon="shield" iconTint="var(--red)" title={t('Sign out everywhere')} subtitle={t('Ends this profile’s sessions on all your devices.')} danger onClick={signOutEverywhere} />
+      </Section> : null}
 
     {user && profileOwnerId === user.id && profile && <Section title={t('Portal')}>
       {profile.roles?.includes('trainer') ? (
@@ -212,7 +198,6 @@ export default function Settings() {
 
     {/* ---------- data: fill it, bring things over, back it up, wipe it ---------- */}
     <Section title={t('Data')}>
-      <Row icon="sparkles" iconTint="var(--acc)" title={t('Load starter plan (PPL)')} accessory="chevron" onClick={loadStarterPlan} />
       <Row icon="shuffle" iconTint="var(--teal)" title={t('Import from another app')}
         subtitle={t('FitNotes, Strong, Hevy — or body weight from Apple Health')}
         accessory="chevron" onClick={() => importRef.current.click()} />
@@ -366,34 +351,134 @@ function PushCard({ S, update, toast }) {
   </>
 }
 
-// The same registration as the sign-in screen's, reached from Settings instead. It asks for
-// the invite code on the same terms: an invite-only instance rejects a registration without
-// one, so a form that cannot collect it is a form that cannot succeed.
-function RegisterInline({ close, setUser, pushState, pullState, toast }) {
-  const nameRef = useRef(null)
-  const [code, setCode] = useState('')
-  const [inviteOnly, setInviteOnly] = useState(false)
-  useEffect(() => { api('/api/config').then(c => setInviteOnly(!!c.invite_only)).catch(() => {}) }, [])
-  const go = async () => {
-    const n = (nameRef.current.value || '').trim()
-    if (!n) { toast(t('Enter a name')); return }
-    if (inviteOnly && !code.trim()) { toast(t('An invite code is required')); return }
-    try {
-      const u = await passkeyRegister(n, code.trim()); setUser(u); close()
-      if (hasData(useStore.getState().S)) { await pushState(); toast(t('Profile created — data moved into it')) }
-      else { await pullState(); toast(t('Welcome, {0}', u.name)) }
-    } catch (e) { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') toast(e.message || t('Registration failed')) }
+const PROFILE_GOALS = [
+  ['weight_loss', 'Lose weight'],
+  ['muscle_gain', 'Gain muscle'],
+  ['both', 'Both'],
+]
+
+const kgFromLocal = (weight, unit) => unit === 'lb' ? weight * 0.45359237 : weight
+const localFromKg = (weight, unit) => unit === 'lb' ? weight / 0.45359237 : weight
+const rounded = value => Math.round(Number(value) * 10) / 10
+const normalizedGoal = goal => goal === 'lose_weight' ? 'weight_loss' : goal === 'gain_muscle' ? 'muscle_gain' : goal || ''
+
+function profileDraft(user, S, profile = {}) {
+  const latestWeight = (S.bodyweight || []).slice(-1)[0]?.w
+  const localProfile = S.aiProfile || {}
+  const measurements = { ...(localProfile.measurements || {}), ...(profile.measurements || {}) }
+  return {
+    fullName: user?.name || '',
+    email: user?.email || '',
+    weightKg: profile.weightKg ?? (latestWeight ? rounded(kgFromLocal(latestWeight, S.unit)) : ''),
+    heightCm: profile.heightCm ?? localProfile.heightCm ?? '',
+    waistCm: measurements.waistCm ?? '',
+    armCm: measurements.armCm ?? '',
+    goal: normalizedGoal(profile.goal ?? localProfile.goal),
+    measurements,
   }
+}
+
+function validOptional(value, min, max) {
+  return value === '' || value == null || (Number.isFinite(Number(value)) && Number(value) >= min && Number(value) <= max)
+}
+
+function ProfileEditor({ close }) {
+  const S = useStore(s => s.S)
+  const user = useStore(s => s.user)
+  const setUser = useStore(s => s.setUser)
+  const update = useStore(s => s.update)
+  const toast = useUI(s => s.toast)
+  const [draft, setDraft] = useState(() => profileDraft(user, S))
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let mounted = true
+    api('/api/profile')
+      .then(response => { if (mounted) setDraft(profileDraft(response.user || user, S, response.profile)) })
+      .catch(() => { if (mounted) setError(t('Could not load your profile. You can still edit the data saved on this device.')) })
+      .finally(() => { if (mounted) setLoading(false) })
+    return () => { mounted = false }
+  }, [])
+
+  const patch = next => setDraft(current => ({ ...current, ...next }))
+  const save = async event => {
+    event.preventDefault()
+    setError('')
+    const fullName = draft.fullName.trim()
+    if (!fullName) { setError(t('Enter your full name.')); return }
+    if (!validOptional(draft.weightKg, 20, 350)) { setError(t('Enter a valid weight.')); return }
+    if (!validOptional(draft.heightCm, 80, 250)) { setError(t('Enter a valid height.')); return }
+    if (!validOptional(draft.waistCm, 10, 250) || !validOptional(draft.armCm, 10, 250)) {
+      setError(t('Enter valid body measurements.')); return
+    }
+
+    const measurements = { ...draft.measurements }
+    if (draft.waistCm === '' || draft.waistCm == null) delete measurements.waistCm
+    else measurements.waistCm = Number(draft.waistCm)
+    if (draft.armCm === '' || draft.armCm == null) delete measurements.armCm
+    else measurements.armCm = Number(draft.armCm)
+    const payload = { fullName, measurements }
+    if (draft.goal) payload.goal = draft.goal
+    if (draft.weightKg !== '' && draft.weightKg != null) payload.weightKg = Number(draft.weightKg)
+    if (draft.heightCm !== '' && draft.heightCm != null) payload.heightCm = Number(draft.heightCm)
+
+    setBusy(true)
+    try {
+      const response = await api('/api/profile', { method: 'PUT', body: JSON.stringify(payload) })
+      const nextUser = response.user || { ...user, name: fullName }
+      const nextProfile = { ...payload, ...(response.profile || {}) }
+      setUser(nextUser)
+      update(state => {
+        state.aiProfile = {
+          ...DEF.aiProfile,
+          ...(state.aiProfile || {}),
+          heightCm: nextProfile.heightCm ?? state.aiProfile?.heightCm ?? '',
+          goal: normalizedGoal(nextProfile.goal),
+          measurements: { ...(state.aiProfile?.measurements || {}), ...(nextProfile.measurements || {}) },
+        }
+        if (nextProfile.weightKg > 0) {
+          const date = todayISO()
+          const weight = rounded(localFromKg(nextProfile.weightKg, state.unit))
+          const existing = state.bodyweight.find(item => item.d === date)
+          if (existing) { existing.w = weight; existing.t = Date.now() }
+          else state.bodyweight.push({ d: date, w: weight, t: Date.now() })
+          state.bodyweight.sort((a, b) => a.d.localeCompare(b.d))
+        }
+      })
+      close()
+      toast(t('Profile updated'))
+    } catch (requestError) {
+      setError(requestError.message || t('Could not save your profile.'))
+    } finally { setBusy(false) }
+  }
+
   return <>
-    <h3>{t('Create your profile')}</h3>
-    <div className="muted small" style={{ marginBottom: 14 }}>{t('Pick a name, then confirm with your device.')}</div>
-    <TextField ref={nameRef} placeholder={t('Your name')} maxLength={40} />
-    {inviteOnly && <>
-      <div style={{ height: 10 }} />
-      <input className="input" placeholder={t('Invite code')} maxLength={40} value={code}
-        onChange={e => setCode(e.target.value.toUpperCase())} style={{ letterSpacing: '.14em', fontWeight: 600, textAlign: 'center' }} />
-      <div className="dim small" style={{ marginTop: 6 }}>{t('This app is invite-only — enter the code you were given.')}</div>
-    </>}
-    <div style={{ height: 12 }} /><Button variant="primary" onClick={go}>{t('Create passkey')}</Button>
+    <h3>{t('Edit profile')}</h3>
+    <p className="sheet-intro">{t('Keep your measurements current so your progress and AI recommendations stay useful.')}</p>
+    {error ? <p className="form-error mutation-error" role="alert">{error}</p> : null}
+    {loading ? <p className="muted small" role="status">{t('Loading profile…')}</p> : null}
+    <form className="personal-form" onSubmit={save} aria-label={t('Edit profile')} aria-busy={loading || busy}>
+      <fieldset className="personal-fieldset" disabled={loading || busy}>
+        <legend>{t('Account')}</legend>
+        <label className="form-field"><span>{t('Full name')}</span><TextField name="profile-full-name" autoComplete="name" maxLength={80} required value={draft.fullName} onChange={event => patch({ fullName: event.target.value })} /></label>
+        <label className="form-field"><span>{t('Email')}</span><TextField name="profile-email" type="email" autoComplete="email" value={draft.email} disabled /><small className="form-hint">{t('Changing your email requires a protected confirmation flow.')}</small></label>
+      </fieldset>
+      <fieldset className="personal-fieldset" disabled={loading || busy}>
+        <legend>{t('Body and goal')}</legend>
+        <div className="personal-form-grid compact">
+          <label className="form-field"><span>{t('Current weight')} (kg)</span><NumberField className="field" name="profile-weight" value={draft.weightKg} nullable onChange={weightKg => patch({ weightKg })} /></label>
+          <label className="form-field"><span>{t('Height (cm)')}</span><NumberField className="field" name="profile-height" value={draft.heightCm} decimal={false} nullable onChange={heightCm => patch({ heightCm })} /></label>
+          <label className="form-field"><span>{t('Waist')} (cm)</span><NumberField className="field" name="profile-waist" value={draft.waistCm} nullable onChange={waistCm => patch({ waistCm })} /></label>
+          <label className="form-field"><span>{t('Arm')} (cm)</span><NumberField className="field" name="profile-arm" value={draft.armCm} nullable onChange={armCm => patch({ armCm })} /></label>
+        </div>
+        <label className="form-field"><span>{t('Main goal')}</span><select className="field" name="profile-goal" value={draft.goal} onChange={event => patch({ goal: event.target.value })}><option value="">{t('Choose later')}</option>{PROFILE_GOALS.map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select></label>
+      </fieldset>
+      <div className="form-actions">
+        <Button type="submit" variant="primary" disabled={loading || busy}>{busy ? t('Saving…') : t('Save changes')}</Button>
+        <Button type="button" variant="ghost" onClick={close} disabled={busy}>{t('Cancel')}</Button>
+      </div>
+    </form>
   </>
 }

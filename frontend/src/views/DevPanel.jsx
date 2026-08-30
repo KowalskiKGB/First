@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-
 import Icon from '../components/Icon.jsx'
 import { Button, SearchField, TextField } from '../components/ui.jsx'
 import { api } from '../lib/api.js'
@@ -20,7 +18,7 @@ export function ModelChoices({ models, selected, onSelect }) {
 export function DevLogin({ busy, values, onChange, onSubmit, error = '' }) {
   return (
     <form className="dev-card dev-login" onSubmit={onSubmit} aria-labelledby="dev-login-title">
-      <div className="dev-card-head"><Icon name="shield" /><div><h2 id="dev-login-title">{t('Dev credential')}</h2><p>{t('The administrator passkey and this additional credential are both required.')}</p></div></div>
+      <div className="dev-card-head"><Icon name="shield" /><div><h2 id="dev-login-title">{t('Dev credential')}</h2><p>{t('Use the dedicated Dev credential. Student and Personal accounts are not required.')}</p></div></div>
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       <label><span>{t('Username')}</span><TextField name="dev-username" value={values.username} onChange={event => onChange({ ...values, username: event.target.value })} autoComplete="username" spellCheck={false} required /></label>
       <label><span>{t('Password')}</span><TextField name="dev-password" value={values.password} onChange={event => onChange({ ...values, password: event.target.value })} type="password" autoComplete="current-password" required /></label>
@@ -141,7 +139,6 @@ export function DevDashboard({ providers, usage, window, onWindow, onLogout, onC
 }
 
 export default function DevPanel() {
-  const navigate = useNavigate()
   const toast = useUI(state => state.toast)
   const [session, setSession] = useState(null)
   const [login, setLogin] = useState({ username: '', password: '' })
@@ -191,7 +188,6 @@ export default function DevPanel() {
   return (
     <main className="personal-page dev-page">
       <header className="personal-header">
-        <button className="iconbtn" onClick={() => navigate('/settings')} aria-label={t('Back')}><Icon name="chevronLeft" /></button>
         <div className="personal-header-copy"><span className="personal-eyebrow">{t('Restricted operations')}</span><h1>{t('Dev panel')}</h1><p>{t('Providers, models and controlled AI usage.')}</p></div>
       </header>
       {error && session?.unlocked ? <p className="personal-notice" role="alert">{error}</p> : null}

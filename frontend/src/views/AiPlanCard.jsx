@@ -26,6 +26,11 @@ function hasMaterializedPlan(state, plan) {
 
 function legacyDraft(state) {
   const profile = aiProfile(state)
+  const localMeasurements = Object.fromEntries([
+    ['waist', profile.measurements?.waistCm], ['chest', profile.measurements?.chestCm],
+    ['hip', profile.measurements?.hipCm], ['arm', profile.measurements?.armCm],
+    ['thigh', profile.measurements?.thighCm], ['calf', profile.measurements?.calfCm],
+  ].filter(([, value]) => Number.isFinite(Number(value))).map(([kind, value]) => [kind, { value: Number(value), unit: 'cm' }]))
   return draftFromAiContext({
     profile: {
       ageBand: profile.ageBand || '', heightCm: profile.heightCm, goal: profile.goal, experience: profile.experience,
@@ -35,11 +40,35 @@ function legacyDraft(state) {
       guardianConsent: profile.guardianConsent === true,
     },
     gym: { name: profile.gymName, genericEquipment: profile.equipment || [], specificMachines: [] },
-    measurements: latestBodyWeight(state) ? { weight: { value: latestBodyWeight(state).w, unit: state.unit || 'kg' } } : {},
+    measurements: {
+      ...localMeasurements,
+      ...(latestBodyWeight(state) ? { weight: { value: latestBodyWeight(state).w, unit: state.unit || 'kg' } } : {}),
+    },
   }, state.unit)
 }
 
-export default function AiPlanCard() {
+function draftWithLocalFallback(context, state) {
+  const canonical = draftFromAiContext(context, state.unit)
+  const local = legacyDraft(state)
+  const hasProfile = context?.profile && Object.keys(context.profile).length > 0
+  const hasGym = context?.gym && Object.keys(context.gym).length > 0
+  const profileFields = ['ageBand', 'heightCm', 'goal', 'experience', 'availableDays', 'minutesPerSession', 'focusAreas', 'favoriteExerciseIds', 'avoidedExerciseIds', 'limitations', 'acuteRisk', 'medicalRestriction', 'consent', 'guardianConsent']
+  const gymFields = ['gymName', 'genericEquipment', 'specificMachines']
+  const measurementFields = { weight: 'weight', waist: 'waistCm', chest: 'chestCm', hip: 'hipCm', arm: 'armCm', thigh: 'thighCm', calf: 'calfCm' }
+  const profileFallback = hasProfile ? {} : Object.fromEntries(profileFields.map(field => [field, local[field]]))
+  const gymFallback = hasGym ? {} : Object.fromEntries(gymFields.map(field => [field, local[field]]))
+  const measurementFallback = Object.fromEntries(Object.entries(measurementFields)
+    .filter(([kind]) => context?.measurements?.[kind]?.value == null)
+    .map(([, field]) => [field, local[field]]))
+  return { ...canonical, ...profileFallback, ...gymFallback, ...measurementFallback }
+}
+
+const openAccount = () => {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return
+  window.dispatchEvent(new CustomEvent('first:account', { detail: { mode: 'login' } }))
+}
+
+export default function AiPlanCard({ openSignal = null }) {
   const state = useStore(store => store.S)
   const user = useStore(store => store.user)
   const ready = useStore(store => store.ready)
@@ -54,10 +83,11 @@ export default function AiPlanCard() {
   const [wizard, setWizard] = useState(false)
   const [busy, setBusy] = useState(false)
   const pollController = useRef(null)
+  const openedSignal = useRef(null)
 
   const applyContext = async (next, isCurrent = () => true) => {
     if (!isCurrent()) return false
-    setContext(next); setJob(next.job || null); setDraft(draftFromAiContext(next, state.unit))
+    setContext(next); setJob(next.job || null); setDraft(draftWithLocalFallback(next, state))
     if (next.plan && !hasMaterializedPlan(useStore.getState().S, next.plan)) {
       replaceState(applyAiPlanToState(useStore.getState().S, next.plan), false)
       await useStore.getState().pushState()
@@ -86,6 +116,14 @@ export default function AiPlanCard() {
     }).catch(() => current && setLoadError('Could not load AI workout data.'))
     return () => { current = false; pollController.current?.abort() }
   }, [ready, user?.id])
+
+  useEffect(() => {
+    const signalIdentity = openSignal && `${openSignal}:${user?.id || 'guest'}`
+    if (!signalIdentity || openedSignal.current === signalIdentity) return
+    openedSignal.current = signalIdentity
+    if (!user) openAccount()
+    else setWizard(true)
+  }, [openSignal, user?.id])
 
   const finishJob = async (initialJob, submission, signal) => {
     try {
@@ -122,7 +160,7 @@ export default function AiPlanCard() {
       const { context: prepared, status: generationStatus } = await persistAiWizardContext({
         draft: completedDraft, rev: current.rev, observedAt: new Date().toISOString().slice(0, 10), unit: state.unit,
       })
-      setContext(prepared); setStatus(generationStatus); setDraft(draftFromAiContext(prepared, state.unit))
+      setContext(prepared); setStatus(generationStatus); setDraft(draftWithLocalFallback(prepared, state))
       if (!generationStatus.configured) throw new Error(t('No tested AI provider is active.'))
       if (prepared.completeness?.blockers?.length) throw new Error(t('Generation is blocked by the current health information.'))
       if (!prepared.completeness?.eligible) throw new Error(t('Review the required information before generating.'))
@@ -167,8 +205,10 @@ export default function AiPlanCard() {
 
   const retryLoad = async () => { try { await load() } catch { setLoadError('Could not load AI workout data.') } }
 
+  const openWizard = () => { if (!user) openAccount(); else setWizard(true) }
+
   return wizard ? <AiWizard draft={draft} onDraft={setDraft} onClose={() => setWizard(false)} onSubmit={generate} busy={busy} unit={state.unit} /> : <AiPlanOverview
-    plan={context?.plan} status={status} job={job} stale={stale} onOpen={() => setWizard(true)}
+    plan={context?.plan} status={status} job={job} stale={stale} onOpen={openWizard} signedIn={!!user}
     error={loadError} onRetry={retryLoad} onRollback={rollback} onCopy={copy} canRollback={!!priorPlan}
   />
 }

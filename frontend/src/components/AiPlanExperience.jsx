@@ -156,7 +156,7 @@ export function AiWizard({ draft, onDraft, onClose, onSubmit, busy, unit = 'kg' 
   )
 }
 
-export function AiPlanOverview({ plan, status, job, stale, error, onRetry, onOpen, onRollback, onCopy, canRollback }) {
+export function AiPlanOverview({ plan, status, job, stale, error, onRetry, onOpen, onRollback, onCopy, canRollback, signedIn = true }) {
   const jobState = job ? jobPresentation(job) : null
   const configured = status?.configured === true
   return (
@@ -170,8 +170,8 @@ export function AiPlanOverview({ plan, status, job, stale, error, onRetry, onOpe
         <div className="ai-plan-result-head"><div><span>{t('Version {0}', plan.version)}</span><strong translate="no">{providerDisplayName(plan.provider)} · {plan.model}</strong></div><time dateTime={plan.appliedAt}>{plan.appliedAt ? new Date(plan.appliedAt).toLocaleDateString(dateLocale()) : ''}</time></div>
         <p><span>{t('Why this plan')}</span>{plan.justification}</p>
         <div className="ai-managed-actions"><Button onClick={onCopy} icon="clipboard">{t('Copy and customize')}</Button>{canRollback ? <Button onClick={onRollback} icon="reset">{t('Undo generation')}</Button> : null}</div>
-      </div> : !error && status != null ? <p className="ai-empty-copy">{configured ? t('Complete four short steps to generate and apply your first AI week.') : t('AI generation will be available after a provider is configured by the administrator.')}</p> : null}
-      {!error && status != null ? <Button variant="primary" icon="sparkles" onClick={onOpen} disabled={!configured || jobState?.active}>{plan ? t('Review data and generate again') : t('Set up my AI workout')}</Button> : null}
+      </div> : !error && status != null ? <p className="ai-empty-copy">{!signedIn ? t('Sign in to generate a workout with AI.') : configured ? t('Complete four short steps to generate and apply your first AI week.') : t('AI generation will be available after a provider is configured by the administrator.')}</p> : null}
+      {!error && status != null ? <Button variant="primary" icon="sparkles" onClick={onOpen} disabled={(signedIn && !configured) || jobState?.active}>{!signedIn ? t('Sign in') : plan ? t('Review data and generate again') : t('Set up my AI workout')}</Button> : null}
     </section>
   )
 }

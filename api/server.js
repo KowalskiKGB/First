@@ -12,7 +12,7 @@ import webpush from 'web-push';
 import { AI_EQUIPMENT } from './ai.js';
 import { createAiJobRoutes, createAiJobService } from './ai-jobs.js';
 import { bridgeAiUsageProperty } from './ai-usage.js';
-import { createDevAuth, isTrustedMutation } from './dev-auth.js';
+import { createDevAuth, hashDevPassword, isTrustedMutation, verifyDevPassword } from './dev-auth.js';
 import { reminderForState } from './lib/workout-schedule.js';
 import {
   activateProvider,
@@ -213,17 +213,21 @@ async function sendPush(userId, payload) {
 // this only fires when the tab was backgrounded/suspended and never got to cancel it itself.
 const restTimers = new Map(); // userId -> Timeout
 const devLoginAttempts = new Map();
+const studentLoginAttempts = new Map();
+const studentRegistrationAttempts = new Map();
 function withinLimit(store, key, limit, windowMs) {
   const now = Date.now();
   const entry = store.get(key);
   if (!entry || entry.resetAt <= now) { store.set(key, { count: 1, resetAt: now + windowMs }); return true; }
   if (entry.count >= limit) return false;
-  entry.count += 1;
+  store.set(key, { ...entry, count: entry.count + 1 });
   return true;
 }
 setInterval(() => {
   const now = Date.now();
-  for (const [key, entry] of devLoginAttempts) if (entry.resetAt <= now) devLoginAttempts.delete(key);
+  for (const attempts of [devLoginAttempts, studentLoginAttempts, studentRegistrationAttempts]) {
+    for (const [key, entry] of attempts) if (entry.resetAt <= now) attempts.delete(key);
+  }
 }, 60000).unref();
 function scheduleRestTimer(userId, sec) {
   const t = restTimers.get(userId);
@@ -330,10 +334,9 @@ function sessionCookie(user) {
 const clearCookie = `gymsid=; Path=/; Max-Age=0; HttpOnly;${SECURE} SameSite=Lax`;
 const devAuth = createDevAuth({ env: process.env, signingSecret: SECRET, origin: ORIGIN });
 function requireDev(req, res) {
-  const user = requireAdmin(req, res);
-  if (!user) return null;
-  if (!devAuth.readSession(req)) { json(res, 401, { error: 'dev panel locked' }); return null; }
-  return user;
+  const username = devAuth.readSession(req);
+  if (!username) { json(res, 401, { error: 'dev panel locked' }); return null; }
+  return username;
 }
 
 /* ---------- challenge store (in-memory, 5 min TTL) ---------- */
@@ -386,6 +389,133 @@ function readBody(req, max = COMMON_BODY) {
   });
 }
 const b64uToBuf = s => Buffer.from(s, 'base64url');
+const STUDENT_REGISTER_FIELDS = new Set([
+  'email', 'fullName', 'password', 'weightKg', 'heightCm', 'measurements', 'goal', 'inviteCode', 'code'
+]);
+const STUDENT_LOGIN_FIELDS = new Set(['email', 'password']);
+const STUDENT_PROFILE_FIELDS = new Set([
+  'email', 'fullName', 'weightKg', 'heightCm', 'measurements', 'goal', 'currentPassword', 'newPassword'
+]);
+const MEASUREMENT_LIMITS = Object.freeze({
+  waistCm: [10, 300], chestCm: [10, 300], hipCm: [10, 300], neckCm: [10, 150],
+  armCm: [10, 150], thighCm: [10, 200], calfCm: [10, 150], bodyFatPct: [1, 75]
+});
+const STUDENT_GOALS = new Set(['weight_loss', 'muscle_gain', 'both']);
+const DUMMY_STUDENT_PASSWORD_HASH = hashDevPassword(crypto.randomBytes(24).toString('base64url'));
+
+function plainObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function onlyFields(body, allowed) {
+  if (!plainObject(body) || Object.keys(body).some(key => !allowed.has(key))) {
+    throw requestError('unsupported fields', 400);
+  }
+}
+
+function normalizeEmail(value) {
+  const email = String(value || '').trim().toLowerCase();
+  if (email.length < 3 || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw requestError('valid email required', 400);
+  }
+  return email;
+}
+
+function normalizeStudentName(value) {
+  const name = String(value || '').trim().replace(/\s+/g, ' ');
+  if (name.length < 2 || name.length > 80) throw requestError('full name must contain 2 to 80 characters', 400);
+  return name;
+}
+
+function normalizeStudentPassword(value, field = 'password') {
+  if (typeof value !== 'string' || value.length < 6 || value.length > 128) {
+    throw requestError(`${field} must contain 6 to 128 characters`, 400);
+  }
+  return value;
+}
+
+function boundedNumber(value, field, minimum, maximum) {
+  const number = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(number) || number < minimum || number > maximum) {
+    throw requestError(`${field} is invalid`, 400);
+  }
+  return Math.round(number * 10) / 10;
+}
+
+function normalizeMeasurements(value) {
+  if (!plainObject(value)) throw requestError('measurements must be an object', 400);
+  if (Object.keys(value).some(kind => !Object.hasOwn(MEASUREMENT_LIMITS, kind))) {
+    throw requestError('unsupported measurement', 400);
+  }
+  return Object.fromEntries(Object.entries(value).map(([kind, amount]) => {
+    const [minimum, maximum] = MEASUREMENT_LIMITS[kind];
+    return [kind, boundedNumber(amount, kind, minimum, maximum)];
+  }));
+}
+
+function profileFields(body) {
+  const profile = {};
+  if (Object.hasOwn(body, 'weightKg')) profile.weightKg = boundedNumber(body.weightKg, 'weightKg', 20, 350);
+  if (Object.hasOwn(body, 'heightCm')) profile.heightCm = boundedNumber(body.heightCm, 'heightCm', 80, 250);
+  if (Object.hasOwn(body, 'measurements')) profile.measurements = normalizeMeasurements(body.measurements);
+  if (Object.hasOwn(body, 'goal')) {
+    const goal = String(body.goal || '').trim();
+    if (!STUDENT_GOALS.has(goal)) throw requestError('goal is invalid', 400);
+    profile.goal = goal;
+  }
+  return profile;
+}
+
+function storedProfile(value) {
+  if (!plainObject(value)) return {};
+  const profile = {};
+  if (Number.isFinite(value.weightKg)) profile.weightKg = value.weightKg;
+  if (Number.isFinite(value.heightCm)) profile.heightCm = value.heightCm;
+  if (plainObject(value.measurements)) profile.measurements = { ...value.measurements };
+  if (STUDENT_GOALS.has(value.goal)) profile.goal = value.goal;
+  return profile;
+}
+
+function publicUser(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    ...(typeof user.email === 'string' && user.email ? { email: user.email } : {}),
+    admin: isAdmin(user)
+  };
+}
+
+function stateWithProfile(currentState, profile) {
+  const current = plainObject(currentState) ? currentState : {};
+  const aiProfile = plainObject(current.aiProfile) ? current.aiProfile : {};
+  const measurements = plainObject(aiProfile.measurements) ? aiProfile.measurements : {};
+  let bodyweight = Array.isArray(current.bodyweight) ? [...current.bodyweight] : [];
+  if (Number.isFinite(profile.weightKg)) {
+    const date = new Date().toISOString().slice(0, 10);
+    const todayIndex = bodyweight.findIndex(entry => entry?.d === date);
+    const entry = { d: date, w: profile.weightKg };
+    bodyweight = todayIndex < 0
+      ? [...bodyweight, entry]
+      : bodyweight.map((existing, index) => index === todayIndex ? entry : existing);
+  }
+  return {
+    ...current,
+    ...(Number.isFinite(profile.weightKg) ? { bodyweight } : {}),
+    aiProfile: {
+      ...aiProfile,
+      ...(Number.isFinite(profile.heightCm) ? { heightCm: profile.heightCm } : {}),
+      ...(profile.goal ? { goal: profile.goal } : {}),
+      ...(profile.measurements ? { measurements: { ...measurements, ...profile.measurements } } : {})
+    },
+    _ts: Date.now()
+  };
+}
+
+function persistProfileState(userId, profile) {
+  if (!Object.keys(profile).length) return;
+  atomicWrite(stateFile(userId), JSON.stringify(stateWithProfile(readState(userId), profile)));
+}
+
 const AI_MASTER_KEY = String(process.env.AI_CONFIG_MASTER_KEY || '').trim();
 const aiConfigurationEnabled = () => /^[0-9a-fA-F]{64}$/.test(AI_MASTER_KEY);
 
@@ -417,10 +547,118 @@ const routes = {
   // Public config the login screen needs before anyone is signed in.
   'GET /api/config': async (req, res) => json(res, 200, { invite_only: INVITE_ONLY }),
 
+  'POST /api/auth/register': async (req, res) => {
+    const body = await readBody(req);
+    onlyFields(body, STUDENT_REGISTER_FIELDS);
+    const email = normalizeEmail(body.email);
+    const name = normalizeStudentName(body.fullName);
+    const password = normalizeStudentPassword(body.password);
+    const registrationKey = req.socket.remoteAddress || 'unknown';
+    if (!withinLimit(studentRegistrationAttempts, registrationKey, 5, 60 * 60000)) {
+      return json(res, 429, { error: 'too many registration attempts' });
+    }
+    if (db.users.some(user => String(user.email || '').toLowerCase() === email)) {
+      return json(res, 409, { error: 'email already registered' });
+    }
+    const inviteCode = String(body.inviteCode ?? body.code ?? '').trim().toUpperCase();
+    const invite = INVITE_ONLY
+      ? db.invites.find(item => item.code === inviteCode && !item.usedBy && !item.revoked)
+      : null;
+    if (INVITE_ONLY && !invite) return json(res, 403, { error: 'a valid invite code is required' });
+
+    const profile = profileFields(body);
+    const created = new Date().toISOString();
+    const user = {
+      id: crypto.randomBytes(12).toString('base64url'),
+      name,
+      email,
+      passwordHash: hashDevPassword(password),
+      created,
+      ...(Object.keys(profile).length ? { profile } : {}),
+      ...(invite ? { invitedBy: invite.code } : {})
+    };
+    persistProfileState(user.id, profile);
+    db = {
+      ...db,
+      users: [...db.users, user],
+      invites: invite
+        ? db.invites.map(item => item.code === invite.code
+          ? { ...item, usedBy: user.id, usedAt: created }
+          : item)
+        : db.invites
+    };
+    saveDb();
+    json(res, 200, { user: publicUser(user), profile }, { 'Set-Cookie': sessionCookie(user) });
+  },
+
+  'POST /api/auth/login': async (req, res) => {
+    const body = await readBody(req);
+    onlyFields(body, STUDENT_LOGIN_FIELDS);
+    const email = normalizeEmail(body.email);
+    const attemptKey = req.socket.remoteAddress || 'unknown';
+    if (!withinLimit(studentLoginAttempts, attemptKey, 8, 15 * 60000)) {
+      return json(res, 429, { error: 'too many login attempts' });
+    }
+    const user = db.users.find(item => String(item.email || '').toLowerCase() === email);
+    const candidateHash = user?.passwordHash || DUMMY_STUDENT_PASSWORD_HASH;
+    const password = typeof body.password === 'string' && body.password.length <= 128 ? body.password : '';
+    const authenticated = verifyDevPassword(password, candidateHash);
+    if (!user || !authenticated) return json(res, 401, { error: 'invalid email or password' });
+    if (user.disabled) return json(res, 403, { error: 'this account has been disabled' });
+    studentLoginAttempts.delete(attemptKey);
+    json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
+  },
+
   'GET /api/me': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
-    json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user) } });
+    json(res, 200, { user: publicUser(user) });
+  },
+
+  'GET /api/profile': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    json(res, 200, { user: publicUser(user), profile: storedProfile(user.profile) });
+  },
+
+  'PUT /api/profile': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    onlyFields(body, STUDENT_PROFILE_FIELDS);
+    const name = Object.hasOwn(body, 'fullName') ? normalizeStudentName(body.fullName) : user.name;
+    const email = Object.hasOwn(body, 'email') ? normalizeEmail(body.email) : user.email;
+    const changesEmail = email !== user.email;
+    const changesPassword = Object.hasOwn(body, 'newPassword');
+    if (email && db.users.some(item => item.id !== user.id && String(item.email || '').toLowerCase() === email)) {
+      return json(res, 409, { error: 'email already registered' });
+    }
+    if ((changesEmail || changesPassword) && user.passwordHash) {
+      const currentPassword = typeof body.currentPassword === 'string' && body.currentPassword.length <= 128
+        ? body.currentPassword
+        : '';
+      if (!verifyDevPassword(currentPassword, user.passwordHash)) {
+        return json(res, 401, { error: 'current password is incorrect' });
+      }
+    }
+    if (changesEmail && !user.passwordHash && !changesPassword) {
+      return json(res, 400, { error: 'set a password when adding an email' });
+    }
+    const passwordHash = changesPassword
+      ? hashDevPassword(normalizeStudentPassword(body.newPassword, 'newPassword'))
+      : user.passwordHash;
+    const profile = { ...storedProfile(user.profile), ...profileFields(body) };
+    const nextUser = {
+      ...user,
+      name,
+      ...(email ? { email } : {}),
+      ...(passwordHash ? { passwordHash } : {}),
+      ...(Object.keys(profile).length ? { profile } : {})
+    };
+    persistProfileState(user.id, profile);
+    db = { ...db, users: db.users.map(item => item.id === user.id ? nextUser : item) };
+    saveDb();
+    json(res, 200, { user: publicUser(nextUser), profile });
   },
 
   'POST /api/register/options': async (req, res) => {
@@ -475,7 +713,7 @@ const routes = {
       transports: body.credential?.response?.transports || []
     });
     saveDb();
-    json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user) } }, { 'Set-Cookie': sessionCookie(user) });
+    json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
   },
 
   'POST /api/login/options': async (req, res) => {
@@ -514,7 +752,7 @@ const routes = {
     const user = db.users.find(u => u.id === cred.userId);
     if (!user) return json(res, 500, { error: 'user missing' });
     if (user.disabled) return json(res, 403, { error: 'this account has been disabled' });
-    json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user) } }, { 'Set-Cookie': sessionCookie(user) });
+    json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
   },
 
   'POST /api/logout': async (req, res) => json(res, 200, { ok: true }, { 'Set-Cookie': clearCookie }),
@@ -565,20 +803,16 @@ const routes = {
   },
 
   'GET /api/dev/session': async (req, res) => {
-    const user = requireAdmin(req, res);
-    if (!user) return;
     const username = devAuth.readSession(req);
     json(res, 200, { unlocked: !!username, ...(username ? { username } : {}) });
   },
 
   'POST /api/dev/login': async (req, res) => {
-    const user = requireAdmin(req, res);
-    if (!user) return;
     if (!requireTrustedWrite(req, res)) return;
     const body = await readBody(req);
     const username = String(body.username || '').trim();
     const password = String(body.password || '');
-    const attemptKey = `${req.socket.remoteAddress || 'unknown'}:${username}`;
+    const attemptKey = req.socket.remoteAddress || 'unknown';
     if (!withinLimit(devLoginAttempts, attemptKey, 8, 15 * 60000)) return json(res, 429, { error: 'too many dev login attempts' });
     if (!devAuth.credential) return json(res, 503, { error: 'dev credentials not configured' });
     if (!devAuth.authenticate(username, password)) {

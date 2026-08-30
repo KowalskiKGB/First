@@ -34,6 +34,7 @@ const findElement = (node, predicate) => {
 
 vi.mock('react-router-dom', () => ({
   Link: ({ children, to, ...props }) => <a href={to} {...props}>{children}</a>,
+  useLocation: () => ({ key: 'test', state: null }),
   useNavigate: () => harness.navigate,
 }))
 vi.mock('../store/useStore.js', () => ({ useStore: selector => selector({ S: harness.state, update: harness.update }) }))
