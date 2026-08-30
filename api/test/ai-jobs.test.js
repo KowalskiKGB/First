@@ -92,6 +92,48 @@ test('recent training reads the completed workout entries used by the app', () =
   assert.deepEqual(summary, { windowDays: 28, frequency: 1, volume: 600, exerciseIds: ['0001', '0002'] });
 });
 
+test('recent training supports legacy exercise rows and ignores malformed or stale history', () => {
+  const summary = summarizeRecentTraining({
+    workouts: [
+      { d: '2026-08-28', vol: -10, ex: [{ exerciseId: 'legacy-ex' }, null] },
+      { d: '2026-08-27', vol: '25', exercises: [{ id: 'legacy-ex' }, { exerciseId: 'legacy-full' }] },
+      { d: '2026-08-26', vol: 10, entries: 'malformed' },
+      { d: '2026-01-01', vol: 999, entries: [{ id: 'stale' }] },
+      { d: 'invalid', vol: 999, entries: [{ id: 'invalid-date' }] }
+    ]
+  }, NOW);
+
+  assert.deepEqual(summary, {
+    windowDays: 28,
+    frequency: 3,
+    volume: 35,
+    exerciseIds: ['legacy-ex', 'legacy-full']
+  });
+  assert.deepEqual(summarizeRecentTraining({ workouts: 'not-an-array' }, NOW), {
+    windowDays: 28, frequency: 0, volume: 0, exerciseIds: []
+  });
+});
+
+test('collaboration writes stop after the bounded revision-conflict retry', () => {
+  let attempts = 0;
+  const conflict = Object.assign(new Error('conflict'), { name: 'RevisionConflictError' });
+  const service = createAiJobService({
+    store: {
+      read: () => ({ rev: 0, aiJobs: [] }),
+      update: () => {
+        attempts += 1;
+        throw conflict;
+      }
+    },
+    now: () => NOW,
+    defer: () => {}
+  });
+
+  assert.throws(() => service.enqueue({ studentId: 'student-a', idempotencyKey: 'retry' }), /conflict/);
+  assert.equal(attempts, 3);
+  assert.throws(() => createAiJobService({ store: { read: () => ({}) } }), /store required/i);
+});
+
 test('enqueue revalidates a competing active job inside a revision-conflict retry', async () => {
   const fx = fixture();
   const competing = {

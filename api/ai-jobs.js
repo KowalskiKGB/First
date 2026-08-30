@@ -39,7 +39,6 @@ function updateStore(store, reducer) {
       if (error?.name !== 'RevisionConflictError' || attempt === 2) throw error;
     }
   }
-  throw new Error('unable to update collaboration store');
 }
 
 function latestMeasurements(collaboration, studentId) {
@@ -60,7 +59,7 @@ function latestMeasurements(collaboration, studentId) {
 }
 
 function workoutExerciseIds(workout) {
-  const rows = workout?.ex || workout?.exercises || [];
+  const rows = workout?.entries || workout?.ex || workout?.exercises || [];
   return (Array.isArray(rows) ? rows : []).map(item => text(item?.id || item?.exerciseId, 100)).filter(Boolean);
 }
 
@@ -178,7 +177,10 @@ export function createAiJobService({
           provider: provider.provider,
           model: provider.selectedModel,
           now: appliedAt,
-          existingIds: (collaboration.aiPlans || []).flatMap(item => [item.id, ...(item.routines || []).map(routine => routine.id)])
+          existingIds: [
+            ...(collaboration.aiPlans || []).flatMap(item => [item.id, ...(item.routines || []).map(routine => routine.id)]),
+            ...(currentState.routines || []).map(routine => routine?.id).filter(Boolean)
+          ]
         });
         const plans = collaboration.aiPlans.map(item => item.studentId === job.studentId && item.source === 'ai' && item.status === 'applied'
           ? { ...item, status: 'superseded', updatedAt: appliedAt }

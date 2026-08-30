@@ -273,6 +273,44 @@ test('validator rejects overlong model text instead of silently truncating it', 
   for (const value of cases) assert.throws(() => validateAiWorkoutPlan(value, options), /texto|limite|inv.lid/i);
 });
 
+test('local validation enforces bounds omitted from provider-specific schemas', () => {
+  const candidates = shortlistExercises({ profile: PROFILE, gym: GYM, recentExerciseIds: [], catalogue: CATALOGUE });
+  const options = { studentId: PROFILE.studentId, version: 1, contextHash: 'e'.repeat(64), profile: PROFILE, gym: GYM, candidates, provider: 'anthropic', model: 'test', now: NOW };
+  const changed = mutate => {
+    const value = validResponse();
+    mutate(value);
+    return value;
+  };
+  const cases = [
+    [changed(value => { value.justification = null; }), /justificativa/i],
+    [changed(value => { value.routines = null; }), /agenda|parcial/i],
+    [changed(value => { value.routines = Array.from({ length: 8 }, () => validResponse().routines[0]); }), /agenda|parcial/i],
+    [changed(value => { value.schedule = null; }), /agenda|parcial/i],
+    [changed(value => { value.schedule = Array.from({ length: 8 }, () => validResponse().schedule[0]); }), /agenda|parcial/i],
+    [changed(value => { value.routines[0].routineRef = ' '; }), /refer.ncia|obrigat.rio/i],
+    [changed(value => { value.routines[0].routineRef = 'a'.repeat(81); }), /refer.ncia|limite/i],
+    [changed(value => { value.routines[0].name = ' '; }), /nome|obrigat.rio/i],
+    [changed(value => { value.routines[0].exercises = null; }), /rotina parcial/i],
+    [changed(value => { value.routines[0].exercises = []; }), /rotina parcial/i],
+    [changed(value => { value.routines[0].exercises = Array.from({ length: 13 }, () => validResponse().routines[0].exercises[0]); }), /rotina parcial/i],
+    [changed(value => { value.routines[0].exercises[0].exerciseId = 'a'.repeat(101); }), /exerciseId|limite/i],
+    [changed(value => { value.routines[0].exercises[0].note = 'a'.repeat(301); }), /nota|limite/i],
+    [changed(value => { value.routines[0].exercises[0].mode = 'unknown'; }), /modo/i],
+    [changed(value => { value.schedule[0].routineRef = 'a'.repeat(81); }), /agenda|limite/i],
+    [changed(value => { value.schedule[0].routineRef = 'missing'; }), /rotina ausente/i],
+    [changed(value => { value.schedule[0].day = -1; }), /dia inv.lido/i],
+    [changed(value => { value.schedule.push({ ...value.schedule[0] }); }), /dia duplicado/i]
+  ];
+
+  for (const [value, expected] of cases) assert.throws(() => validateAiWorkoutPlan(value, options), expected);
+  assert.throws(() => validateAiWorkoutPlan(validResponse(), { ...options, candidates: undefined }), /n.o permitido/i);
+  assert.throws(() => validateAiWorkoutPlan(validResponse(), { ...options, profile: { ...PROFILE, availableDays: undefined } }), /dia indispon.vel/i);
+  assert.doesNotThrow(() => validateAiWorkoutPlan(validResponse(), {
+    ...options,
+    profile: { ...PROFILE, ageBand: '14to17' }
+  }));
+});
+
 test('validator rejects load percentages, max tests and training to failure without blocking safety warnings', () => {
   const candidates = shortlistExercises({ profile: PROFILE, gym: GYM, recentExerciseIds: [], catalogue: CATALOGUE });
   const options = { studentId: PROFILE.studentId, version: 1, contextHash: 'f'.repeat(64), profile: PROFILE, gym: GYM, candidates, provider: 'openai', model: 'test', now: NOW };

@@ -903,7 +903,7 @@ export function buildWorkspace({ collaboration, trainerId, now, readState }) {
       } : {}),
       ...(aiPlanRead ? {
         aiPlan: projectAiPlan(latestByVersion(collaboration.aiPlans.filter(item =>
-          item.studentId === client.studentUserId && item.status === 'applied'
+          item.studentId === client.studentUserId && item.status === 'applied' && ['ai', 'generated'].includes(item.source)
         )))
       } : {}),
       latestMeasurement,

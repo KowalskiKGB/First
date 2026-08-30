@@ -115,24 +115,51 @@ test('provider requests remove only unsupported schema constraints without mutat
   assert.deepEqual(AI_WORKOUT_SCHEMA, before);
 });
 
-test('activation is rejected until the same slot passes a real structured output request', async () => {
-  const { records } = upsertProvider([], {
-    provider: 'openai', selectedModel: 'gpt-test', apiKey: 'complete-secret-key'
-  }, masterKey, '2026-08-29T12:00:00.000Z');
-  assert.throws(() => activateProvider(records, 'openai', '2026-08-29T12:01:00.000Z'), /successful test/);
-  let calls = 0;
-  let requestedSchema;
-  const fetchImpl = async (_url, options) => {
-    calls += 1;
-    requestedSchema = JSON.parse(options.body).text.format.schema;
-    return new Response(JSON.stringify({ output_text: JSON.stringify(providerTestPlan()), usage: { input_tokens: 4, output_tokens: 2, total_tokens: 6 } }), { status: 200 });
-  };
-  const tested = await testProvider(records, 'openai', { masterKey, fetchImpl, now: () => '2026-08-29T12:02:00.000Z' });
-  assert.equal(calls, 1);
-  assert.deepEqual(requestedSchema, AI_WORKOUT_SCHEMA);
-  assert.equal(tested.provider.testStatus, 'success');
-  const active = activateProvider(tested.records, 'openai', '2026-08-29T12:03:00.000Z');
-  assert.equal(activeProvider(active.records).provider, 'openai');
+test('each provider must pass its adapted real workout schema before activation', async () => {
+  const cases = [
+    {
+      provider: 'openai', model: 'gpt-test', key: 'openai-secret',
+      schema: body => body.text.format.schema,
+      response: { output_text: JSON.stringify(providerTestPlan()), usage: { input_tokens: 4, output_tokens: 2, total_tokens: 6 } }
+    },
+    {
+      provider: 'gemini', model: 'gemini-test', key: 'gemini-secret',
+      schema: body => body.generationConfig.responseJsonSchema,
+      response: {
+        candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(providerTestPlan()) }] } }],
+        usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 2, totalTokenCount: 6 }
+      }
+    },
+    {
+      provider: 'anthropic', model: 'claude-test', key: 'anthropic-secret',
+      schema: body => body.output_config.format.schema,
+      response: {
+        stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify(providerTestPlan()) }],
+        usage: { input_tokens: 4, output_tokens: 2 }
+      }
+    }
+  ];
+
+  for (const item of cases) {
+    const { records } = upsertProvider([], {
+      provider: item.provider, selectedModel: item.model, apiKey: item.key
+    }, masterKey, '2026-08-29T12:00:00.000Z');
+    assert.throws(() => activateProvider(records, item.provider, '2026-08-29T12:01:00.000Z'), /successful test/);
+    let requestedSchema;
+    const tested = await testProvider(records, item.provider, {
+      masterKey,
+      now: () => '2026-08-29T12:02:00.000Z',
+      fetchImpl: async (_url, options) => {
+        requestedSchema = item.schema(JSON.parse(options.body));
+        return new Response(JSON.stringify(item.response), { status: 200 });
+      }
+    });
+    assert.deepEqual(requestedSchema.required, AI_WORKOUT_SCHEMA.required);
+    assert.equal(requestedSchema.properties.routines.type, 'array');
+    assert.equal(tested.provider.testStatus, 'success');
+    const active = activateProvider(tested.records, item.provider, '2026-08-29T12:03:00.000Z');
+    assert.equal(activeProvider(active.records).provider, item.provider);
+  }
 });
 
 test('failed structured slot test is persisted as failed and cannot become active', async () => {

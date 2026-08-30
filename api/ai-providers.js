@@ -1,12 +1,27 @@
 import crypto from 'node:crypto';
+import { AI_WORKOUT_SCHEMA, validateAiWorkoutPlan } from './ai.js';
 
 export const AI_PROVIDER_NAMES = Object.freeze(['openai', 'gemini', 'anthropic']);
 const MASTER_KEY_PATTERN = /^[0-9a-fA-F]{64}$/;
-const TEST_SCHEMA = Object.freeze({
-  type: 'object', additionalProperties: false, required: ['ok'], properties: { ok: { type: 'boolean' } }
-});
 const INVALID_STRUCTURED_OUTPUT = 'AI provider returned invalid structured output';
 const PROVIDER_TEST_FAILED = 'AI provider test failed';
+const PROVIDER_TEST_VALUE = Object.freeze({
+  justification: 'Plano diagnostico seguro.',
+  routines: [{
+    routineRef: 'diagnostic',
+    name: 'Treino diagnostico',
+    exercises: [{
+      exerciseId: 'diagnostic', mode: 'reps', sets: 1, repMin: 8, repMax: 8,
+      seconds: null, restSeconds: 60, progression: 'Mantenha a tecnica estavel.', note: ''
+    }]
+  }],
+  schedule: [{ day: 0, routineRef: 'diagnostic' }]
+});
+const PROVIDER_TEST_PROMPT = `Retorne exatamente este AIWorkoutPlanV1 de diagnostico: ${JSON.stringify(PROVIDER_TEST_VALUE)}`;
+const UNSUPPORTED_SCHEMA_KEYS = Object.freeze({
+  gemini: new Set(['minLength', 'maxLength']),
+  anthropic: new Set(['minimum', 'maximum', 'minLength', 'maxLength'])
+});
 
 function masterKey(value) {
   if (!MASTER_KEY_PATTERN.test(String(value || ''))) {
@@ -102,8 +117,22 @@ function systemPrompt() {
   return 'Responda somente JSON valido que cumpra exatamente o schema solicitado.';
 }
 
+function schemaForProvider(provider, schema) {
+  const unsupported = UNSUPPORTED_SCHEMA_KEYS[provider];
+  if (!unsupported) return schema;
+  const copy = value => {
+    if (Array.isArray(value)) return value.map(copy);
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(Object.entries(value)
+      .filter(([key]) => !unsupported.has(key))
+      .map(([key, item]) => [key, copy(item)]));
+  };
+  return copy(schema);
+}
+
 export function buildProviderRequest(providerValue, { apiKey, model, prompt, schema }) {
   const provider = requireProvider(providerValue);
+  const outputSchema = schemaForProvider(provider, schema);
   if (provider === 'openai') return {
     url: 'https://api.openai.com/v1/responses',
     options: {
@@ -112,7 +141,7 @@ export function buildProviderRequest(providerValue, { apiKey, model, prompt, sch
       body: JSON.stringify({
         model, store: false,
         input: [{ role: 'system', content: systemPrompt() }, { role: 'user', content: prompt }],
-        text: { format: { type: 'json_schema', name: 'structured_response', strict: true, schema } },
+        text: { format: { type: 'json_schema', name: 'structured_response', strict: true, schema: outputSchema } },
         max_output_tokens: 4000
       })
     }
@@ -125,7 +154,7 @@ export function buildProviderRequest(providerValue, { apiKey, model, prompt, sch
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: systemPrompt() }] },
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: 'application/json', responseJsonSchema: schema }
+        generationConfig: { responseMimeType: 'application/json', responseJsonSchema: outputSchema }
       })
     }
   };
@@ -137,7 +166,7 @@ export function buildProviderRequest(providerValue, { apiKey, model, prompt, sch
       body: JSON.stringify({
         model, max_tokens: 4000, system: systemPrompt(),
         messages: [{ role: 'user', content: prompt }],
-        output_config: { format: { type: 'json_schema', schema } }
+        output_config: { format: { type: 'json_schema', schema: outputSchema } }
       })
     }
   };
@@ -193,9 +222,26 @@ function assertCompleteResponse(provider, data) {
       throw new Error('AI provider refused the structured request');
     }
   }
-  if (provider === 'anthropic' && data.stop_reason === 'max_tokens') {
-    throw new Error('AI provider response was truncated');
+  if (provider === 'anthropic') {
+    if (data.stop_reason === 'max_tokens') throw new Error('AI provider response was truncated');
+    const refused = data.stop_reason === 'refusal' || data.stop_details?.type === 'refusal' ||
+      (data.content || []).some(part => part.type === 'refusal' || part.refusal);
+    if (refused) throw new Error('AI provider refused the structured request');
   }
+}
+
+function assertProviderTestOutput(value, slot, testedAt) {
+  validateAiWorkoutPlan(value, {
+    studentId: 'provider-diagnostic',
+    version: 1,
+    contextHash: '0'.repeat(64),
+    profile: { ageBand: 'adult', availableDays: [0] },
+    candidates: [{ id: 'diagnostic' }],
+    provider: slot.provider,
+    model: slot.selectedModel,
+    now: testedAt,
+    existingIds: []
+  });
 }
 
 export async function runStructuredOutput(slot, { masterKey: masterKeyHex, fetchImpl = fetch, prompt, schema, timeoutMs }) {
@@ -218,16 +264,19 @@ export async function testProvider(records, providerValue, options) {
   const slot = records.find(record => record.provider === provider);
   if (!slot?.apiKeyEnc) throw new Error('provider is not configured');
   const testedAt = options.now?.() || new Date().toISOString();
+  let usage;
   try {
-    const result = await runStructuredOutput(slot, { ...options, prompt: 'Retorne {"ok":true}.', schema: TEST_SCHEMA });
-    if (result.value?.ok !== true) throw new Error('structured output validation failed');
+    const result = await runStructuredOutput(slot, { ...options, prompt: PROVIDER_TEST_PROMPT, schema: AI_WORKOUT_SCHEMA });
+    usage = result.usage;
+    assertProviderTestOutput(result.value, slot, testedAt);
     const next = { ...slot, testedAt, testStatus: 'success', active: false };
     const nextRecords = records.map(record => record.provider === provider ? next : record);
-    return { records: nextRecords, provider: publicSlot(next, []), usage: result.usage };
-  } catch {
+    return { records: nextRecords, provider: publicSlot(next, []), usage };
+  } catch (error) {
+    usage ||= error?.usage;
     const next = { ...slot, testedAt, testStatus: 'failed', active: false };
     const nextRecords = records.map(record => record.provider === provider ? next : record);
-    return { records: nextRecords, provider: publicSlot(next, []), error: PROVIDER_TEST_FAILED };
+    return { records: nextRecords, provider: publicSlot(next, []), error: PROVIDER_TEST_FAILED, ...(usage ? { usage } : {}) };
   }
 }
 
