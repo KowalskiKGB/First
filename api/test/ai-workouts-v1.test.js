@@ -246,6 +246,50 @@ test('validator rejects duplicates, forbidden ids/equipment, invalid schedule/ra
   assert.doesNotThrow(() => validateAiWorkoutPlan(relativeEffort, options));
 });
 
+test('validator rejects load percentages, max tests and training to failure without blocking safety warnings', () => {
+  const candidates = shortlistExercises({ profile: PROFILE, gym: GYM, recentExerciseIds: [], catalogue: CATALOGUE });
+  const options = { studentId: PROFILE.studentId, version: 1, contextHash: 'f'.repeat(64), profile: PROFILE, gym: GYM, candidates, provider: 'openai', model: 'test', now: NOW };
+  const forbidden = [
+    { progression: 'Aumente para 85% de 1RM.' },
+    { note: 'Use 70 por cento da carga máxima.' },
+    { progression: 'Work at 80% of your max load.' },
+    { note: 'Faça um teste máximo mensal.' },
+    { progression: 'Encontre seu 5RM antes de progredir.' },
+    { note: 'Perform a one-rep max test.' },
+    { progression: 'Leve a última série até a falha.' },
+    { note: 'Train each set to failure.' }
+  ];
+
+  for (const patch of forbidden) {
+    const response = validResponse();
+    Object.assign(response.routines[0].exercises[0], patch);
+    assert.throws(() => validateAiWorkoutPlan(response, options), /intensidade não permitida/i);
+  }
+
+  for (const patch of [
+    { progression: 'Não treine até a falha; pare com 2 RIR.' },
+    { note: 'Evite testes máximos e 1RM.' },
+    { progression: 'Do not train to failure; stop at 2 RIR.' },
+    { note: 'Never perform a one-rep max test.' },
+    { progression: 'Mantenha pelo menos 85% das repetições tecnicamente limpas.' }
+  ]) {
+    const response = validResponse();
+    Object.assign(response.routines[0].exercises[0], patch);
+    assert.doesNotThrow(() => validateAiWorkoutPlan(response, options));
+  }
+});
+
+test('validator rejects failure prescriptions for children under 14', () => {
+  const profile = { ...PROFILE, ageBand: 'under14', guardianConsent: true };
+  const candidates = shortlistExercises({ profile, gym: GYM, recentExerciseIds: [], catalogue: CATALOGUE });
+  const response = validResponse();
+  response.routines[0].exercises[0].note = 'Faça todas as séries até a falha muscular.';
+  assert.throws(() => validateAiWorkoutPlan(response, {
+    studentId: profile.studentId, version: 1, contextHash: '0'.repeat(64), profile, gym: GYM,
+    candidates, provider: 'anthropic', model: 'test', now: NOW
+  }), /intensidade não permitida/i);
+});
+
 test('under14 conservative ranges reject adult-sized prescriptions', () => {
   const profile = { ...PROFILE, ageBand: 'under14', guardianConsent: true };
   const candidates = shortlistExercises({ profile, gym: GYM, recentExerciseIds: [], catalogue: CATALOGUE });
