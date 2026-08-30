@@ -19,7 +19,7 @@ const fieldTag = (markup, name) => markup.match(new RegExp(`<(?:input|select|tex
 
 describe('AccountAccess', () => {
   it('offers a focused email/password login and a registration switch', () => {
-    const markup = renderToStaticMarkup(<AccountAccess mode="login" onModeChange={() => {}} onSubmit={() => {}} />)
+    const markup = renderToStaticMarkup(<AccountAccess mode="login" onModeChange={() => {}} onSubmit={() => {}} onClose={() => {}} />)
 
     expect(fieldNames(markup)).toEqual(['email', 'password'])
     expect(fieldTag(markup, 'email')).toContain('type="email"')
@@ -27,6 +27,7 @@ describe('AccountAccess', () => {
     expect(fieldTag(markup, 'email')).not.toContain('spellCheck="true"')
     expect(fieldTag(markup, 'password')).toContain('type="password"')
     expect(fieldTag(markup, 'password')).toContain('autoComplete="current-password"')
+    expect(markup).toContain('aria-label="Close"')
     expect(markup).toContain('Create account')
   })
 

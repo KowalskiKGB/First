@@ -853,6 +853,7 @@ export default {
   'Generation is blocked while an acute risk or medical restriction is active.': 'A geração fica bloqueada enquanto houver risco agudo ou restrição médica ativa.',
   'Step {0} of 4': 'Etapa {0} de 4',
   'Close wizard': 'Fechar assistente',
+  'Close': 'Fechar',
   'Generation steps': 'Etapas da geração',
   'Review the highlighted fields.': 'Revise os campos destacados.',
   'Continue': 'Continuar',

@@ -1,6 +1,7 @@
 import { useId, useState } from 'react'
 
 import { t } from '../lib/i18n.js'
+import Icon from './Icon.jsx'
 import { Button, NumberField, TextField } from './ui.jsx'
 
 const EMPTY_VALUES = {
@@ -36,6 +37,7 @@ export function AccountAccess({
   error = '',
   initialValues = {},
   inviteOnly = false,
+  onClose,
 }) {
   const prefix = useId()
   const [values, setValues] = useState(() => ({ ...EMPTY_VALUES, ...initialValues }))
@@ -57,6 +59,7 @@ export function AccountAccess({
   return (
     <section className="account-access" aria-labelledby={`${prefix}-title`}>
       <div className="account-access-heading">
+        {onClose ? <button type="button" className="iconbtn account-access-close" onClick={onClose} aria-label={t('Close')}><Icon name="xmark" /></button> : null}
         <span className="account-access-eyebrow">{t(register ? 'New training profile' : 'Your training profile')}</span>
         <h2 id={`${prefix}-title`}>{t(register ? 'Create account' : 'Sign in')}</h2>
         <p>{t(register

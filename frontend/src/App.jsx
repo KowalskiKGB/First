@@ -124,7 +124,7 @@ function AccountSheet({ initialMode, close }) {
     }
   }
 
-  return <AccountAccess mode={mode} onModeChange={setMode} onSubmit={submit} busy={busy} error={error} inviteOnly={inviteOnly} />
+  return <AccountAccess mode={mode} onModeChange={setMode} onSubmit={submit} busy={busy} error={error} inviteOnly={inviteOnly} onClose={close} />
 }
 
 function AccountAccessListener() {
