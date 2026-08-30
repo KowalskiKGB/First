@@ -109,7 +109,7 @@ test('the deployment template is complete and builds only this repository', () =
   assert.match(nginx, /real_ip_header X-Real-IP;/)
   assert.match(nginx, /zone=auth_limit:10m rate=60r\/m;/)
   assert.match(nginx, /auth\/\(register\|login\)/, 'email/password auth endpoints must use the nginx auth rate limit')
-  assert.match(nginx, /auth\/\(register\|login\)\$/, 'exact email/password endpoints must match without a trailing slash')
+  assert.match(nginx, /auth\/\(register\|login\)\(\/\|\$\)/, 'exact email/password endpoints must match without a trailing slash')
   assert.match(
     nginx,
     /location = \/_internal\/media-auth \{[\s\S]*internal;[\s\S]*proxy_pass http:\/\/api:3000\/api\/internal\/media-auth;[\s\S]*proxy_set_header Cookie \$http_cookie;/,
