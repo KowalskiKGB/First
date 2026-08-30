@@ -12,7 +12,17 @@ const DEFAULT_DRAFT = Object.freeze({
   limitations: '', acuteRisk: false, medicalRestriction: false, consent: false, guardianConsent: false,
 })
 
-export function draftFromAiContext(context = {}) {
+function weightInUnit(measurement, targetUnit) {
+  const value = measurement?.value
+  if (value == null) return ''
+  const source = measurement?.unit === 'lb' ? 'lb' : 'kg'
+  const target = targetUnit === 'lb' ? 'lb' : 'kg'
+  if (source === target || !Number.isFinite(Number(value))) return value
+  const converted = Number(value) * (target === 'lb' ? 2.2046226218 : 0.45359237)
+  return Math.round(converted * 10) / 10
+}
+
+export function draftFromAiContext(context = {}, targetUnit = 'kg') {
   const profile = context.profile || {}
   const gym = context.gym || {}
   const measurements = context.measurements || {}
@@ -21,6 +31,7 @@ export function draftFromAiContext(context = {}) {
     ...DEFAULT_DRAFT,
     ...profile,
     ...values,
+    weight: weightInUnit(measurements.weight, targetUnit),
     gymName: gym.name || '',
     genericEquipment: [...(gym.genericEquipment || [])],
     specificMachines: (gym.specificMachines || []).map(machine => ({ ...machine, exerciseIds: [...(machine.exerciseIds || [])] })),

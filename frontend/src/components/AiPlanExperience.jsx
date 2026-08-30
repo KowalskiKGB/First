@@ -71,7 +71,7 @@ export function MachineEditor({ machines, onChange, errors = {} }) {
   )
 }
 
-function StepOne({ draft, onDraft, errors }) {
+function StepOne({ draft, onDraft, errors, unit = 'kg' }) {
   const measures = [
     ['waistCm', 'Waist'], ['chestCm', 'Chest'], ['hipCm', 'Hips'], ['armCm', 'Arms'], ['thighCm', 'Thighs'], ['calfCm', 'Calves'],
   ]
@@ -79,7 +79,7 @@ function StepOne({ draft, onDraft, errors }) {
     <fieldset className="ai-choice-group" aria-describedby={errors.ageBand ? 'ai-error-ageBand' : undefined}><legend>{t('Age range')}</legend><Segmented value={draft.ageBand} onChange={ageBand => onDraft({ ageBand })} options={[{ value: 'under14', label: t('Under 14') }, { value: '14to17', label: t('14 to 17') }, { value: 'adult', label: t('18 or older') }]} /><FieldError errors={errors} name="ageBand" /></fieldset>
     <div className="ai-form-grid">
       <label><span>{t('Height (cm)')}</span><NumberField name="ai-height" autoComplete="off" value={draft.heightCm} decimal={false} onChange={heightCm => onDraft({ heightCm })} aria-invalid={!!errors.heightCm} aria-describedby={errors.heightCm ? 'ai-error-heightCm' : undefined} /><FieldError errors={errors} name="heightCm" /></label>
-      <label><span>{t('Current weight')}</span><NumberField name="ai-weight" autoComplete="off" value={draft.weight} onChange={weight => onDraft({ weight })} aria-invalid={!!errors.weight} aria-describedby={errors.weight ? 'ai-error-weight' : undefined} /><FieldError errors={errors} name="weight" /></label>
+      <label><span>{t('Current weight')} ({unit === 'lb' ? 'lb' : 'kg'})</span><NumberField name="ai-weight" autoComplete="off" value={draft.weight} onChange={weight => onDraft({ weight })} aria-invalid={!!errors.weight} aria-describedby={errors.weight ? 'ai-error-weight' : undefined} /><FieldError errors={errors} name="weight" /></label>
       {measures.map(([field, label]) => <label key={field}><span>{t(label)} (cm)</span><NumberField name={`ai-${field}`} autoComplete="off" value={draft[field]} nullable onChange={value => onDraft({ [field]: value || '' })} aria-invalid={!!errors[field]} aria-describedby={errors[field] ? `ai-error-${field}` : undefined} /><FieldError errors={errors} name={field} /></label>)}
     </div>
   </div>
@@ -149,7 +149,7 @@ export function AiWizard({ draft, onDraft, onClose, onSubmit, busy, unit = 'kg' 
       <div className="ai-wizard-top"><div><span className="personal-eyebrow">{t('Step {0} of 4', step)}</span><h2 id="ai-wizard-title" tabIndex="-1" ref={heading}>{t(STEPS[step - 1][0])}</h2><p>{t(STEPS[step - 1][1])}</p></div><button type="button" className="iconbtn" onClick={onClose} aria-label={t('Close wizard')}><Icon name="xmark" /></button></div>
       <ol className="ai-step-rail" aria-label={t('Generation steps')}>{STEPS.map(([label], index) => <li key={label} aria-current={step === index + 1 ? 'step' : undefined}><span>{index + 1}</span><small>{t(label)}</small></li>)}</ol>
       {Object.keys(errors).length ? <div className="form-error-summary" role="alert" aria-live="assertive"><strong>{t('Review the highlighted fields.')}</strong><span>{Object.values(errors).map(t).join(' ')}</span></div> : null}
-      <form ref={form} onSubmit={submit} noValidate><Step draft={draft} onDraft={patch} errors={errors} />
+      <form ref={form} onSubmit={submit} noValidate><Step draft={draft} onDraft={patch} errors={errors} unit={unit} />
         <div className="ai-wizard-actions">{step > 1 ? <Button type="button" onClick={() => { setErrors({}); setStep(value => value - 1) }}>{t('Back')}</Button> : <span />}{step < 4 ? <Button type="button" variant="primary" onClick={next}>{t('Continue')}</Button> : <Button variant="primary" icon="sparkles" disabled={busy || draft.acuteRisk || draft.medicalRestriction}>{busy ? t('Generating…') : t('Generate and apply')}</Button>}</div>
       </form>
     </section>

@@ -36,7 +36,7 @@ function legacyDraft(state) {
     },
     gym: { name: profile.gymName, genericEquipment: profile.equipment || [], specificMachines: [] },
     measurements: latestBodyWeight(state) ? { weight: { value: latestBodyWeight(state).w, unit: state.unit || 'kg' } } : {},
-  })
+  }, state.unit)
 }
 
 export default function AiPlanCard() {
@@ -57,7 +57,7 @@ export default function AiPlanCard() {
 
   const applyContext = async (next, isCurrent = () => true) => {
     if (!isCurrent()) return false
-    setContext(next); setJob(next.job || null); setDraft(draftFromAiContext(next))
+    setContext(next); setJob(next.job || null); setDraft(draftFromAiContext(next, state.unit))
     if (next.plan && !hasMaterializedPlan(useStore.getState().S, next.plan)) {
       replaceState(applyAiPlanToState(useStore.getState().S, next.plan), false)
       await useStore.getState().pushState()
@@ -122,7 +122,7 @@ export default function AiPlanCard() {
       const { context: prepared, status: generationStatus } = await persistAiWizardContext({
         draft: completedDraft, rev: current.rev, observedAt: new Date().toISOString().slice(0, 10), unit: state.unit,
       })
-      setContext(prepared); setStatus(generationStatus); setDraft(draftFromAiContext(prepared))
+      setContext(prepared); setStatus(generationStatus); setDraft(draftFromAiContext(prepared, state.unit))
       if (!generationStatus.configured) throw new Error(t('No tested AI provider is active.'))
       if (prepared.completeness?.blockers?.length) throw new Error(t('Generation is blocked by the current health information.'))
       if (!prepared.completeness?.eligible) throw new Error(t('Review the required information before generating.'))
