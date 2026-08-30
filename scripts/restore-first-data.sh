@@ -128,6 +128,20 @@ stop_api_writer() {
 
 rollback_volume() {
   docker compose run --rm --no-deps --entrypoint sh api -ceu '
+    validate_layout() {
+      layout_root=$1
+      test -f "$layout_root/secret"
+      test ! -L "$layout_root/secret"
+      store_count=0
+      for store in "$layout_root/db.json" "$layout_root/collaboration.json"; do
+        if [ -e "$store" ] || [ -L "$store" ]; then
+          test -f "$store"
+          test ! -L "$store"
+          store_count=$((store_count + 1))
+        fi
+      done
+      test "$store_count" -ge 1
+    }
     recovery="/data/$1"
     failed="/data/$2"
     stage="/data/$3"
@@ -145,8 +159,7 @@ rollback_volume() {
       [ -e "$entry" ] || [ -L "$entry" ] || continue
       cp -a -- "$entry" /data/
     done
-    test -f /data/db.json
-    test -f /data/secret
+    validate_layout /data
   ' -- "$recovery_name" "$failed_name" "$stage_name" "$retired_name"
 }
 
@@ -206,8 +219,30 @@ if grep -Eq '^(\./)?\.first-(restore-stage|recovery|retired|failed)-' "$manifest
   echo "Archive contains release working data instead of only application data" >&2
   exit 65
 fi
-grep -Eq '^(\./)?db\.json/?$' "$manifest"
-grep -Eq '^(\./)?secret/?$' "$manifest"
+if ! awk '
+  function application_path(value) {
+    sub(/^\.\//, "", value)
+    sub(/\/$/, "", value)
+    return value
+  }
+  {
+    type = substr($0, 1, 1)
+    name = application_path($NF)
+    if (name == "db.json" || name == "collaboration.json" || name == "secret") {
+      if (type != "-") required_wrong_type = 1
+      else if (name == "db.json") db += 1
+      else if (name == "collaboration.json") collaboration += 1
+      else secret += 1
+    }
+  }
+  END {
+    valid_store = (db == 1 || collaboration == 1) && db <= 1 && collaboration <= 1
+    exit !(!required_wrong_type && secret == 1 && valid_store)
+  }
+' "$entry_types"; then
+  echo "Archive must contain one regular secret and a regular db.json or collaboration.json store" >&2
+  exit 65
+fi
 
 if ! docker compose ps --status running --services | grep -Fxq api; then
   echo "API must be running before restore so health and rollback can be verified" >&2
@@ -222,6 +257,20 @@ fi
 
 # Extract completely into staging while the current /data remains untouched.
 docker compose run --rm --no-deps --entrypoint sh api -ceu '
+  validate_layout() {
+    layout_root=$1
+    test -f "$layout_root/secret"
+    test ! -L "$layout_root/secret"
+    store_count=0
+    for store in "$layout_root/db.json" "$layout_root/collaboration.json"; do
+      if [ -e "$store" ] || [ -L "$store" ]; then
+        test -f "$store"
+        test ! -L "$store"
+        store_count=$((store_count + 1))
+      fi
+    done
+    test "$store_count" -ge 1
+  }
   case "$1" in .first-restore-stage-*) ;; *) exit 64 ;; esac
   stage="/data/$1"
   test ! -e "$stage"
@@ -231,14 +280,25 @@ docker compose run --rm --no-deps --entrypoint sh api -ceu '
   test -z "$invalid_entries"
   hardlinked_files=$(find "$stage" -type f -links +1 -exec printf x \;) || exit 65
   test -z "$hardlinked_files"
-  test -f "$stage/db.json"
-  test ! -L "$stage/db.json"
-  test -f "$stage/secret"
-  test ! -L "$stage/secret"
+  validate_layout "$stage"
 ' -- "$stage_name" < "$snapshot_fd_path"
 
 # Retain a complete recovery copy before the first live path is moved.
 docker compose run --rm --no-deps --entrypoint sh api -ceu '
+  validate_layout() {
+    layout_root=$1
+    test -f "$layout_root/secret"
+    test ! -L "$layout_root/secret"
+    store_count=0
+    for store in "$layout_root/db.json" "$layout_root/collaboration.json"; do
+      if [ -e "$store" ] || [ -L "$store" ]; then
+        test -f "$store"
+        test ! -L "$store"
+        store_count=$((store_count + 1))
+      fi
+    done
+    test "$store_count" -ge 1
+  }
   stage="/data/$1"
   recovery="/data/$2"
   test -d "$stage"
@@ -250,16 +310,27 @@ docker compose run --rm --no-deps --entrypoint sh api -ceu '
     case "$base" in .first-restore-stage-*|.first-recovery-*|.first-retired-*|.first-failed-*) continue ;; esac
     cp -a -- "$entry" "$recovery/"
   done
-  test -f "$recovery/db.json"
-  test ! -L "$recovery/db.json"
-  test -f "$recovery/secret"
-  test ! -L "$recovery/secret"
+  validate_layout "$recovery"
 ' -- "$stage_name" "$recovery_name" "$retired_name" "$failed_name"
 recovery_ready=1
 
 # Only now swap the validated staging data into /data. Any later error triggers rollback.
 swap_started=1
 docker compose run --rm --no-deps --entrypoint sh api -ceu '
+  validate_layout() {
+    layout_root=$1
+    test -f "$layout_root/secret"
+    test ! -L "$layout_root/secret"
+    store_count=0
+    for store in "$layout_root/db.json" "$layout_root/collaboration.json"; do
+      if [ -e "$store" ] || [ -L "$store" ]; then
+        test -f "$store"
+        test ! -L "$store"
+        store_count=$((store_count + 1))
+      fi
+    done
+    test "$store_count" -ge 1
+  }
   stage="/data/$1"
   recovery="/data/$2"
   retired="/data/$3"
@@ -278,10 +349,7 @@ docker compose run --rm --no-deps --entrypoint sh api -ceu '
     mv -- "$entry" /data/
   done
   rmdir "$stage"
-  test -f /data/db.json
-  test ! -L /data/db.json
-  test -f /data/secret
-  test ! -L /data/secret
+  validate_layout /data
 ' -- "$stage_name" "$recovery_name" "$retired_name" "$failed_name"
 
 docker compose start api >/dev/null

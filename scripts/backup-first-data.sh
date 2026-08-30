@@ -105,11 +105,29 @@ if ! tar -tzf "$partial" > "$manifest" || ! LC_ALL=C tar -tvzf "$partial" > "$en
 fi
 chmod 600 -- "$manifest" "$entry_types"
 if ! awk '
-  substr($0, 1, 1) == "-" && $NF ~ /^(\.\/)?db\.json$/ { db = 1 }
-  substr($0, 1, 1) == "-" && $NF ~ /^(\.\/)?secret$/ { secret = 1 }
-  END { exit !(db && secret) }
+  function application_path(value) {
+    sub(/^\.\//, "", value)
+    sub(/\/$/, "", value)
+    return value
+  }
+  {
+    type = substr($0, 1, 1)
+    name = application_path($NF)
+    if (type != "-" && type != "d") unsafe = 1
+    if (index($0, " -> ") || index($0, " link to ")) unsafe = 1
+    if (name == "db.json" || name == "collaboration.json" || name == "secret") {
+      if (type != "-") required_wrong_type = 1
+      else if (name == "db.json") db += 1
+      else if (name == "collaboration.json") collaboration += 1
+      else secret += 1
+    }
+  }
+  END {
+    valid_store = (db == 1 || collaboration == 1) && db <= 1 && collaboration <= 1
+    exit !(NR > 0 && !unsafe && !required_wrong_type && secret == 1 && valid_store)
+  }
 ' "$entry_types"; then
-  echo "Backup archive must contain regular db.json and secret files" >&2
+  echo "Backup archive must contain one regular secret and a regular db.json or collaboration.json, without links or special entries" >&2
   exit 65
 fi
 
