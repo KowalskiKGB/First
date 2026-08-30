@@ -283,22 +283,33 @@ listagem detalhada identifica o tipo do item no primeiro caractere ou hardlink c
 (GNU tar e BusyBox tar atendem). Execute-os na raiz do checkout que contém o Compose. O restore
 também exige o `TMPDIR` canônico (`${TMPDIR:-/tmp}`) fora do checkout e com permissão para criar um diretório privado 0700; ausência
 de `/dev/fd` ou desse diretório aborta antes de parar a API.
-Escolha um diretório absoluto em disco/volume de backup, fora do repositório. O script recusa
-caminhos relativos ou internos ao checkout, detecta se a API estava ativa, para o único writer JSON
-e usa uma trap para reiniciá-lo em sucesso, erro ou interrupção. O arquivo só aparece com o nome
-final depois de ser gravado como `.partial` e validado por `tar -tzf`:
+Escolha um diretório absoluto pertencente ao usuário operador, em disco/volume de backup com suporte
+a hardlinks e fora do repositório. O script recusa caminhos relativos, internos ao checkout ou de
+outro proprietário, aplica modo 0700 ao diretório e admite
+somente uma execução por vez pelo lock `.first-backup.lock`. Ele detecta se a API estava ativa, para
+o único writer JSON e usa uma trap para reiniciá-lo em sucesso, erro ou interrupção. Cada tentativa
+usa um workspace privado 0700 e um arquivo 0600 criado com exclusividade. A publicação por hardlink
+também é exclusiva e só ocorre depois que as listagens do tar confirmam um arquivo legível contendo
+`db.json` e `secret` como arquivos regulares; o backup final permanece 0600:
 
 ```bash
 export FIRST_BACKUP_DIR=/srv/first-backups
 bash scripts/backup-first-data.sh
 ```
 
+Uma interrupção normal remove lock e workspace. Se encerramento abrupto deixar
+`.first-backup.lock`, confirme primeiro que nenhum backup está em execução e remova somente esse
+diretório vazio; nunca remova o lock enquanto outro processo estiver ativo.
+
+Em Linux/POSIX, confirme que os modos persistem como 0700/0600. No Windows/Git Bash, esses modos de
+compatibilidade não substituem as ACLs do NTFS; restrinja a ACL do diretório ao usuário operador.
+
 Copie o `.tgz` validado para outro host/objeto protegido e teste o restore em uma instância
 separada. Não use `./backups`: além de misturar dados com código, uma limpeza do checkout pode
 eliminar a única cópia.
 
 O restore resolve o próprio arquivo com `realpath`, exige que o destino canônico fique fora do
-checkout e exige a URL HTTPS de health. Em um diretório privado 0700 sob o `TMPDIR` canônico,
+checkout e exige a URL HTTPS de readiness terminando em `/api/ready`. Em um diretório privado 0700 sob o `TMPDIR` canônico,
 também obrigatoriamente fora do checkout, o script cria com exclusividade um inode 0600, abre seu
 descritor e remove imediatamente o nome antes de copiar a origem. Depois mantém
 somente um descritor de leitura aberto e usa `/dev/fd` para listar, validar e extrair exatamente o
@@ -313,19 +324,19 @@ tudo em staging e aceita somente diretórios ou arquivos regulares com link coun
 device, socket, symlink ou hardlink abortam antes da troca. Depois cria uma cópia completa de
 recovery do `/data` atual. Só então move os dados atuais e instala o staging.
 
-Cada tentativa de health usa `curl --connect-timeout 5 --max-time 10`. Erro de troca, startup ou
-health aciona rollback para a cópia retida, mas o rollback só toca `/data` depois de confirmar
+Cada tentativa de readiness usa `curl --connect-timeout 5 --max-time 10`. Erro de troca, startup ou
+readiness aciona rollback para a cópia retida, mas o rollback só toca `/data` depois de confirmar
 novamente a parada do writer. Se essa confirmação falhar, o script não altera mais os dados, não
 declara rollback bem-sucedido, preserva a recovery e termina diferente de zero com instrução de
 recuperação manual. Falha na mutação do próprio rollback mantém a API parada para intervenção.
 
 ```bash
 export FIRST_RESTORE_ARCHIVE=/srv/first-backups/first-data-AAAAmmddTHHMMSSZ.tgz
-export FIRST_HEALTH_URL=https://first.rocketxsistemas.com.br/api/health
+export FIRST_READY_URL=https://first.rocketxsistemas.com.br/api/ready
 bash scripts/restore-first-data.sh
 ```
 
-Restore só é aceito quando o script termina com código zero depois de `/api/health` responder 2xx.
+Restore só é aceito quando o script termina com código zero depois de `/api/ready` responder 2xx.
 Ainda preserve o diretório `.first-recovery-*` informado pelo script até confirmar login, `/dev`,
 Plano, Personal, job/rollback e dados anteriores. Qualquer divergência nesse smoke reprova o restore:
 reexecute o script com o backup anterior validado. Remova a recovery somente depois da aceitação e
