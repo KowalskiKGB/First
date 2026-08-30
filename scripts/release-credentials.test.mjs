@@ -8,6 +8,7 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readdirSync,
   readFileSync,
   renameSync,
@@ -138,6 +139,44 @@ test('generator never replaces a preexisting output', () => {
     assert.notEqual(result.status, 0)
     assert.equal(readFileSync(credentialsPath, 'utf8'), 'operator-owned\n')
     assert.equal(existsSync(handoffPath), false)
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true })
+  }
+})
+
+test('generator keeps unpublished secret files inside private 0700 directories', () => {
+  const sandbox = mkdtempSync(path.join(tmpdir(), 'first-release-private-workspace-'))
+  const handoffDirectory = path.join(sandbox, 'handoff')
+  mkdirSync(handoffDirectory)
+  const credentialsPath = path.join(sandbox, 'owner.md')
+  const handoffPath = path.join(handoffDirectory, 'coolify.json')
+  const privateWrites = []
+  try {
+    generateReleaseCredentials([
+      '--url', 'https://first.example.test',
+      '--credentials-out', credentialsPath,
+      '--handoff-out', handoffPath,
+    ], {
+      openSync: (target, flags, mode) => {
+        const descriptor = openSync(target, flags, mode)
+        const privateDirectory = path.dirname(target)
+        privateWrites.push({
+          privateDirectory,
+          mode: statSync(privateDirectory).mode & 0o777,
+        })
+        return descriptor
+      },
+      stdout: { write: () => true },
+    })
+
+    assert.equal(privateWrites.length, 2)
+    assert.notEqual(privateWrites[0].privateDirectory, path.dirname(credentialsPath))
+    assert.notEqual(privateWrites[1].privateDirectory, path.dirname(handoffPath))
+    if (process.platform !== 'win32') {
+      assert.deepEqual(privateWrites.map(write => write.mode), [0o700, 0o700])
+    }
+    assert.deepEqual(readdirSync(sandbox).sort(), ['handoff', 'owner.md'])
+    assert.deepEqual(readdirSync(handoffDirectory), ['coolify.json'])
   } finally {
     rmSync(sandbox, { recursive: true, force: true })
   }
