@@ -1,14 +1,19 @@
 #!/usr/bin/env node
 import crypto from 'node:crypto'
 import {
+  chmodSync,
   closeSync,
   existsSync,
   fchmodSync,
   fstatSync,
+  fsyncSync,
+  ftruncateSync,
   linkSync,
   lstatSync,
+  mkdirSync,
   openSync,
   realpathSync,
+  rmdirSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
@@ -18,14 +23,19 @@ import { hashDevPassword } from '../api/dev-auth.js'
 
 const repository = realpathSync(fileURLToPath(new URL('../', import.meta.url)))
 const defaultRuntime = {
+  chmodSync,
   closeSync,
   existsSync,
   fchmodSync,
   fstatSync,
+  fsyncSync,
+  ftruncateSync,
   linkSync,
   lstatSync,
+  mkdirSync,
   openSync,
   realpathSync,
+  rmdirSync,
   stdout: process.stdout,
   unlinkSync,
   writeFileSync,
@@ -70,13 +80,21 @@ function validateUrl(value) {
   return url.origin
 }
 
-function privateSibling(target, phase, runtime) {
+function privateWorkspace(target, runtime) {
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const suffix = crypto.randomBytes(16).toString('hex')
-    const candidate = path.join(path.dirname(target), `.${path.basename(target)}.${phase}-${process.pid}-${suffix}`)
-    if (!runtime.existsSync(candidate)) return candidate
+    const candidate = path.join(path.dirname(target), `.first-release-private-${process.pid}-${suffix}`)
+    try {
+      runtime.mkdirSync(candidate, { mode: 0o700 })
+      try { runtime.chmodSync(candidate, 0o700) } catch {
+        // Windows does not expose POSIX mode bits; exclusive creation still applies.
+      }
+      return candidate
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error
+    }
   }
-  fail('could not reserve a private temporary output name')
+  fail('could not reserve a private output directory')
 }
 
 function identityOf(stat) {
@@ -96,55 +114,39 @@ function currentIdentity(target, runtime) {
   }
 }
 
-function removeOwnedPath(target, runtime, owned) {
-  const record = owned.get(target)
-  if (!record) return true
-  let current
-  let expected
-  try {
-    current = currentIdentity(target, runtime)
-    expected = identityOf(runtime.fstatSync(record.descriptor, { bigint: true }))
-  } catch {
-    return false
-  }
-  if (!current || !sameIdentity(current, expected)) {
-    owned.delete(target)
-    return true
-  }
-  try {
-    runtime.unlinkSync(target)
-    owned.delete(target)
-    return true
-  } catch {
-    return false
-  }
-}
-
 function privateWrite(target, contents, runtime, owned) {
-  const descriptor = runtime.openSync(target, 'wx', 0o600)
+  const privateDirectory = privateWorkspace(target, runtime)
+  const privatePath = path.join(privateDirectory, 'output')
+  let descriptor
   try {
-    const record = { descriptor }
-    owned.set(target, record)
+    descriptor = runtime.openSync(privatePath, 'wx', 0o600)
+    const record = { descriptor, privateDirectory, privatePath, publishedPath: null }
+    owned.add(record)
     runtime.writeFileSync(descriptor, contents, { encoding: 'utf8' })
     try { runtime.fchmodSync(descriptor, 0o600) } catch {
       // Windows does not expose POSIX mode bits; exclusive creation still applies.
     }
     return record
   } catch (error) {
-    if (!owned.has(target)) runtime.closeSync(descriptor)
+    if (descriptor != null && ![...owned].some(record => record.descriptor === descriptor)) runtime.closeSync(descriptor)
+    try { runtime.rmdirSync(privateDirectory) } catch {
+      // A tracked descriptor is cleaned by cleanupOwned; otherwise the original error is retained.
+    }
     throw error
   }
 }
 
 function publishPrivateOutput(target, contents, runtime, owned) {
-  const partial = privateSibling(target, 'partial', runtime)
-  const record = privateWrite(partial, contents, runtime, owned)
-  runtime.linkSync(partial, target)
+  const record = privateWrite(target, contents, runtime, owned)
+  runtime.linkSync(record.privatePath, target)
   const partialIdentity = identityOf(runtime.fstatSync(record.descriptor, { bigint: true }))
   const publishedIdentity = currentIdentity(target, runtime)
   if (!publishedIdentity || !sameIdentity(publishedIdentity, partialIdentity)) fail('published output identity changed unexpectedly')
-  owned.set(target, record)
-  if (!removeOwnedPath(partial, runtime, owned)) fail('private publication temporary cleanup failed')
+  record.publishedPath = target
+  runtime.unlinkSync(record.privatePath)
+  record.privatePath = null
+  runtime.rmdirSync(record.privateDirectory)
+  record.privateDirectory = null
   const finalIdentity = currentIdentity(target, runtime)
   const ownedIdentity = identityOf(runtime.fstatSync(record.descriptor, { bigint: true }))
   if (!finalIdentity || !sameIdentity(finalIdentity, ownedIdentity)) fail('published output identity changed unexpectedly')
@@ -160,12 +162,13 @@ function closeOwnedDescriptors(runtime, records) {
 }
 
 function releaseOwned(runtime, owned) {
-  for (const [target, record] of owned) {
-    const current = currentIdentity(target, runtime)
+  for (const record of owned) {
+    if (!record.publishedPath) return false
+    const current = currentIdentity(record.publishedPath, runtime)
     const expected = identityOf(runtime.fstatSync(record.descriptor, { bigint: true }))
     if (!current || !sameIdentity(current, expected)) return false
   }
-  const records = [...new Set(owned.values())]
+  const records = [...owned]
   if (!closeOwnedDescriptors(runtime, records)) return false
   owned.clear()
   return true
@@ -173,9 +176,24 @@ function releaseOwned(runtime, owned) {
 
 function cleanupOwned(runtime, owned) {
   let failed = false
-  const records = [...new Set(owned.values())]
-  for (const target of [...owned.keys()]) if (!removeOwnedPath(target, runtime, owned)) failed = true
+  const records = [...owned]
+  for (const record of records) {
+    try {
+      runtime.ftruncateSync(record.descriptor, 0)
+      runtime.fsyncSync(record.descriptor)
+    } catch {
+      failed = true
+    }
+  }
   if (!closeOwnedDescriptors(runtime, records)) failed = true
+  for (const record of records) {
+    if (record.privatePath) {
+      try { runtime.unlinkSync(record.privatePath) } catch { failed = true }
+    }
+    if (record.privateDirectory) {
+      try { runtime.rmdirSync(record.privateDirectory) } catch { failed = true }
+    }
+  }
   owned.clear()
   return !failed
 }
@@ -215,7 +233,7 @@ export function generateReleaseCredentials(argv = process.argv.slice(2), overrid
     AI_CONFIG_MASTER_KEY: crypto.randomBytes(32).toString('hex'),
   }
   const generatedAt = new Date().toISOString()
-  const owned = new Map()
+  const owned = new Set()
   try {
     publishPrivateOutput(
       credentialsPath,

@@ -208,9 +208,11 @@ usuário `first_dev_<24 hex>`, uma senha de 32 bytes em base64url, um hash scryp
 master key independente de 32 bytes. Os dois caminhos de saída são obrigatórios e absolutos; o
 handoff é recusado se apontar para dentro do repositório. Arquivos existentes nunca são
 sobrescritos e o stdout contém somente um status genérico, sem valores ou caminhos dos artefatos.
-Durante a transação, o gerador mantém abertos os descritores dos inodes publicados e só remove um
-caminho em caso de falha quando `(device, inode)` ainda corresponde ao descritor próprio. Uma troca
-externa do caminho é preservada, inclusive se a segunda publicação falhar.
+Cada conteúdo ainda não publicado fica em um diretório privado 0700 no mesmo filesystem do destino;
+a publicação usa hardlink exclusivo e mantém aberto o descritor do inode próprio. Em falha, o gerador
+nunca remove um pathname final: ele trunca e sincroniza somente os inodes que possui pelos
+descritores. Assim, uma troca externa do caminho é preservada; um final ainda ligado ao inode
+próprio fica como placeholder 0600 vazio, sem credencial em claro.
 
 Linux/macOS:
 
@@ -262,12 +264,19 @@ Mantenha `CREDENCIAIS_TESTE.md` somente na máquina do operador e em um gerencia
 rotacionar, preserve a credencial necessária no gerenciador, remova conscientemente o arquivo local
 e execute o gerador novamente. Ele nunca cria ou recebe chave comercial de IA.
 
+Se a geração falhar, não repita cegamente: o gerador recusa qualquer saída existente. Inspecione
+somente os dois caminhos exatos informados. Um arquivo regular 0600 de tamanho zero é um placeholder
+fail-safe do inode próprio e pode ser removido explicitamente antes da nova tentativa; conteúdo não
+vazio ou tipo diferente pode pertencer a outro processo e não deve ser apagado automaticamente.
+Também remova, após confirmar que não há gerador ativo, qualquer diretório privado
+`.first-release-private-*` deixado no diretório pai por encerramento abrupto do processo.
+
 ## Backup, restore e deploy
 
 Os scripts abaixo exigem Bash, `realpath`, `awk`, `curl`, `/dev/fd` funcional e um `tar` cuja
 listagem detalhada identifica o tipo do item no primeiro caractere ou hardlink como `nome -> alvo`
 (GNU tar e BusyBox tar atendem). Execute-os na raiz do checkout que contém o Compose. O restore
-também exige `/tmp` fora do checkout e com permissão para criar um diretório privado 0700; ausência
+também exige o `TMPDIR` canônico (`${TMPDIR:-/tmp}`) fora do checkout e com permissão para criar um diretório privado 0700; ausência
 de `/dev/fd` ou desse diretório aborta antes de parar a API.
 Escolha um diretório absoluto em disco/volume de backup, fora do repositório. O script recusa
 caminhos relativos ou internos ao checkout, detecta se a API estava ativa, para o único writer JSON
@@ -284,8 +293,9 @@ separada. Não use `./backups`: além de misturar dados com código, uma limpeza
 eliminar a única cópia.
 
 O restore resolve o próprio arquivo com `realpath`, exige que o destino canônico fique fora do
-checkout e exige a URL HTTPS de health. Em um diretório privado 0700 sob `/tmp`, o script cria um
-inode 0600, abre seu descritor e remove imediatamente o nome antes de copiar a origem. Depois mantém
+checkout e exige a URL HTTPS de health. Em um diretório privado 0700 sob o `TMPDIR` canônico,
+também obrigatoriamente fora do checkout, o script cria com exclusividade um inode 0600, abre seu
+descritor e remove imediatamente o nome antes de copiar a origem. Depois mantém
 somente um descritor de leitura aberto e usa `/dev/fd` para listar, validar e extrair exatamente o
 mesmo inode. A trap fecha apenas os descritores próprios e remove o diretório privado; não existe
 pathname de snapshot que possa ser trocado ou removido por engano. O diretório do backup pode ser

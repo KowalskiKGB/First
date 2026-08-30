@@ -61,24 +61,33 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 umask 077
-private_root=$(realpath /tmp)
+if ! private_root=$(realpath "${TMPDIR:-/tmp}"); then
+  echo "Private restore runtime could not be resolved" >&2
+  exit 64
+fi
 case "$private_root" in
   "$repo_dir"|"$repo_dir"/*) echo "Private restore runtime must be outside the repository" >&2; exit 64 ;;
 esac
+test -d "$private_root"
 private_dir=$(mktemp -d "$private_root/first-restore-private.XXXXXX")
 chmod 700 -- "$private_dir"
 snapshot="$private_dir/snapshot"
-: > "$snapshot"
-chmod 600 -- "$snapshot"
-exec 8<> "$snapshot"
+set -C
+if ! { exec 8> "$snapshot"; }; then
+  set +C
+  echo "Private restore snapshot could not be created exclusively" >&2
+  exit 69
+fi
+set +C
 snapshot_write_open=1
-if [ ! -r /dev/fd/8 ]; then
+chmod 600 -- "$snapshot"
+if [ ! -e /dev/fd/8 ]; then
   echo "Restore requires stable /dev/fd descriptor access" >&2
   exit 69
 fi
 rm -f -- "$snapshot"
 snapshot=""
-cat -- "$archive" > /dev/fd/8
+cat -- "$archive" >&8
 exec 9< /dev/fd/8 # read-only snapshot descriptor
 snapshot_read_open=1
 exec 8>&-
