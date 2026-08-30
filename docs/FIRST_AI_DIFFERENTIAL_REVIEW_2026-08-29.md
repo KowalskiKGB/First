@@ -4,11 +4,11 @@ Data: 2026-08-30
 
 Baseline: `2658eb57a1d8c44b64e0498e7f8f270d49591e79`
 
-Código revisado até: `2a130c084ba63ace17410322228a3c8575b8c9b8`
+Código revisado até: `5512cd0cd24bf799db88c70f3c14c3dbca29ec6b`
 
 ## Resumo executivo
 
-**Aprovado para o deploy privado de instância única, sem achados críticos ou importantes abertos.** O diferencial tem 108 arquivos, 14.225 adições e 1.039 remoções. A revisão foi classificada como alta criticidade por alterar autenticação Dev, criptografia de chaves, chamadas externas, autorização entre aluno e Personal, aplicação automática de planos e recuperação do volume.
+**Aprovado para o deploy privado de instância única, sem achados críticos ou importantes abertos.** O diferencial tem 110 arquivos, 14.332 adições e 1.056 remoções. A revisão foi classificada como alta criticidade por alterar autenticação Dev, criptografia de chaves, chamadas externas, autorização entre aluno e Personal, aplicação automática de planos e recuperação do volume.
 
 O protótipo inseguro que persistia `initialPassword` foi removido. A configuração atual exige credencial Dev via ambiente, guarda somente hash scrypt, criptografa chaves comerciais com AES-256-GCM e só ativa uma combinação provedor/modelo depois de teste estruturado real.
 
@@ -22,6 +22,7 @@ O protótipo inseguro que persistia `initialPassword` foi removido. A configura�
 - Agendas manual, Personal e IA coexistem, com origem e versão no histórico; o frontend recebeu wizard, estados de job, Painel Dev e aba IA do Personal.
 - Backup/restore agora param e confirmam o único writer, copiam a origem para um inode 0600 sem pathname mantido por descritor de leitura em `TMPDIR` canônico privado, rejeitam links/tipos especiais antes da troca, verificam falhas de traversal, mantêm recovery e só fazem rollback após nova confirmação de parada. O gerador Dev publica por link exclusivo a partir de diretórios 0700 e, em falha, limpa os inodes próprios pelos descritores sem remover pathnames finais ou substituições externas (`scripts/backup-first-data.sh`, `scripts/restore-first-data.sh`, `scripts/generate-release-credentials.mjs`).
 - Volumes legados com `secret` e `collaboration.json`, mas ainda sem `db.json`, são aceitos pelo recovery sem afrouxar tipos/links. No primeiro startup novo, o banco primário ausente é publicado exclusivamente a partir de temporário aleatório 0600 com `fsync`; corrupção, erro de I/O ou remoção em runtime continuam fail-closed (`api/server.js`, `scripts/backup-first-data.sh`, `scripts/restore-first-data.sh`).
+- Mídia licenciada separadamente exige a sessão assinada do app via `auth_request`; anônimos são negados e o Cloudflare não armazena os arquivos. As duas configurações Nginx são mantidas equivalentes por teste, e `sw.js` usa `no-store`/`max-age=0` para não reter comportamento antigo (`api/server.js`, `web/nginx.conf`, `nginx.conf`, `scripts/deployment.test.mjs`).
 
 ## Análise por superfície
 
@@ -81,7 +82,7 @@ Os módulos críticos possuem unitários e integração, e os fluxos principais 
 
 ## Testes e cobertura
 
-- API: 191/191; cobertura total 88,59% de linhas, 82,48% de branches e 82,27% de funções. `ai-usage.js` ficou com 98,41% de linhas, 89,66% de branches e 100% de funções.
+- API: 192/192; cobertura total 88,56% de linhas, 82,48% de branches e 82,14% de funções. `ai-usage.js` ficou com 98,41% de linhas, 89,66% de branches e 100% de funções.
 - Frontend: 481/481. `ai-job-flow.js`, incluindo a migração de planos legados, ficou com 100% de linhas e 89,44% de branches.
 - Playwright: 21/21, incluindo wizard/aplicação/rollback, retomada e reconciliação de job, Dev sem vazamento de chave, Personal, agendas coexistentes e foco de modais em mobile, tablet e desktop.
 - `npm audit` completo e produção: zero vulnerabilidades em API e frontend.
@@ -90,11 +91,11 @@ Os módulos críticos possuem unitários e integração, e os fluxos principais 
 
 ## Blast radius e histórico
 
-- Estratégia focada para repositório médio: todos os 108 arquivos alterados foram triados; auth, crypto, chamadas externas, job, schema, autorização e recovery tiveram leitura profunda.
+- Estratégia focada para repositório médio: todos os 110 arquivos alterados foram triados; auth, crypto, chamadas externas, job, schema, autorização, mídia e recovery tiveram leitura profunda.
 - Ocorrências por arquivo: `createDevAuth` 3, `isTrustedMutation` 3, `encryptProviderKey` 2, `runStructuredOutput` 4, `createAiJobService` 3, `saveTrainingProfile` 2, `saveGymProfile` 2 e `buildAiContext` 2.
 - O histórico mostra a remoção explícita de `initialPassword`, geração automática em `/data`, fallback para qualquer provedor configurado, retenção excessiva de uso e restore destrutivo. Os commits de endurecimento relevantes incluem `bef5b4d`, `7db2f1f`, `c72737d`, `4671d35`, `b33fe54`, `e1dd575`, `60babb2`, `1007c28`, `4232e78`, `c5dafb7`, `0389e3c`, `bf3dae8`, `a944ee6`, `f50f5d0`, `0ebfa58`, `7f24175`, `2f78055` e `e1736c2`.
 - Nenhum acesso removido de um commit de segurança foi encontrado sem controle substituto.
 
 ## Limitações e confiança
 
-Confiança **alta** para o checkout local e **moderada-alta** para produção antes do deploy novo. Não houve chave comercial nem chamada real a provedor; os adapters foram exercitados com mocks determinísticos. O volume real foi copiado e verificado local/remotamente antes do deploy; smoke da nova versão e ADB são registrados separadamente no handoff operacional. O build iOS exige macOS/Xcode e não foi produzido no Windows.
+Confiança **alta** para o checkout e a produção privada de instância única. Não houve chave comercial nem chamada real a provedor; os adapters foram exercitados com mocks determinísticos. O volume real foi copiado e verificado local/remotamente antes do deploy, e a nova versão passou por smoke público de API, cache, mídia e navegador. O build iOS exige macOS/Xcode e não foi produzido no Windows.

@@ -2,11 +2,11 @@
 
 Data: 2026-08-30
 
-**Production audit: 84/100, launchable with caveats.** O checkout local e o backup real estão prontos para um deploy privado de instância única; a nota fica limitada até existirem evidências do deploy e smoke da nova versão na URL pública.
+**Production audit: 96/100, pronta para uso privado em instância única.** O código, o backup real, o deploy fixado por SHA e os smokes público/Docker estão verificados. A nota residual representa chamadas comerciais de IA, restore real ensaiado, CI hospedada e build iOS ainda não executados.
 
 ## Bloqueadores
 
-Nenhum bloqueador de código foi encontrado. O backup do volume já foi validado e copiado para outro host. Antes de liberar a nova versão, ainda faltam segredos únicos no Coolify, confirmação de uma única réplica, deploy e smoke público.
+Nenhum bloqueador aberto. O volume foi salvo antes da migração, os segredos únicos foram instalados sem entrar no Git, o Coolify executa uma API saudável e a produção foi validada sem chave comercial de IA.
 
 ## Correções de maior valor
 
@@ -20,7 +20,7 @@ Nenhum bloqueador de código foi encontrado. O backup do volume já foi validado
 
 - Autenticação, autorização, criptografia, adapters, validação semântica, jobs e migração: `api/dev-auth.js`, `api/ai-providers.js`, `api/ai.js`, `api/ai-jobs.js`, `api/domain/schema.js`, `api/personal.js` e `api/server.js`.
 - Ambiente e operação: `.env.example`, `docker-compose.yml`, `api/Dockerfile`, `Dockerfile`, `SECURITY.md`, `docs/SELF_HOSTING.md`, `docs/MOBILE.md` e os scripts fail-fast de backup/restore/credenciais.
-- API: 191/191; 88,59% linhas, 82,48% branches e 82,27% funções. O módulo `ai-usage.js` alcançou 89,66% de branches.
+- API: 192/192; 88,56% linhas, 82,48% branches e 82,14% funções. O módulo `ai-usage.js` alcançou 89,66% de branches.
 - Frontend: 481/481; o materializador de planos IA alcançou 100% de linhas e 89,44% de branches, incluindo agenda/rotina legadas.
 - E2E Playwright: 21/21 em fluxos de aluno, Dev, Personal, retomada de jobs, acessibilidade de modais e coexistência de sessões.
 - Dependências: quatro auditorias npm (completo e produção, API e frontend), todas com zero vulnerabilidades.
@@ -30,8 +30,11 @@ Nenhum bloqueador de código foi encontrado. O backup do volume já foi validado
 - Smoke da imagem `first-api` em `NODE_ENV=production`: `/api/health` e `/api/ready` responderam `{"ok":true}` com credenciais de fixture válidas e sem provedor comercial.
 - Operações de release: 44 testes passaram e dois específicos de Linux foram ignorados no Windows; 31/31 também passaram em Docker/Linux. O restore usa `TMPDIR` canônico externo, diretório 0700 e inode privado 0600 sem pathname com descritor estável; falhas de `find` abortam explicitamente. O gerador mantém temporários em diretórios 0700 e, em falha, trunca e sincroniza somente os inodes próprios pelos FDs, deixando placeholder vazio sem apagar uma substituição externa.
 - Backup real anterior ao deploy: `/srv/first-backups/first-data-20260830T042912Z.tgz`, copiado para `C:\Projetos\Personal\First-backups`, 512 bytes, SHA-256 `2F11D24F5CE6B5FD235C5165FD0DA243F169BC526004F583E47032E850CF0348`. Após o snapshot havia um writer, nenhum lock/temporário residual e o health público dinâmico respondeu 200.
+- Produção: Coolify concluiu o deploy `pvo97qgwxayngqlbqvax2gkz` no commit `5512cd0cd24bf799db88c70f3c14c3dbca29ec6b`; o log final mostra uma API saudável e um web ativo. `/api/health` e `/api/ready` responderam 200 com `no-store` e Cloudflare `DYNAMIC`.
+- Mídia privada: smoke Docker real negou sessão ausente/inválida e serviu JPG com cookie assinado; em produção, JPG/GIF anônimos retornaram 401, `private, no-store`, Cloudflare `BYPASS` e nenhum desafio Basic Auth.
+- Browser de produção: Playwright em 1440×900 e 390×844 confirmou pt-BR, ausência de overflow, service worker controlando após reload, nenhuma falha de página/rede e somente os 401 esperados de `/api/me` anônimo. `sw.js` ficou `no-store`, `max-age=0` e Cloudflare `BYPASS`.
 - Capacitor: build web móvel, cópia de 1.324 JPG/1.324 GIF e sync Android/iOS concluídos.
-- Android: `assembleDebug` concluído; APK em `frontend/android/app/build/outputs/apk/debug/app-debug.apk`, 146.378.102 bytes, SHA-256 `CDACDC84E440F4976345FEF4AC3CC765709D4D4AA4F86B3D08DCE737CC6BF55E`.
+- Android: `assembleDebug` concluído; APK em `frontend/android/app/build/outputs/apk/debug/app-debug.apk`, 150.394.689 bytes, SHA-256 `D083E8FE64827BB1362680D6D8A48DFD1C4332E383C3547EDE0B107961BAF87C`, assinatura v1/v2 verificada.
 - Scan local de arquivos rastreados: nenhuma private key, chave OpenAI/Anthropic/Google ou atribuição de segredo conhecida; nenhum artefato de build rastreado.
 - Inventário de mídia: 1.324 imagens JPG e 1.324 GIFs.
 
@@ -42,7 +45,7 @@ Nenhum bloqueador de código foi encontrado. O backup do volume já foi validado
 | Auth e segurança | Pronta com ressalva | Duas camadas no Dev, origem exata, rate limit e chaves cifradas; user verification da passkey ainda opcional |
 | Integridade de dados | Pronta para uma réplica | JSON atômico, revisão otimista, fila idempotente, migração e rollback de plano; não suporta escala horizontal |
 | IA externa | Pronta sem chamada comercial | Três adapters mockados, structured output, sem fallback e validação dupla; ativação real depende de chave cadastrada/testada |
-| Operação | Pronta localmente | Health independente do provedor, Compose e Docker verdes, runbook de backup/restore/deploy; falta evidência do ambiente público |
+| Operação | Produção verificada | SHA fixado no Coolify, uma API saudável, backup externo, health/readiness e cache público validados |
 | Mobile | Android construído | APK gerado; instalação/teste USB ficam para o controlador. iOS precisa de macOS/Xcode/CocoaPods |
 | Pagamentos | Fora do escopo | Não há cobrança nesta fase; somente gate/estrutura futura documentada |
 | UX e acessibilidade | Sem bloqueador novo | Fluxos novos usam labels, estados, `aria-live`, foco e reduced motion; há dívida de acessibilidade herdada em superfícies antigas |
@@ -50,7 +53,6 @@ Nenhum bloqueador de código foi encontrado. O backup do volume já foi validado
 ## Evidência ausente
 
 - Restauração executada em cópia isolada do volume real do Coolify (o backup real foi validado; não se altera produção apenas para ensaiar restore).
-- Smoke após deploy da URL pública, cache/service worker e console do navegador.
 - Chamada estruturada real com um provedor comercial cadastrado pelo operador.
 - Instalação e teste físico por ADB no aparelho do usuário.
 - Build/assinatura iOS em macOS.
@@ -58,4 +60,4 @@ Nenhum bloqueador de código foi encontrado. O backup do volume já foi validado
 
 ## Próxima ação
 
-O controlador deve seguir `docs/SELF_HOSTING.md`: configurar somente os nomes `INVITE_ONLY`, `DEV_PANEL_USER`, `DEV_PANEL_PASSWORD_HASH`, `AI_CONFIG_MASTER_KEY` e `FIRST_BASIC_AUTH_USERS` com valores novos, manter uma réplica, publicar e executar o smoke público antes de instalar o APK.
+Entrar como administrador, abrir `/dev` com a credencial local ignorada pelo Git e cadastrar/testar um provedor comercial quando quiser habilitar a geração real. Até lá, o restante do produto funciona normalmente e a geração IA permanece indisponível de forma segura.
