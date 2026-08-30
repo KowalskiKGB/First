@@ -266,6 +266,28 @@ test('email and password changes require the current password and rotate login c
   assert.equal(currentLogin.status, 200);
 });
 
+test('legacy passkey-only profiles can edit body data but cannot add a password without email', async t => {
+  const legacy = { id: 'legacy-passkey', name: 'Perfil Legado', admin: false };
+  const { url } = await startServer(t, { db: { ...emptyDb(), users: [legacy] } });
+  const cookie = appCookie(legacy.id);
+
+  const bodyOnly = await put(url, '/api/profile', { fullName: 'Perfil Legado', weightKg: 80 }, { Cookie: cookie });
+  assert.equal(bodyOnly.status, 200);
+
+  const passwordOnly = await put(url, '/api/profile', { fullName: 'Perfil Legado', newPassword: 'senha123' }, { Cookie: cookie });
+  assert.equal(passwordOnly.status, 400);
+
+  const credential = await put(url, '/api/profile', {
+    fullName: 'Perfil Legado',
+    email: 'legado@example.com',
+    newPassword: 'senha123'
+  }, { Cookie: cookie });
+  assert.equal(credential.status, 200);
+  const body = await credential.json();
+  assert.equal(body.user.email, 'legado@example.com');
+  assert.equal('passwordHash' in body.user, false);
+});
+
 test('AI remains unavailable anonymously and becomes available to a password-authenticated student', async t => {
   const { url } = await startServer(t);
   const anonymous = await fetch(`${url}/api/ai/status`);

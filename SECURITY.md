@@ -76,7 +76,7 @@ Read this before hosting First for anyone other than yourself.
   or require a student, Personal or app-admin session. The literal page requires only
   `DEV_PANEL_USER` plus a password verified against `DEV_PANEL_PASSWORD_HASH`. Its independent
   session is a signed `HttpOnly`, `SameSite=Strict` cookie, expires after four hours and has an
-  explicit logout route. Login is limited to eight attempts per remote-address/username pair in
+  explicit logout route. Login is limited to eight attempts per resolved client address in
   fifteen minutes, in addition to reverse-proxy limits.
 - **Dev credentials are environment-only.** Production stores only `DEV_PANEL_USER` and a scrypt
   password hash in the form `scrypt:<base64url salt>:<base64url 32-byte hash>`.

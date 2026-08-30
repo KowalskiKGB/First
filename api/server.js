@@ -666,8 +666,14 @@ const routes = {
         return json(res, 401, { error: 'current password is incorrect' });
       }
     }
+    if (!email && changesPassword) {
+      return json(res, 400, { error: 'set an email before adding a password' });
+    }
     if (changesEmail && !user.passwordHash && !changesPassword) {
       return json(res, 400, { error: 'set a password when adding an email' });
+    }
+    if (changesPassword && !user.passwordHash && !email) {
+      return json(res, 400, { error: 'set an email when adding a password' });
     }
     const passwordHash = changesPassword
       ? hashDevPassword(normalizeStudentPassword(body.newPassword, 'newPassword'))
