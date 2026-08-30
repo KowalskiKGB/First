@@ -10,6 +10,7 @@ import {
   readdirSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -77,6 +78,18 @@ function createHarness(t, { apiRunning = true, backupOwner = null, data = 'valid
     if (data === 'valid') {
       writeFileSync(path.join(dataDir, 'db.json'), '{}\n')
       writeFileSync(path.join(dataDir, 'secret'), 'fixture-only\n')
+    } else if (data === 'legacy') {
+      writeFileSync(path.join(dataDir, 'collaboration.json'), '{"legacy":true}\n')
+      writeFileSync(path.join(dataDir, 'secret'), 'fixture-only\n')
+      writeFileSync(path.join(dataDir, 'vapid.json'), '{"publicKey":"fixture"}\n')
+    } else if (data === 'legacy-with-db-directory') {
+      writeFileSync(path.join(dataDir, 'collaboration.json'), '{"legacy":true}\n')
+      writeFileSync(path.join(dataDir, 'secret'), 'fixture-only\n')
+      mkdirSync(path.join(dataDir, 'db.json'))
+    } else if (data === 'canonical-with-collaboration-link') {
+      writeFileSync(path.join(dataDir, 'db.json'), '{}\n')
+      writeFileSync(path.join(dataDir, 'secret'), 'fixture-only\n')
+      symlinkSync('db.json', path.join(dataDir, 'collaboration.json'), 'file')
     } else if (data === 'directories') {
       mkdirSync(path.join(dataDir, 'db.json'))
       mkdirSync(path.join(dataDir, 'secret'))
@@ -252,6 +265,21 @@ test('backup leaves an originally stopped API stopped', t => {
   assert.equal(readFileSync(harness.apiState, 'utf8'), 'stopped\n')
 })
 
+test('backup accepts the legacy collaboration store with its regular secret and auxiliary VAPID data', t => {
+  const harness = createHarness(t, { data: 'legacy' })
+  const result = harness.run()
+
+  assert.equal(result.status, 0, result.stderr)
+  const listing = bashResult('tar -tzf "$1"', harness.finalPath)
+  assert.equal(listing.status, 0, listing.stderr)
+  assert.match(listing.stdout, /(^|\n)\.\/collaboration\.json(\r?\n|$)/)
+  assert.match(listing.stdout, /(^|\n)\.\/secret(\r?\n|$)/)
+  assert.match(listing.stdout, /(^|\n)\.\/vapid\.json(\r?\n|$)/)
+  assert.doesNotMatch(listing.stdout, /(^|\n)\.\/db\.json(\r?\n|$)/)
+  assertPrivateResult(harness, [path.basename(harness.finalPath)])
+  assert.equal(readFileSync(harness.apiState, 'utf8'), 'running\n')
+})
+
 test('backup rejects an empty data volume and restores a running API', t => {
   const harness = createHarness(t, { data: 'empty' })
   const result = harness.run()
@@ -276,6 +304,28 @@ test('backup rejects an absent data volume and removes only its private state', 
 
 test('backup rejects db.json and secret directories', t => {
   const harness = createHarness(t, { data: 'directories' })
+  const result = harness.run()
+
+  assert.notEqual(result.status, 0, result.stdout)
+  assert.equal(existsSync(harness.finalPath), false)
+  assertPrivateResult(harness, [])
+  assert.ok(eventsFrom(harness.events).includes('single:start'))
+})
+
+test('backup rejects a db.json directory even when a regular legacy store is present', t => {
+  const harness = createHarness(t, { data: 'legacy-with-db-directory' })
+  const result = harness.run()
+
+  assert.notEqual(result.status, 0, result.stdout)
+  assert.equal(existsSync(harness.finalPath), false)
+  assertPrivateResult(harness, [])
+  assert.ok(eventsFrom(harness.events).includes('single:start'))
+})
+
+test('backup rejects a collaboration.json link even when a regular canonical store is present', {
+  skip: process.platform === 'win32',
+}, t => {
+  const harness = createHarness(t, { data: 'canonical-with-collaboration-link' })
   const result = harness.run()
 
   assert.notEqual(result.status, 0, result.stdout)

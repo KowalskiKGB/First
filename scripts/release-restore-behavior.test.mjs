@@ -57,12 +57,13 @@ function tarEntry({ name, type = '0', link = '', body = '' }) {
   return Buffer.concat([header, content, padding])
 }
 
-function writeArchive(target, extraEntries = [], dbBody = '{}\n') {
-  const entries = [
-    { name: 'db.json', body: dbBody },
-    { name: 'secret', body: 'fixture-only\n' },
-    ...extraEntries,
-  ]
+function writeArchive(target, extraEntries = [], dbBody = '{}\n', layout = 'canonical') {
+  const store = layout === 'legacy'
+    ? [{ name: 'collaboration.json', body: dbBody }, { name: 'vapid.json', body: '{"publicKey":"fixture"}\n' }]
+    : layout === 'none'
+      ? []
+      : [{ name: 'db.json', body: dbBody }]
+  const entries = [...store, { name: 'secret', body: 'fixture-only\n' }, ...extraEntries]
   const tar = Buffer.concat([...entries.map(tarEntry), Buffer.alloc(1024)])
   writeFileSync(target, gzipSync(tar))
 }
@@ -72,7 +73,7 @@ function writeExecutable(target, contents) {
   chmodSync(target, 0o755)
 }
 
-function createHarness(t, extraEntries = []) {
+function createHarness(t, extraEntries = [], { archiveLayout = 'canonical', liveLayout = 'canonical' } = {}) {
   const sandbox = mkdtempSync(path.join(tmpdir(), 'first-restore-behavior-'))
   t.after(() => rmSync(sandbox, { recursive: true, force: true }))
   const archive = path.join(sandbox, 'first-data-fixture.tgz')
@@ -90,10 +91,17 @@ function createHarness(t, extraEntries = []) {
   mkdirSync(runtimeRoot, { mode: 0o700 })
   mkdirSync(stageBin)
   mkdirSync(stageData)
-  writeArchive(archive, extraEntries)
+  writeArchive(archive, extraEntries, '{}\n', archiveLayout)
   writeFileSync(events, '')
   writeFileSync(stopCount, '0\n')
   writeFileSync(apiState, 'running\n')
+  writeFileSync(path.join(stageData, 'secret'), 'live-secret\n')
+  if (liveLayout === 'legacy') {
+    writeFileSync(path.join(stageData, 'collaboration.json'), '{"live":true}\n')
+    writeFileSync(path.join(stageData, 'vapid.json'), '{"live":true}\n')
+  } else {
+    writeFileSync(path.join(stageData, 'db.json'), '{"live":true}\n')
+  }
   writeExecutable(runner, '#!/usr/bin/env bash\nset -Eeuo pipefail\nexport PATH="$FIRST_FAKE_BIN:$PATH"\nexec "$FIRST_RESTORE_SCRIPT"\n')
 
   writeExecutable(path.join(fakeBin, 'docker'), String.raw`
@@ -104,6 +112,29 @@ if [ "${'$'}{1:-}" != compose ]; then exit 90; fi
 shift
 command=${'$'}{1:-}
 shift || true
+
+execute_data_script() {
+  local script=
+  local previous=
+  local captured=0
+  local argument
+  local -a positional=()
+  for argument in "$@"; do
+    if [ "$captured" -eq 1 ]; then
+      positional+=("$argument")
+    elif [ "$previous" = -ceu ]; then
+      script=$argument
+      previous=
+      captured=1
+    elif [ "$argument" = -ceu ]; then
+      previous=-ceu
+    fi
+  done
+  [ -n "$script" ] || return 96
+  local translated=${'$'}{script//\/data/$FIRST_FAKE_STAGE_DATA}
+  PATH="$FIRST_FAKE_STAGE_BIN:/usr/bin:/bin" /bin/sh -ceu "$translated" "${'$'}{positional[@]}"
+}
+
 case "$command" in
   ps)
     printf '%s\n' ps >> "$events"
@@ -132,6 +163,12 @@ case "$command" in
     ;;
   start)
     printf '%s\n' start >> "$events"
+    if [ "${'$'}{FIRST_FAKE_SIMULATE_MIGRATION:-0}" = 1 ] \
+      && [ -f "$FIRST_FAKE_STAGE_DATA/collaboration.json" ] \
+      && [ ! -e "$FIRST_FAKE_STAGE_DATA/db.json" ]; then
+      printf '%s\n' '{"createdFromLegacy":true}' > "$FIRST_FAKE_STAGE_DATA/db.json"
+      printf '%s\n' migration-created-db >> "$events"
+    fi
     printf '%s\n' running > "$FIRST_FAKE_API_STATE"
     ;;
   run)
@@ -139,6 +176,7 @@ case "$command" in
     if [[ "$all" == *'failed="/data/$2"'* ]]; then
       printf '%s\n' rollback-mutate-attempt >> "$events"
       if [ "${'$'}{FIRST_FAKE_ROLLBACK_FAIL:-0}" = 1 ]; then exit 43; fi
+      if [ "${'$'}{FIRST_FAKE_EXECUTE_DATA_FLOW:-0}" = 1 ]; then execute_data_script "$@" || exit $?; fi
       printf '%s\n' rollback-mutate >> "$events"
     elif [[ "$all" == *'tar -C "$stage" -xzf -'* ]]; then
       printf '%s\n' extract >> "$events"
@@ -168,10 +206,13 @@ case "$command" in
         printf '%s\n' snapshot-race-cleaned >> "$events"
       fi
     elif [[ "$all" == *'cp -a -- "$entry" "$recovery/"'* ]]; then
+      if [ "${'$'}{FIRST_FAKE_EXECUTE_DATA_FLOW:-0}" = 1 ]; then execute_data_script "$@" || exit $?; fi
       printf '%s\n' recovery >> "$events"
     elif [[ "$all" == *'mv -- "$entry" /data/'* ]]; then
+      if [ "${'$'}{FIRST_FAKE_EXECUTE_DATA_FLOW:-0}" = 1 ]; then execute_data_script "$@" || exit $?; fi
       printf '%s\n' swap >> "$events"
     elif [[ "$all" == *'rm -rf -- "/data/$1"'* ]]; then
+      if [ "${'$'}{FIRST_FAKE_EXECUTE_DATA_FLOW:-0}" = 1 ]; then execute_data_script "$@" || exit $?; fi
       printf '%s\n' cleanup >> "$events"
     else
       printf '%s\n' unknown-run >> "$events"
@@ -221,7 +262,12 @@ set -u
 if [ "${'$'}{1:-}" = -C ]; then
   stage=$2
   cat >/dev/null
-  printf '%s\n' '{}' > "$stage/db.json"
+  if [ "${'$'}{FIRST_FAKE_STAGE_LAYOUT:-canonical}" = legacy ]; then
+    printf '%s\n' '{"restored":true}' > "$stage/collaboration.json"
+    printf '%s\n' '{"restored":true}' > "$stage/vapid.json"
+  else
+    printf '%s\n' '{}' > "$stage/db.json"
+  fi
   printf '%s\n' fixture-only > "$stage/secret"
   exit 0
 fi
@@ -291,7 +337,7 @@ exit 0
     })
   }
 
-  return { archive, events, run, runtimeRoot, sandbox }
+  return { archive, events, run, runtimeRoot, sandbox, stageData }
 }
 
 function readEvents(target) {
@@ -318,6 +364,43 @@ test('safe restore orders stop, staging, recovery, swap, start, and bounded heal
   assert.match(curl, /https:\/\/first\.example\.test\/api\/ready(?:\s|$)/)
   assert.doesNotMatch(curl, /\/api\/health(?:\s|$)/)
   assert.equal(events.includes('rollback-mutate-attempt'), false)
+})
+
+test('legacy collaboration archive is staged, migrated on startup, and kept recoverable', t => {
+  const harness = createHarness(t, [], { archiveLayout: 'legacy', liveLayout: 'legacy' })
+  const result = harness.run({
+    FIRST_FAKE_EXECUTE_DATA_FLOW: '1',
+    FIRST_FAKE_EXECUTE_STAGE_VALIDATION: '1',
+    FIRST_FAKE_SIMULATE_MIGRATION: '1',
+    FIRST_FAKE_STAGE_LAYOUT: 'legacy',
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.deepEqual(JSON.parse(readFileSync(path.join(harness.stageData, 'collaboration.json'), 'utf8')), { restored: true })
+  assert.deepEqual(JSON.parse(readFileSync(path.join(harness.stageData, 'db.json'), 'utf8')), { createdFromLegacy: true })
+  assert.equal(readFileSync(path.join(harness.stageData, 'secret'), 'utf8'), 'fixture-only\n')
+  const events = readEvents(harness.events)
+  assert.ok(events.includes('migration-created-db'), events.join(','))
+  assert.ok(readdirSync(harness.stageData).some(name => name.startsWith('.first-recovery-')), events.join(','))
+})
+
+test('failed legacy restore rolls back to the complete pre-restore legacy state before migration', t => {
+  const harness = createHarness(t, [], { archiveLayout: 'legacy', liveLayout: 'legacy' })
+  const result = harness.run({
+    FIRST_FAKE_EXECUTE_DATA_FLOW: '1',
+    FIRST_FAKE_EXECUTE_STAGE_VALIDATION: '1',
+    FIRST_FAKE_HEALTH_MODE: 'fail',
+    FIRST_FAKE_SIMULATE_MIGRATION: '1',
+    FIRST_FAKE_STAGE_LAYOUT: 'legacy',
+  })
+
+  assert.notEqual(result.status, 0)
+  assert.deepEqual(JSON.parse(readFileSync(path.join(harness.stageData, 'collaboration.json'), 'utf8')), { live: true })
+  assert.deepEqual(JSON.parse(readFileSync(path.join(harness.stageData, 'vapid.json'), 'utf8')), { live: true })
+  assert.deepEqual(JSON.parse(readFileSync(path.join(harness.stageData, 'db.json'), 'utf8')), { createdFromLegacy: true })
+  const events = readEvents(harness.events)
+  assert.ok(events.includes('rollback-mutate'), events.join(','))
+  assert.ok(events.filter(event => event === 'migration-created-db').length >= 2, events.join(','))
 })
 
 test('initial API stop failure never reaches any data mutation', t => {
@@ -405,6 +488,17 @@ for (const fixture of [
     assert.deepEqual(readdirSync(harness.sandbox).filter(name => name.startsWith('.first-restore-snapshot.')), [])
   })
 }
+
+test('legacy collaboration.json directory is rejected before API stop', t => {
+  const harness = createHarness(t, [{ name: 'collaboration.json', type: '5' }], { archiveLayout: 'none' })
+  const result = harness.run()
+
+  assert.notEqual(result.status, 0)
+  const events = readEvents(harness.events)
+  assert.equal(events.includes('stop:1'), false, events.join(','))
+  assert.equal(events.some(event => dataMutationEvents.has(event)), false, events.join(','))
+  assert.match(result.stderr, /regular (?:db\.json|collaboration\.json)|archive store/i)
+})
 
 test('source replacement after validation cannot change the private snapshot extracted', t => {
   const harness = createHarness(t)
