@@ -74,20 +74,54 @@ function normalizePrimaryDb(value) {
   }
   return normalized;
 }
-function loadPrimaryDb(file) {
-  try { return normalizePrimaryDb(JSON.parse(fs.readFileSync(file, 'utf8'))); }
+function readPrimaryDb(file) {
+  return normalizePrimaryDb(JSON.parse(fs.readFileSync(file, 'utf8')));
+}
+function bootstrapPrimaryDb(file) {
+  const initial = normalizePrimaryDb({});
+  const temporary = `${file}.bootstrap-${process.pid}-${crypto.randomBytes(8).toString('hex')}`;
+  let descriptor;
+  try {
+    descriptor = fs.openSync(temporary, 'wx', 0o600);
+    fs.writeFileSync(descriptor, JSON.stringify(initial, null, 2));
+    fs.fsyncSync(descriptor);
+    fs.closeSync(descriptor);
+    descriptor = undefined;
+    try { fs.linkSync(temporary, file); }
+    catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+    }
+    return readPrimaryDb(file);
+  } finally {
+    if (descriptor !== undefined) try { fs.closeSync(descriptor); } catch {}
+    try { fs.unlinkSync(temporary); } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+  }
+}
+function loadPrimaryDbAtStartup(file) {
+  try { return readPrimaryDb(file); }
   catch (error) {
-    if (error?.code === 'ENOENT') return normalizePrimaryDb({});
+    if (error?.code === 'ENOENT') return bootstrapPrimaryDb(file);
     throw error;
   }
 }
-let db = loadPrimaryDb(dbFile);
+let db = loadPrimaryDbAtStartup(dbFile);
 const isAdmin = user => !!user && (user.admin === true || ADMIN_UIDS.includes(user.id));
-function saveDb() { atomicWrite(dbFile, JSON.stringify(db, null, 2)); }
+function saveDb() {
+  readPrimaryDb(dbFile);
+  atomicWrite(dbFile, JSON.stringify(db, null, 2));
+}
 function atomicWrite(file, content) {
-  const tmp = file + '.tmp';
-  fs.writeFileSync(tmp, content);
-  fs.renameSync(tmp, file);
+  const tmp = `${file}.${process.pid}.${crypto.randomBytes(8).toString('hex')}.tmp`;
+  try {
+    fs.writeFileSync(tmp, content, { flag: 'wx', mode: 0o600 });
+    fs.renameSync(tmp, file);
+  } finally {
+    try { fs.unlinkSync(tmp); } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+  }
 }
 const stateFile = uid => path.join(DATA, 'state-' + uid.replace(/[^a-zA-Z0-9_-]/g, '') + '.json');
 function parseStateFile(file) {
@@ -126,7 +160,7 @@ function isReady() {
   try {
     normalizePrimaryDb(db);
     if (!fs.statSync(dbFile).isFile()) return false;
-    const persisted = loadPrimaryDb(dbFile);
+    const persisted = readPrimaryDb(dbFile);
     normalizePrimaryDb(persisted);
     const persistedSecret = fs.readFileSync(secretFile, 'utf8').trim();
     if (persistedSecret !== SECRET || Buffer.byteLength(SECRET) < 32) return false;

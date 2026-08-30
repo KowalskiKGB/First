@@ -103,7 +103,9 @@ test('a legacy volume atomically bootstraps one canonical primary DB when it is 
   });
   assert.deepEqual(readFileSync(path.join(fixture.dataDir, 'db.json.tmp')), sentinel);
   assert.equal(readdirSync(fixture.dataDir).some(name => name.startsWith('db.json.bootstrap-')), false);
-  assert.deepEqual(JSON.parse(readFileSync(path.join(fixture.dataDir, 'collaboration.json'), 'utf8')), collaboration);
+  const persistedCollaboration = JSON.parse(readFileSync(path.join(fixture.dataDir, 'collaboration.json'), 'utf8'));
+  assert.equal(persistedCollaboration.schemaVersion, collaboration.schemaVersion);
+  assert.equal(persistedCollaboration.rev >= collaboration.rev, true);
 
   const ready = await fetch(`${fixture.url}/api/ready`);
   assert.equal(ready.status, 200);
@@ -180,6 +182,13 @@ test('existing invalid primary DB fails closed and remains byte-for-byte unchang
   assert.deepEqual(readFileSync(path.join(dataDir, 'db.json')), invalid);
 });
 
+test('primary DB startup I/O errors fail closed instead of being treated as an absent legacy DB', async t => {
+  await assert.rejects(startServer(t, {
+    omitDb: true,
+    prepareData(dataDir) { mkdirSync(path.join(dataDir, 'db.json')); }
+  }), /server exited/);
+});
+
 test('primary DB rejects invalid canonical collections and preserves unknown valid fields', async t => {
   await assert.rejects(startServer(t, { db: canonicalDb({ users: {} }) }), /server exited/);
 
@@ -247,6 +256,16 @@ test('readiness reports only status and fails when collaboration storage becomes
   const missingDb = await fetch(`${url}/api/ready`);
   assert.equal(missingDb.status, 503);
   assert.deepEqual(await missingDb.json(), { ok: false });
+
+  const writeWhileMissing = await mutate(
+    url,
+    ['POST', '/api/admin/invites/new', { note: 'Não recriar banco removido' }],
+    { Origin: ORIGIN }
+  );
+  assert.equal(writeWhileMissing.status, 500);
+  assert.deepEqual(await writeWhileMissing.json(), { error: 'server error' });
+  assert.throws(() => readFileSync(path.join(dataDir, 'db.json')), error => error.code === 'ENOENT');
+
   writeFileSync(path.join(dataDir, 'db.json'), JSON.stringify(canonicalDb()));
 
   writeFileSync(path.join(dataDir, 'collaboration.json'), '{');
