@@ -13,7 +13,7 @@ case "$FIRST_HEALTH_URL" in
 esac
 
 repo_dir=$(pwd -P)
-if ! archive=$(realpath -- "$FIRST_RESTORE_ARCHIVE"); then
+if ! archive=$(realpath "$FIRST_RESTORE_ARCHIVE"); then
   echo "FIRST_RESTORE_ARCHIVE could not be resolved" >&2
   exit 64
 fi
@@ -21,18 +21,32 @@ case "$archive" in
   "$repo_dir"|"$repo_dir"/*) echo "FIRST_RESTORE_ARCHIVE must be outside the repository" >&2; exit 64 ;;
 esac
 test -f "$archive"
-archive_dir=$(dirname -- "$archive")
+private_dir=""
 snapshot=""
+snapshot_write_open=0
+snapshot_read_open=0
+snapshot_fd_path=""
 manifest=""
 entry_types=""
 
 cleanup_release_files() {
   local cleanup_status=0
   local release_file
-  for release_file in "$snapshot" "$manifest" "$entry_types"; do
+  if [ "$snapshot_read_open" -eq 1 ]; then
+    exec 9<&- || cleanup_status=1
+    snapshot_read_open=0
+  fi
+  if [ "$snapshot_write_open" -eq 1 ]; then
+    exec 8>&- || cleanup_status=1
+    snapshot_write_open=0
+  fi
+  for release_file in "$manifest" "$entry_types"; do
     [ -n "$release_file" ] || continue
     rm -f -- "$release_file" || cleanup_status=1
   done
+  if [ -n "$private_dir" ]; then
+    rmdir -- "$private_dir" || cleanup_status=1
+  fi
   return "$cleanup_status"
 }
 
@@ -46,12 +60,39 @@ trap cleanup_early_exit EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-snapshot=$(mktemp "$archive_dir/.first-restore-snapshot.XXXXXX")
+umask 077
+private_root=$(realpath /tmp)
+case "$private_root" in
+  "$repo_dir"|"$repo_dir"/*) echo "Private restore runtime must be outside the repository" >&2; exit 64 ;;
+esac
+private_dir=$(mktemp -d "$private_root/first-restore-private.XXXXXX")
+chmod 700 -- "$private_dir"
+snapshot="$private_dir/snapshot"
+: > "$snapshot"
 chmod 600 -- "$snapshot"
-cp -- "$archive" "$snapshot"
-chmod 600 -- "$snapshot"
-manifest=$(mktemp "${TMPDIR:-/tmp}/first-restore-manifest.XXXXXX")
-entry_types=$(mktemp "${TMPDIR:-/tmp}/first-restore-types.XXXXXX")
+exec 8<> "$snapshot"
+snapshot_write_open=1
+if [ ! -r /dev/fd/8 ]; then
+  echo "Restore requires stable /dev/fd descriptor access" >&2
+  exit 69
+fi
+rm -f -- "$snapshot"
+snapshot=""
+cat -- "$archive" > /dev/fd/8
+exec 9< /dev/fd/8 # read-only snapshot descriptor
+snapshot_read_open=1
+exec 8>&-
+snapshot_write_open=0
+snapshot_fd_path=/dev/fd/9
+if [ ! -r "$snapshot_fd_path" ]; then
+  echo "Restore requires stable /dev/fd descriptor access" >&2
+  exit 69
+fi
+manifest="$private_dir/manifest"
+entry_types="$private_dir/entry-types"
+: > "$manifest"
+: > "$entry_types"
+chmod 600 -- "$manifest" "$entry_types"
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 stage_name=".first-restore-stage-$stamp-$$"
 recovery_name=".first-recovery-$stamp-$$"
@@ -134,7 +175,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 # Validate structure, entry types, and traversal before stopping the live writer.
-if ! tar -tzf "$snapshot" > "$manifest" || ! LC_ALL=C tar -tvzf "$snapshot" > "$entry_types"; then
+if ! tar -tzf "$snapshot_fd_path" > "$manifest" || ! LC_ALL=C tar -tvzf "$snapshot_fd_path" > "$entry_types"; then
   echo "Archive listing could not be parsed safely" >&2
   exit 65
 fi
@@ -142,6 +183,7 @@ test -s "$manifest"
 test -s "$entry_types"
 if ! awk '
   substr($0, 1, 1) != "-" && substr($0, 1, 1) != "d" { unsafe = 1 }
+  index($0, " -> ") { unsafe = 1 }
   END { exit (NR == 0 || unsafe) }
 ' "$entry_types"; then
   echo "Archive contains a link or unsupported archive entry type" >&2
@@ -176,13 +218,15 @@ docker compose run --rm --no-deps --entrypoint sh api -ceu '
   test ! -e "$stage"
   mkdir -m 700 "$stage"
   tar -C "$stage" -xzf -
-  test -z "$(find "$stage" -mindepth 1 ! -type d ! -type f -exec printf x \;)"
-  test -z "$(find "$stage" -type f -links +1 -exec printf x \;)"
+  invalid_entries=$(find "$stage" -mindepth 1 ! -type d ! -type f -exec printf x \;) || exit 65
+  test -z "$invalid_entries"
+  hardlinked_files=$(find "$stage" -type f -links +1 -exec printf x \;) || exit 65
+  test -z "$hardlinked_files"
   test -f "$stage/db.json"
   test ! -L "$stage/db.json"
   test -f "$stage/secret"
   test ! -L "$stage/secret"
-' -- "$stage_name" < "$snapshot"
+' -- "$stage_name" < "$snapshot_fd_path"
 
 # Retain a complete recovery copy before the first live path is moved.
 docker compose run --rm --no-deps --entrypoint sh api -ceu '

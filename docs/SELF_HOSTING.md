@@ -208,6 +208,9 @@ usuário `first_dev_<24 hex>`, uma senha de 32 bytes em base64url, um hash scryp
 master key independente de 32 bytes. Os dois caminhos de saída são obrigatórios e absolutos; o
 handoff é recusado se apontar para dentro do repositório. Arquivos existentes nunca são
 sobrescritos e o stdout contém somente um status genérico, sem valores ou caminhos dos artefatos.
+Durante a transação, o gerador mantém abertos os descritores dos inodes publicados e só remove um
+caminho em caso de falha quando `(device, inode)` ainda corresponde ao descritor próprio. Uma troca
+externa do caminho é preservada, inclusive se a segunda publicação falhar.
 
 Linux/macOS:
 
@@ -261,9 +264,11 @@ e execute o gerador novamente. Ele nunca cria ou recebe chave comercial de IA.
 
 ## Backup, restore e deploy
 
-Os scripts abaixo exigem Bash, `realpath`, `awk`, `curl` e um `tar` cuja listagem detalhada identifica
-o tipo do item no primeiro caractere (GNU tar e BusyBox tar atendem) e devem ser executados na raiz
-do checkout que contém o Compose.
+Os scripts abaixo exigem Bash, `realpath`, `awk`, `curl`, `/dev/fd` funcional e um `tar` cuja
+listagem detalhada identifica o tipo do item no primeiro caractere ou hardlink como `nome -> alvo`
+(GNU tar e BusyBox tar atendem). Execute-os na raiz do checkout que contém o Compose. O restore
+também exige `/tmp` fora do checkout e com permissão para criar um diretório privado 0700; ausência
+de `/dev/fd` ou desse diretório aborta antes de parar a API.
 Escolha um diretório absoluto em disco/volume de backup, fora do repositório. O script recusa
 caminhos relativos ou internos ao checkout, detecta se a API estava ativa, para o único writer JSON
 e usa uma trap para reiniciá-lo em sucesso, erro ou interrupção. O arquivo só aparece com o nome
@@ -279,10 +284,12 @@ separada. Não use `./backups`: além de misturar dados com código, uma limpeza
 eliminar a única cópia.
 
 O restore resolve o próprio arquivo com `realpath`, exige que o destino canônico fique fora do
-checkout e exige a URL HTTPS de health. O diretório externo do backup precisa permitir a criação de
-um snapshot temporário: o script copia a origem uma única vez para um nome aleatório 0600 ao lado
-do backup e usa somente essa cópia para listar, validar e extrair. A trap remove o snapshot em
-sucesso, erro ou interrupção; trocar o caminho original durante a operação não muda os bytes usados.
+checkout e exige a URL HTTPS de health. Em um diretório privado 0700 sob `/tmp`, o script cria um
+inode 0600, abre seu descritor e remove imediatamente o nome antes de copiar a origem. Depois mantém
+somente um descritor de leitura aberto e usa `/dev/fd` para listar, validar e extrair exatamente o
+mesmo inode. A trap fecha apenas os descritores próprios e remove o diretório privado; não existe
+pathname de snapshot que possa ser trocado ou removido por engano. O diretório do backup pode ser
+somente leitura e trocar o caminho original durante a operação não muda os bytes já copiados.
 Antes de parar a API, ele valida as duas listagens do snapshot, rejeita caminhos
 absolutos/traversal, symlinks e hardlinks, tipos especiais e exige `db.json` e `secret`. A parada do
 writer só é considerada confirmada quando `docker compose stop api` termina

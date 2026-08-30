@@ -4,7 +4,9 @@ import {
   closeSync,
   existsSync,
   fchmodSync,
+  fstatSync,
   linkSync,
+  lstatSync,
   openSync,
   realpathSync,
   unlinkSync,
@@ -19,7 +21,9 @@ const defaultRuntime = {
   closeSync,
   existsSync,
   fchmodSync,
+  fstatSync,
   linkSync,
+  lstatSync,
   openSync,
   realpathSync,
   stdout: process.stdout,
@@ -75,37 +79,104 @@ function privateSibling(target, phase, runtime) {
   fail('could not reserve a private temporary output name')
 }
 
+function identityOf(stat) {
+  return { device: stat.dev, inode: stat.ino }
+}
+
+function sameIdentity(left, right) {
+  return left.device === right.device && left.inode === right.inode
+}
+
+function currentIdentity(target, runtime) {
+  try {
+    return identityOf(runtime.lstatSync(target, { bigint: true }))
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null
+    throw error
+  }
+}
+
+function removeOwnedPath(target, runtime, owned) {
+  const record = owned.get(target)
+  if (!record) return true
+  let current
+  let expected
+  try {
+    current = currentIdentity(target, runtime)
+    expected = identityOf(runtime.fstatSync(record.descriptor, { bigint: true }))
+  } catch {
+    return false
+  }
+  if (!current || !sameIdentity(current, expected)) {
+    owned.delete(target)
+    return true
+  }
+  try {
+    runtime.unlinkSync(target)
+    owned.delete(target)
+    return true
+  } catch {
+    return false
+  }
+}
+
 function privateWrite(target, contents, runtime, owned) {
   const descriptor = runtime.openSync(target, 'wx', 0o600)
-  owned.add(target)
   try {
+    const record = { descriptor }
+    owned.set(target, record)
     runtime.writeFileSync(descriptor, contents, { encoding: 'utf8' })
     try { runtime.fchmodSync(descriptor, 0o600) } catch {
       // Windows does not expose POSIX mode bits; exclusive creation still applies.
     }
-  } finally {
-    runtime.closeSync(descriptor)
+    return record
+  } catch (error) {
+    if (!owned.has(target)) runtime.closeSync(descriptor)
+    throw error
   }
 }
 
 function publishPrivateOutput(target, contents, runtime, owned) {
   const partial = privateSibling(target, 'partial', runtime)
-  privateWrite(partial, contents, runtime, owned)
+  const record = privateWrite(partial, contents, runtime, owned)
   runtime.linkSync(partial, target)
-  owned.add(target)
-  runtime.unlinkSync(partial)
-  owned.delete(partial)
+  const partialIdentity = identityOf(runtime.fstatSync(record.descriptor, { bigint: true }))
+  const publishedIdentity = currentIdentity(target, runtime)
+  if (!publishedIdentity || !sameIdentity(publishedIdentity, partialIdentity)) fail('published output identity changed unexpectedly')
+  owned.set(target, record)
+  if (!removeOwnedPath(partial, runtime, owned)) fail('private publication temporary cleanup failed')
+  const finalIdentity = currentIdentity(target, runtime)
+  const ownedIdentity = identityOf(runtime.fstatSync(record.descriptor, { bigint: true }))
+  if (!finalIdentity || !sameIdentity(finalIdentity, ownedIdentity)) fail('published output identity changed unexpectedly')
+}
+
+function closeOwnedDescriptors(runtime, records) {
+  let failed = false
+  for (const record of records) {
+    try { runtime.closeSync(record.descriptor) }
+    catch { failed = true }
+  }
+  return !failed
+}
+
+function releaseOwned(runtime, owned) {
+  for (const [target, record] of owned) {
+    const current = currentIdentity(target, runtime)
+    const expected = identityOf(runtime.fstatSync(record.descriptor, { bigint: true }))
+    if (!current || !sameIdentity(current, expected)) return false
+  }
+  const records = [...new Set(owned.values())]
+  if (!closeOwnedDescriptors(runtime, records)) return false
+  owned.clear()
+  return true
 }
 
 function cleanupOwned(runtime, owned) {
   let failed = false
-  for (const target of owned) {
-    try {
-      if (runtime.existsSync(target)) runtime.unlinkSync(target)
-    } catch {
-      failed = true
-    }
-  }
+  const records = [...new Set(owned.values())]
+  for (const target of [...owned.keys()]) if (!removeOwnedPath(target, runtime, owned)) failed = true
+  if (!closeOwnedDescriptors(runtime, records)) failed = true
+  owned.clear()
   return !failed
 }
 
@@ -144,7 +215,7 @@ export function generateReleaseCredentials(argv = process.argv.slice(2), overrid
     AI_CONFIG_MASTER_KEY: crypto.randomBytes(32).toString('hex'),
   }
   const generatedAt = new Date().toISOString()
-  const owned = new Set()
+  const owned = new Map()
   try {
     publishPrivateOutput(
       credentialsPath,
@@ -158,6 +229,7 @@ export function generateReleaseCredentials(argv = process.argv.slice(2), overrid
       runtime,
       owned,
     )
+    if (!releaseOwned(runtime, owned)) fail('published output identity changed before completion')
   } catch (error) {
     if (!cleanupOwned(runtime, owned)) throw new Error('release credential generation failed and private artifact cleanup was incomplete')
     throw error

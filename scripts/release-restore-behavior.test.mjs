@@ -169,7 +169,7 @@ case "$command" in
         done
         stage_name=${'$'}{@: -1}
         translated=${'$'}{stage_script//\/data/$FIRST_FAKE_STAGE_DATA}
-        PATH="$FIRST_FAKE_STAGE_BIN:$PATH" /usr/bin/sh -ceu "$translated" -- "$stage_name"
+        PATH="$FIRST_FAKE_STAGE_BIN:$PATH" /bin/sh -ceu "$translated" -- "$stage_name"
         exit $?
       fi
       if [ -n "${'$'}{FIRST_FAKE_EXTRACTED_ARCHIVE:-}" ]; then
@@ -217,7 +217,7 @@ exec /usr/bin/find "$@"
 #!/usr/bin/env bash
 set -u
 if [ "${'$'}{1:-}" = -m ]; then shift 2; fi
-exec /usr/bin/mkdir "$@"
+exec /bin/mkdir "$@"
 `)
 
   writeExecutable(path.join(fakeBin, 'curl'), String.raw`
