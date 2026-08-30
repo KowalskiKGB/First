@@ -41,11 +41,12 @@ function fixture(extra = {}, options = {}) {
     ...extra
   };
   const store = createJsonStore({ file: path.join(dir, 'collaboration.json'), initial, migrate: migrateCollaboration });
+  const serviceStore = typeof options.wrapStore === 'function' ? options.wrapStore(store) : store;
   let ids = 0;
   let providerCalls = 0;
   const usage = [];
   const service = createAiJobService({
-    store,
+    store: serviceStore,
     readState: () => ({
       week: { 1: 'manual-routine' }, routines: [{ id: 'manual-routine', name: 'Manual' }],
       workouts: [{ d: '2026-08-20', vol: 1200, ex: [{ id: '0001' }] }]
@@ -61,6 +62,12 @@ function fixture(extra = {}, options = {}) {
     defer: () => {}
   });
   return { dir, store, service, usage, providerCalls: () => providerCalls };
+}
+
+function deferred() {
+  let resolve;
+  const promise = new Promise(done => { resolve = done; });
+  return { promise, resolve };
 }
 
 test('enqueue is idempotent and permits only one active job per student', () => {
@@ -177,6 +184,109 @@ test('provider failure is recorded once without retry/fallback and preserves the
   assert.deepEqual(state.aiPlans, [current]);
   assert.equal(fx.usage.length, 1);
   assert.equal(fx.usage[0].details.status, 'failed');
+});
+
+test('a medical restriction enabled while the provider is running fails the job without replacing the current plan', async () => {
+  const providerStarted = deferred();
+  const providerResult = deferred();
+  const current = {
+    id: 'current-medical', studentId: 'student-a', version: 4, provider: 'openai', model: 'old', contextHash: 'old',
+    justification: 'vigente', routines: [], schedule: [], source: 'ai', status: 'applied', createdAt: NOW, updatedAt: NOW, appliedAt: NOW
+  };
+  let calls = 0;
+  const fx = fixture({ aiPlans: [current] }, {
+    runStructured: async () => {
+      calls += 1;
+      providerStarted.resolve();
+      return providerResult.promise;
+    }
+  });
+
+  const job = fx.service.enqueue({ studentId: 'student-a', idempotencyKey: 'medical-race' });
+  const draining = fx.service.drain();
+  await providerStarted.promise;
+  const beforeChange = fx.store.read();
+  fx.store.update(beforeChange.rev, state => ({
+    ...state,
+    trainingProfiles: state.trainingProfiles.map(item => item.studentId === 'student-a'
+      ? { ...item, medicalRestriction: true, updatedAt: '2026-08-29T12:01:00.000Z' }
+      : item)
+  }));
+  providerResult.resolve({ value: response(), usage: { provider: 'openai', model: 'gpt-test', inputTokens: 10, outputTokens: 20, totalTokens: 30 } });
+  await draining;
+
+  const state = fx.store.read();
+  assert.equal(calls, 1);
+  assert.equal(state.aiJobs.find(item => item.id === job.id).status, 'failed');
+  assert.deepEqual(state.aiPlans, [current]);
+  assert.equal(fx.usage.length, 1);
+  assert.equal(fx.usage[0].details.status, 'failed');
+});
+
+test('an equipment change while the provider is running rejects exercises from the stale shortlist', async () => {
+  const providerStarted = deferred();
+  const providerResult = deferred();
+  const fx = fixture({}, {
+    runStructured: async () => {
+      providerStarted.resolve();
+      return providerResult.promise;
+    }
+  });
+
+  const job = fx.service.enqueue({ studentId: 'student-a', idempotencyKey: 'equipment-race' });
+  const draining = fx.service.drain();
+  await providerStarted.promise;
+  const beforeChange = fx.store.read();
+  fx.store.update(beforeChange.rev, state => ({
+    ...state,
+    gymProfiles: state.gymProfiles.map(item => item.studentId === 'student-a'
+      ? { ...item, genericEquipment: ['dumbbell'], updatedAt: '2026-08-29T12:01:00.000Z' }
+      : item)
+  }));
+  providerResult.resolve({ value: response(), usage: { provider: 'openai', model: 'gpt-test', inputTokens: 10, outputTokens: 20, totalTokens: 30 } });
+  await draining;
+
+  const state = fx.store.read();
+  assert.equal(state.aiJobs.find(item => item.id === job.id).status, 'failed');
+  assert.equal(state.aiPlans.length, 0);
+  assert.equal(fx.usage.length, 1);
+  assert.equal(fx.usage[0].details.status, 'failed');
+});
+
+test('a revision conflict after final validation recomputes the plan version and generated IDs', async () => {
+  const competing = {
+    id: 'competing-plan', studentId: 'student-a', version: 9, provider: 'openai', model: 'other', contextHash: 'other',
+    justification: 'concorrente', routines: [], schedule: [], source: 'ai', status: 'applied', createdAt: NOW, updatedAt: NOW, appliedAt: NOW
+  };
+  let injected = false;
+  const fx = fixture({}, {
+    wrapStore: store => ({
+      read: () => store.read(),
+      update(expectedRev, reducer) {
+        const current = store.read();
+        const preview = reducer(current);
+        const isFinalApply = preview.aiJobs.some(item => item.status === 'applied');
+        if (!injected && isFinalApply) {
+          injected = true;
+          store.update(current.rev, state => ({ ...state, aiPlans: [...state.aiPlans, competing] }));
+        }
+        return store.update(expectedRev, reducer);
+      }
+    })
+  });
+
+  const job = fx.service.enqueue({ studentId: 'student-a', idempotencyKey: 'version-conflict' });
+  await fx.service.drain();
+
+  const state = fx.store.read();
+  const generated = state.aiPlans.find(item => item.id !== competing.id);
+  assert.equal(injected, true);
+  assert.equal(state.aiJobs.find(item => item.id === job.id).status, 'applied');
+  assert.equal(state.aiJobs.find(item => item.id === job.id).planVersion, 10);
+  assert.equal(generated.version, 10);
+  assert.notEqual(generated.id, competing.id);
+  assert.equal(new Set(state.aiPlans.flatMap(item => [item.id, ...item.routines.map(routine => routine.id)])).size, 3);
+  assert.equal(fx.usage.length, 1);
 });
 
 test('real structured adapter failures retain billed usage for the failed job', async () => {

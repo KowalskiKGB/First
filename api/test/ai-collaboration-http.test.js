@@ -80,6 +80,34 @@ test('student persists profile, gym and measurements then reads only their AI co
   assert.equal(context.body.completeness.eligible, true);
 });
 
+test('student AI context exposes only ten retained own AI versions in descending order', async t => {
+  const aiPlans = Array.from({ length: 12 }, (_, index) => {
+    const version = index + 1;
+    return {
+      id: `ai-${version}`, studentId: 'student-a', version, provider: 'openai', model: 'gpt-test', contextHash: `hash-${version}`,
+      justification: `IA ${version}`, routines: [], schedule: [], source: 'ai', status: version === 12 ? 'applied' : 'superseded',
+      createdAt: NOW, updatedAt: NOW, appliedAt: version === 12 ? NOW : null
+    };
+  });
+  const personalPlan = {
+    id: 'personal-private', studentId: 'student-a', version: 99, provider: 'personal', model: 'trainer', contextHash: 'personal',
+    justification: 'Plano do Personal', routines: [], schedule: [], source: 'personal', status: 'applied',
+    createdAt: NOW, updatedAt: NOW, appliedAt: NOW
+  };
+  const foreignPlan = { ...aiPlans[0], id: 'foreign-ai', studentId: 'student-b', version: 100 };
+  const f = fixture(t, { ...state(), aiPlans: [...aiPlans, personalPlan, foreignPlan] });
+
+  const context = await invoke(f, 'GET /api/ai/context', { user: { id: 'student-a' } });
+
+  assert.equal(context.status, 200);
+  assert.equal(context.body.plan.id, 'ai-12');
+  assert.equal(context.body.planHistory.length, 10);
+  assert.deepEqual(context.body.planHistory.map(plan => plan.version), [12, 11, 10, 9, 8, 7, 6, 5, 4, 3]);
+  assert.ok(context.body.planHistory.every(plan => plan.studentId === 'student-a' && plan.source === 'ai'));
+  assert.equal(JSON.stringify(context.body).includes('personal-private'), false);
+  assert.equal(JSON.stringify(context.body).includes('foreign-ai'), false);
+});
+
 test('trainer mutations are non-enumerable and require role, ownership, link and trainingProfileWrite', async t => {
   const f = fixture(t, state({ trainingProfileWrite: true }));
 
