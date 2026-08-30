@@ -133,14 +133,14 @@ function routineOptionsForWeekday(state, weekday, preference) {
 
   const seen = new Set()
   return options
+    .map((option, index) => ({ ...option, preferred: matchesPreference(preference, option), _order: index }))
+    .sort((left, right) => Number(right.preferred) - Number(left.preferred) || SOURCE_ORDER[left.sourceType] - SOURCE_ORDER[right.sourceType] || left._order - right._order)
     .filter(option => {
       const key = `${option.sourceType}|${option.planId || ''}|${option.routineId}`
       if (seen.has(key)) return false
       seen.add(key)
       return true
     })
-    .map((option, index) => ({ ...option, preferred: matchesPreference(preference, option), _order: index }))
-    .sort((left, right) => Number(right.preferred) - Number(left.preferred) || SOURCE_ORDER[left.sourceType] - SOURCE_ORDER[right.sourceType] || left._order - right._order)
     .map(({ _order, ...option }) => option)
 }
 

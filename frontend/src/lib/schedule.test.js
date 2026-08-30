@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { activeSourceMetadata, normalizeScheduleState, scheduledRoutineOptions } from './schedule.js'
+import {
+  activeSourceMetadata,
+  normalizeScheduleState,
+  schedulePreference,
+  scheduledRoutineOptions,
+  scheduledRoutineOptionsForWeekday,
+} from './schedule.js'
 
 const routines = [
   { id: 'manual', name: 'Manual', ex: [] },
@@ -74,6 +80,48 @@ describe('scheduledRoutineOptions', () => {
     expect(scheduledRoutineOptions(state, '2026-08-31').map(option => option.routineId)).toEqual([
       'personal-b', 'manual', 'personal-a', 'ai-a',
     ])
+  })
+
+  it('honors the exact preferred managed version when duplicate schedule entries exist', () => {
+    const base = coexistenceState({
+      '2026-08-31': { routineId: 'personal-a', sourceType: 'personal', planId: 'personal-plan', version: 3 },
+    })
+    const state = {
+      ...base,
+      sourceSchedules: {
+        ...base.sourceSchedules,
+        personal: [
+          base.sourceSchedules.personal[0],
+          { ...base.sourceSchedules.personal[0], version: 3 },
+        ],
+      },
+    }
+
+    const options = scheduledRoutineOptions(state, '2026-08-31')
+
+    expect(options.filter(option => option.routineId === 'personal-a')).toHaveLength(1)
+    expect(options[0]).toMatchObject({ routineId: 'personal-a', version: 3, preferred: true })
+  })
+
+  it('infers source metadata for an unscheduled managed day override', () => {
+    const base = coexistenceState({ '2026-08-31': 'ai-extra' })
+    const state = {
+      ...base,
+      routines: [...base.routines, { id: 'ai-extra', name: 'IA extra', ex: [], _aiGenerated: true, _aiPlanId: 'ai-extra-plan', _aiVersion: 4 }],
+    }
+
+    expect(scheduledRoutineOptions(state, '2026-08-31')[0]).toMatchObject({
+      routineId: 'ai-extra', sourceType: 'ai', planId: 'ai-extra-plan', version: 4, label: 'IA extra', preferred: true,
+    })
+  })
+
+  it('exposes weekly options and serializes optional source metadata', () => {
+    const weekly = scheduledRoutineOptionsForWeekday(coexistenceState(), 1)
+
+    expect(weekly.map(option => option.routineId)).toEqual(['manual', 'personal-a', 'ai-a'])
+    expect(schedulePreference(weekly[2])).toEqual({ routineId: 'ai-a', sourceType: 'ai', planId: 'ai-plan', version: 3 })
+    expect(schedulePreference(null)).toBeNull()
+    expect(activeSourceMetadata({})).toEqual({ sourceType: 'manual', planId: null, version: null })
   })
 })
 
