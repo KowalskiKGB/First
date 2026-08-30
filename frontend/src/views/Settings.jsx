@@ -415,6 +415,7 @@ export function ProfileEditor({ close }) {
     if (draft.newPassword && draft.newPassword.length < 6) { setError(t('Use at least 6 characters.')); return }
     const changesCredentials = email !== (user?.email || '') || Boolean(draft.newPassword)
     if (changesCredentials && user?.email && !draft.currentPassword) { setError(t('Enter your current password.')); return }
+    if (!user?.email && draft.newPassword && !email) { setError(t('Enter a valid email.')); return }
     if (!user?.email && email && !draft.newPassword) { setError(t('Create a password to add an email.')); return }
     if (!validOptional(draft.weightKg, 20, 350)) { setError(t('Enter a valid weight.')); return }
     if (!validOptional(draft.heightCm, 80, 250)) { setError(t('Enter a valid height.')); return }
