@@ -174,6 +174,13 @@ test('admin sees registered accounts with durable last access and distinct onlin
   assert.equal(Number.isFinite(online.lastAccessAt), true);
   assert.equal(offline.online, false);
   assert.equal(offline.lastAccessAt, oldAccess);
+  assert.equal(Number.isFinite(payload.now), true);
+
+  const detailResponse = await fetch(`${url}/api/admin/user?id=student-offline`, {
+    headers: { Cookie: appCookie('admin-one') }
+  });
+  assert.equal(detailResponse.status, 200);
+  assert.equal(Number.isFinite((await detailResponse.json()).now), true);
 });
 
 test('disabling an account revokes its existing sessions after the account is re-enabled', async t => {

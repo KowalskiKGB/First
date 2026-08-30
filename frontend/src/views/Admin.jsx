@@ -28,6 +28,7 @@ function UserDetail({ id, onChanged, close }) {
     lastAccessAt: d.user?.lastAccessAt ?? d.lastAccessAt ?? null,
     lastLoginAt: d.user?.lastLoginAt ?? d.lastLoginAt ?? null,
   }
+  const now = Number.isFinite(d.now) ? d.now : Date.now()
   const setDisabled = disabled => {
     api('/api/admin/user/disable', { method: 'POST', body: JSON.stringify({ id: u.id, disabled }) })
       .then(() => { toast(disabled ? 'Conta desativada' : 'Conta reativada'); onChanged(); close() })
@@ -38,14 +39,14 @@ function UserDetail({ id, onChanged, close }) {
     <div className="muted small" style={{ marginTop: -8 }}>{u.email || 'E-mail não informado'}</div>
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', margin: '8px 0 12px' }}>
       {u.admin && <span className="tag acc">Administrador</span>}
-      <span className={`tag nocap${u.online && !u.disabled ? ' acc' : ''}`} style={u.disabled ? { color: 'var(--red)' } : undefined}>{accountPresence(u)}</span>
+      <span className={`tag nocap${u.online && !u.disabled ? ' acc' : ''}`} style={u.disabled ? { color: 'var(--red)' } : undefined}>{accountPresence(u, now)}</span>
       {u.invitedBy && <span className="tag nocap">Convite {u.invitedBy}</span>}
     </div>
     <div className="tiles" style={{ textAlign: 'left' }}>
-      <div className="tile"><div className="l">Último acesso</div><div className="v" style={{ fontSize: '.9rem', lineHeight: 1.3 }}>{accessDate(u.lastAccessAt)}<div className="dim" style={{ fontSize: '.72rem', marginTop: 3 }}>{relativeAccess(u.lastAccessAt) ? `há ${relativeAccess(u.lastAccessAt)}` : 'sem atividade registrada'}</div></div></div>
-      <div className="tile"><div className="l">Último login</div><div className="v" style={{ fontSize: '.9rem', lineHeight: 1.3 }}>{accessDate(u.lastLoginAt)}<div className="dim" style={{ fontSize: '.72rem', marginTop: 3 }}>{relativeAccess(u.lastLoginAt) ? `há ${relativeAccess(u.lastLoginAt)}` : 'sem login registrado'}</div></div></div>
+      <div className="tile"><div className="l">Último acesso</div><div className="v" style={{ fontSize: '.9rem', lineHeight: 1.3 }}>{accessDate(u.lastAccessAt)}<div className="dim" style={{ fontSize: '.72rem', marginTop: 3 }}>{relativeAccess(u.lastAccessAt, now) ? `há ${relativeAccess(u.lastAccessAt, now)}` : 'sem atividade registrada'}</div></div></div>
+      <div className="tile"><div className="l">Último login</div><div className="v" style={{ fontSize: '.9rem', lineHeight: 1.3 }}>{accessDate(u.lastLoginAt)}<div className="dim" style={{ fontSize: '.72rem', marginTop: 3 }}>{relativeAccess(u.lastLoginAt, now) ? `há ${relativeAccess(u.lastLoginAt, now)}` : 'sem login registrado'}</div></div></div>
       <div className="tile"><div className="l">Cadastro</div><div className="v" style={{ fontSize: '.95rem' }}>{u.created ? fmtDate(u.created.slice(0, 10)) : '—'}</div></div>
-      <div className="tile"><div className="l">Última sincronização</div><div className="v" style={{ fontSize: '.95rem' }}>{relativeAccess(d.lastSync) ? `há ${relativeAccess(d.lastSync)}` : '—'}</div></div>
+      <div className="tile"><div className="l">Última sincronização</div><div className="v" style={{ fontSize: '.95rem' }}>{relativeAccess(d.lastSync, now) ? `há ${relativeAccess(d.lastSync, now)}` : '—'}</div></div>
     </div>
     <div className="tiles" style={{ textAlign: 'left' }}>
       <div className="tile"><div className="l">Treinos</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.workouts.length}</div></div>

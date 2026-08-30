@@ -1117,7 +1117,8 @@ const routes = {
     const u = db.users.find(x => x.id === id);
     if (!u) return json(res, 404, { error: 'no such user' });
     const S = readState(u.id) || {};
-    const status = accountStatus(u);
+    const now = Date.now();
+    const status = accountStatus(u, now);
     json(res, 200, {
       user: {
         id: u.id, name: u.name, email: u.email || null, created: u.created || null,
@@ -1128,6 +1129,7 @@ const routes = {
       },
       unit: S.unit || 'kg',
       lastSync: S._ts || null,
+      now,
       routines: (S.routines || []).map(r => ({ id: r.id, name: r.name, emoji: r.emoji, count: (r.ex || []).length })),
       bodyweight: S.bodyweight || [],
       workouts: (S.workouts || []).slice().reverse()   // newest first for display
