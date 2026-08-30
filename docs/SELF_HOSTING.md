@@ -203,44 +203,96 @@ Revise no recurso Compose, sem registrar valores em logs:
 volte para `1` antes de expor o host. `FIRST_BASIC_AUTH_USERS` protege `/media/`; mantenha
 `FIRST_BOOTSTRAP_MIDDLEWARE` vazio para o app Capacitor alcançar shell, API e Digital Asset Links.
 
-Para criar a credencial Dev fora do Git, gere um sufixo aleatório para
-`first_dev_<sufixo>`, uma senha a partir de 32 bytes aleatórios, o hash com
-`hashDevPassword()` de `api/dev-auth.js` e uma master key independente com outros 32 bytes
-aleatórios em hexadecimal. Não imprima esses valores em CI ou logs de deploy. O Coolify recebe
-somente usuário, hash e master key; o arquivo local ignorado `CREDENCIAIS_TESTE.md` recebe somente
-URL, usuário, senha, data e instruções de troca — nunca chaves de IA, Coolify ou Cloudflare.
+Use o gerador versionado, que reutiliza `hashDevPassword()` de `api/dev-auth.js`. Ele cria um
+usuário `first_dev_<24 hex>`, uma senha de 32 bytes em base64url, um hash scrypt compatível e uma
+master key independente de 32 bytes. Os dois caminhos de saída são obrigatórios e absolutos; o
+handoff é recusado se apontar para dentro do repositório. Arquivos existentes nunca são
+sobrescritos e o stdout contém somente status e caminhos, não valores.
+
+Linux/macOS:
+
+```bash
+first_repo_dir=$(pwd -P)
+first_handoff_dir=$(mktemp -d "${TMPDIR:-/tmp}/first-release-handoff.XXXXXX")
+node scripts/generate-release-credentials.mjs \
+  --url https://first.rocketxsistemas.com.br \
+  --credentials-out "$first_repo_dir/CREDENCIAIS_TESTE.md" \
+  --handoff-out "$first_handoff_dir/coolify.json"
+```
+
+PowerShell:
+
+```powershell
+$firstRepoDir = (Resolve-Path '.').Path
+$firstHandoffDir = Join-Path ([IO.Path]::GetTempPath()) ('first-release-handoff-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $firstHandoffDir | Out-Null
+$firstCredentials = Join-Path $firstRepoDir 'CREDENCIAIS_TESTE.md'
+$firstHandoff = Join-Path $firstHandoffDir 'coolify.json'
+node scripts/generate-release-credentials.mjs `
+  --url https://first.rocketxsistemas.com.br `
+  --credentials-out $firstCredentials `
+  --handoff-out $firstHandoff
+```
+
+`CREDENCIAIS_TESTE.md` contém somente URL, usuário, senha, data e instruções de troca. Nunca contém
+hash, master key, chave de provedor, Coolify ou Cloudflare. O JSON separado contém somente
+`DEV_PANEL_USER`, `DEV_PANEL_PASSWORD_HASH` e `AI_CONFIG_MASTER_KEY` e é um handoff efêmero.
+
+Passe **o caminho** desse JSON ao cliente programático/API autorizada do Coolify, carregue-o em
+memória sem imprimir o conteúdo, instale exatamente as três variáveis e confirme os nomes na
+resposta. Não copie valores pelo terminal. Imediatamente após a confirmação, apague o handoff:
+
+```bash
+rm -- "$first_handoff_dir/coolify.json"
+rmdir -- "$first_handoff_dir"
+unset first_handoff_dir
+```
+
+```powershell
+Remove-Item -LiteralPath $firstHandoff
+Remove-Item -LiteralPath $firstHandoffDir
+$firstHandoff = $null
+$firstHandoffDir = $null
+```
+
+Mantenha `CREDENCIAIS_TESTE.md` somente na máquina do operador e em um gerenciador de senhas. Para
+rotacionar, preserve a credencial necessária no gerenciador, remova conscientemente o arquivo local
+e execute o gerador novamente. Ele nunca cria ou recebe chave comercial de IA.
 
 ## Backup, restore e deploy
 
-Pare a API para obter um backup consistente do volume lógico `first-data`. Grave primeiro em um
-arquivo parcial, valide o tar e só então publique o nome final:
+Os scripts abaixo exigem Bash e devem ser executados na raiz do checkout que contém o Compose.
+Escolha um diretório absoluto em disco/volume de backup, fora do repositório. O script recusa
+caminhos relativos ou internos ao checkout, detecta se a API estava ativa, para o único writer JSON
+e usa uma trap para reiniciá-lo em sucesso, erro ou interrupção. O arquivo só aparece com o nome
+final depois de ser gravado como `.partial` e validado por `tar -tzf`:
 
 ```bash
-release_backup_dir=./backups
-release_stamp=$(date -u +%Y%m%dT%H%M%SZ)
-release_backup="$release_backup_dir/first-data-$release_stamp.tgz"
-mkdir -p "$release_backup_dir"
-docker compose stop api
-docker compose run --rm --no-deps --entrypoint tar api -C /data -czf - . > "$release_backup.part"
-tar -tzf "$release_backup.part" >/dev/null
-mv "$release_backup.part" "$release_backup"
-docker compose start api
+export FIRST_BACKUP_DIR=/srv/first-backups
+bash scripts/backup-first-data.sh
 ```
 
-Guarde a cópia fora do host. Antes de produção, teste-a em uma instância separada. Para restore,
-confirme o arquivo e o destino, pare a API e substitua o conteúdo completo de `/data` no volume do
-serviço; não restaure somente `db.json`:
+Copie o `.tgz` validado para outro host/objeto protegido e teste o restore em uma instância
+separada. Não use `./backups`: além de misturar dados com código, uma limpeza do checkout pode
+eliminar a única cópia.
+
+O restore exige arquivo absoluto fora do checkout e a URL HTTPS de health. Antes de parar a API,
+ele valida o tar, rejeita caminhos absolutos/traversal e exige `db.json` e `secret`. Com a API
+parada, extrai tudo em staging e cria uma cópia completa de recovery do `/data` atual. Só então
+move os dados atuais e instala o staging. Erro de troca, startup ou health aciona rollback para a
+cópia retida; falha no próprio rollback mantém a API parada para intervenção.
 
 ```bash
-release_backup=./backups/first-data-AAAAmmddTHHMMSSZ.tgz
-tar -tzf "$release_backup" >/dev/null
-docker compose stop api
-docker compose run --rm --no-deps --entrypoint sh api -c \
-  'find /data -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; tar -C /data -xzf -' \
-  < "$release_backup"
-docker compose start api
-curl --fail --silent --show-error https://first.rocketxsistemas.com.br/api/health
+export FIRST_RESTORE_ARCHIVE=/srv/first-backups/first-data-AAAAmmddTHHMMSSZ.tgz
+export FIRST_HEALTH_URL=https://first.rocketxsistemas.com.br/api/health
+bash scripts/restore-first-data.sh
 ```
+
+Restore só é aceito quando o script termina com código zero depois de `/api/health` responder 2xx.
+Ainda preserve o diretório `.first-recovery-*` informado pelo script até confirmar login, `/dev`,
+Plano, Personal, job/rollback e dados anteriores. Qualquer divergência nesse smoke reprova o restore:
+reexecute o script com o backup anterior validado. Remova a recovery somente depois da aceitação e
+de um novo backup; nunca durante a janela de rollback.
 
 Checklist de deploy:
 

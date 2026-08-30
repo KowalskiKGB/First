@@ -22,6 +22,10 @@ frontend/android/app/build/
 # Local tooling
 graphify-out/
 CREDENCIAIS_TESTE.md
+backups/
+first-data-*.tgz
+first-data-*.tgz.partial
+tmp-first-release-secrets.json
 .codex/
 tmp-playwright/
 tmp-device/

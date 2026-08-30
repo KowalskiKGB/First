@@ -203,9 +203,9 @@ Read this before hosting First for anyone other than yourself.
   also rate-limit at their TLS edge. `POST /api/register/options` reveals whether an invite code
   is valid. Current invite codes contain 64 bits of randomness; revoke and reissue older, shorter
   unused codes. The API also enforces a 5 MB request-body limit.
-- **A few endpoints answer without a session:** `/api/health` (which includes the total user
-  count), `/api/config` (whether invite-only is on), `/api/push/public-key`, and the
-  register/login handshakes.
+- **A few endpoints answer without a session:** `/api/health` returns only `{"ok":true}`,
+  `/api/config` reports whether invite-only is on, `/api/push/public-key` returns the public VAPID
+  key, and the register/login handshakes.
 - **Changing `RP_ID` invalidates every existing passkey.** They were bound to the old hostname
   and will fail verification against the new one. The data stays on disk but is unreachable until
   each user registers again — as a *new* profile. Choose your hostname before anyone registers.
