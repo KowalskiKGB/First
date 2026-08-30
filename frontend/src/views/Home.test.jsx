@@ -147,6 +147,7 @@ describe('Home schedule summary', () => {
     const signIn = findElements(tree, element => ['button', 'a'].includes(element.type) && elementText(element).includes('Faça login'))[0]
 
     expect(markup).toContain('Olá!')
+    expect(markup).not.toContain('class="sub capitalize"')
     expect(signIn).toBeDefined()
     expect(markup).not.toMatch(/<h1[^>]*>Workout<\/h1>/)
   })

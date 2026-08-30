@@ -100,7 +100,7 @@ export default function Home() {
     <header className="hdr home-header">
       <div>
         <h1>{user?.name ? t('Hello, {0}', user.name) : t('Hello!')}</h1>
-        <div className="sub capitalize">{today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+        <div className="sub">{today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}</div>
       </div>
       <div className="home-header-actions">
         {!user ? <button type="button" className="btn primary sm home-login-cta" onClick={openAccount}>{t('Sign in')}</button> : null}
