@@ -4,11 +4,11 @@ Data: 2026-08-30
 
 Baseline: `2658eb57a1d8c44b64e0498e7f8f270d49591e79`
 
-Revisado até: `4c9f22aa5c26922a69d21dd304be74987c34c4b1`
+Código revisado até: `2a130c084ba63ace17410322228a3c8575b8c9b8`
 
 ## Resumo executivo
 
-**Aprovado para o deploy privado de instância única, sem achados críticos ou importantes abertos.** O diferencial tem 108 arquivos, 13.901 adições e 1.034 remoções. A revisão foi classificada como alta criticidade por alterar autenticação Dev, criptografia de chaves, chamadas externas, autorização entre aluno e Personal, aplicação automática de planos e recuperação do volume.
+**Aprovado para o deploy privado de instância única, sem achados críticos ou importantes abertos.** O diferencial tem 108 arquivos, 14.225 adições e 1.039 remoções. A revisão foi classificada como alta criticidade por alterar autenticação Dev, criptografia de chaves, chamadas externas, autorização entre aluno e Personal, aplicação automática de planos e recuperação do volume.
 
 O protótipo inseguro que persistia `initialPassword` foi removido. A configuração atual exige credencial Dev via ambiente, guarda somente hash scrypt, criptografa chaves comerciais com AES-256-GCM e só ativa uma combinação provedor/modelo depois de teste estruturado real.
 
@@ -21,6 +21,7 @@ O protótipo inseguro que persistia `initialPassword` foi removido. A configura�
 - Perfis, academia, medidas, permissões `trainingProfileWrite`/`aiPlanRead`, planos e uso migrados para o armazenamento colaborativo (`api/domain/schema.js:1-277`, `api/personal.js`).
 - Agendas manual, Personal e IA coexistem, com origem e versão no histórico; o frontend recebeu wizard, estados de job, Painel Dev e aba IA do Personal.
 - Backup/restore agora param e confirmam o único writer, copiam a origem para um inode 0600 sem pathname mantido por descritor de leitura em `TMPDIR` canônico privado, rejeitam links/tipos especiais antes da troca, verificam falhas de traversal, mantêm recovery e só fazem rollback após nova confirmação de parada. O gerador Dev publica por link exclusivo a partir de diretórios 0700 e, em falha, limpa os inodes próprios pelos descritores sem remover pathnames finais ou substituições externas (`scripts/backup-first-data.sh`, `scripts/restore-first-data.sh`, `scripts/generate-release-credentials.mjs`).
+- Volumes legados com `secret` e `collaboration.json`, mas ainda sem `db.json`, são aceitos pelo recovery sem afrouxar tipos/links. No primeiro startup novo, o banco primário ausente é publicado exclusivamente a partir de temporário aleatório 0600 com `fsync`; corrupção, erro de I/O ou remoção em runtime continuam fail-closed (`api/server.js`, `scripts/backup-first-data.sh`, `scripts/restore-first-data.sh`).
 
 ## Análise por superfície
 
@@ -80,12 +81,12 @@ Os módulos críticos possuem unitários e integração, e os fluxos principais 
 
 ## Testes e cobertura
 
-- API: 189/189; cobertura total 89,11% de linhas, 82,47% de branches e 82,37% de funções. `ai-usage.js` ficou com 98,41% de linhas, 89,66% de branches e 100% de funções.
+- API: 191/191; cobertura total 88,59% de linhas, 82,48% de branches e 82,27% de funções. `ai-usage.js` ficou com 98,41% de linhas, 89,66% de branches e 100% de funções.
 - Frontend: 481/481. `ai-job-flow.js`, incluindo a migração de planos legados, ficou com 100% de linhas e 89,44% de branches.
 - Playwright: 21/21, incluindo wizard/aplicação/rollback, retomada e reconciliação de job, Dev sem vazamento de chave, Personal, agendas coexistentes e foco de modais em mobile, tablet e desktop.
 - `npm audit` completo e produção: zero vulnerabilidades em API e frontend.
 - Build Vite, build das imagens `first-api`/`first-web`, Compose config e APK debug passaram.
-- Release operacional: 39 testes passaram e um teste exclusivo de ownership root foi ignorado no Windows; deployment, sintaxe Bash e comportamento de backup/restore/credenciais foram validados. Os casos cobrem lock, diretório 0700, arquivo 0600, troca da origem, placeholder vazio, falha de `find`, API ainda ativa após `stop`, links, FIFO e device.
+- Release operacional: 44 testes passaram e dois testes específicos de Linux foram ignorados no Windows; 31/31 também passaram em Docker/Linux. Deployment, sintaxe Bash e comportamento de backup/restore/credenciais foram validados, inclusive layout legado, lock, diretório 0700, arquivo 0600, troca da origem, falha de `find`, API ainda ativa após `stop`, links, FIFO e device.
 
 ## Blast radius e histórico
 
@@ -96,4 +97,4 @@ Os módulos críticos possuem unitários e integração, e os fluxos principais 
 
 ## Limitações e confiança
 
-Confiança **alta** para o checkout local e **moderada-alta** para produção antes do smoke público. Não houve chave comercial nem chamada real a provedor; os adapters foram exercitados com mocks determinísticos. Backup, deploy, teste contra a URL pública e ADB são registrados separadamente no handoff operacional. O build iOS exige macOS/Xcode e não foi produzido no Windows.
+Confiança **alta** para o checkout local e **moderada-alta** para produção antes do deploy novo. Não houve chave comercial nem chamada real a provedor; os adapters foram exercitados com mocks determinísticos. O volume real foi copiado e verificado local/remotamente antes do deploy; smoke da nova versão e ADB são registrados separadamente no handoff operacional. O build iOS exige macOS/Xcode e não foi produzido no Windows.

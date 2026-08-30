@@ -81,7 +81,9 @@ processos ou hosts.
 ## Backup e atualização
 
 Toda atualização começa com snapshot consistente do volume inteiro `first-data`, nunca somente
-`db.json`. O procedimento verificável de backup, restore, deploy e rollback está em
+`db.json`. Instâncias legadas podem ter apenas `collaboration.json` e `secret`; no primeiro startup
+novo, o `db.json` ausente é criado por publicação exclusiva e nunca substitui um arquivo existente
+ou corrompido. O procedimento verificável de backup, restore, deploy e rollback está em
 [Backup, restore e deploy](#backup-restore-e-deploy).
 
 ## Primeira conta e acesso nativo
@@ -289,8 +291,8 @@ outro proprietário, aplica modo 0700 ao diretório e admite
 somente uma execução por vez pelo lock `.first-backup.lock`. Ele detecta se a API estava ativa, para
 o único writer JSON e usa uma trap para reiniciá-lo em sucesso, erro ou interrupção. Cada tentativa
 usa um workspace privado 0700 e um arquivo 0600 criado com exclusividade. A publicação por hardlink
-também é exclusiva e só ocorre depois que as listagens do tar confirmam um arquivo legível contendo
-`db.json` e `secret` como arquivos regulares; o backup final permanece 0600:
+também é exclusiva e só ocorre depois que as listagens do tar confirmam um `secret` regular e ao
+menos um store regular (`db.json` ou `collaboration.json`); o backup final permanece 0600:
 
 ```bash
 export FIRST_BACKUP_DIR=/srv/first-backups
@@ -317,7 +319,9 @@ mesmo inode. A trap fecha apenas os descritores próprios e remove o diretório 
 pathname de snapshot que possa ser trocado ou removido por engano. O diretório do backup pode ser
 somente leitura e trocar o caminho original durante a operação não muda os bytes já copiados.
 Antes de parar a API, ele valida as duas listagens do snapshot, rejeita caminhos
-absolutos/traversal, symlinks e hardlinks, tipos especiais e exige `db.json` e `secret`. A parada do
+absolutos/traversal, symlinks e hardlinks, tipos especiais e exige `secret` mais `db.json` ou
+`collaboration.json`. Isso permite restaurar o layout legado; o startup novo materializa `db.json`
+antes de ficar ready. A parada do
 writer só é considerada confirmada quando `docker compose stop api` termina
 com sucesso e `api` deixa de aparecer entre os serviços ativos. Com a API parada, o script extrai
 tudo em staging e aceita somente diretórios ou arquivos regulares com link count igual a um; FIFO,

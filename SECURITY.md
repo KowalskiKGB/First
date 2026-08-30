@@ -128,8 +128,9 @@ Read this before hosting First for anyone other than yourself.
   configuration, snapshot the whole `first-data` volume. Restoring only `db.json` can desynchronize
   sessions, collaboration data, AI jobs and plan versions. Stop the API during tar backup/restore,
   serialize backup creation, keep the operator-owned backup directory `0700` and archives `0600`
-  (or enforce equivalent Windows ACLs), require regular `db.json` and `secret` files before
-  publication, test restore separately and restore the full compatible volume for a data rollback.
+  (or enforce equivalent Windows ACLs), require a regular `secret` plus a regular `db.json` or
+  legacy `collaboration.json` store before publication, test restore separately and restore the
+  full compatible volume for a data rollback.
 - **Provider-key incident response:** remove or rotate the affected key at the provider, clear that
   slot in `/dev`, set a fresh key, run structured-output test again and reactivate only after the
   test succeeds. If `AI_CONFIG_MASTER_KEY` is suspected exposed, rotate it and re-enter every
