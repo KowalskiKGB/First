@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { createAiJobService, createAiJobRoutes } from '../ai-jobs.js';
+import { createAiJobService, createAiJobRoutes, summarizeRecentTraining } from '../ai-jobs.js';
 import { runStructuredOutput, upsertProvider } from '../ai-providers.js';
 import { INITIAL_COLLABORATION, migrateCollaboration } from '../domain/schema.js';
 import { createJsonStore } from '../lib/json-store.js';
@@ -47,10 +47,10 @@ function fixture(extra = {}, options = {}) {
   const usage = [];
   const service = createAiJobService({
     store: serviceStore,
-    readState: () => ({
+    readState: options.readState || (() => ({
       week: { 1: 'manual-routine' }, routines: [{ id: 'manual-routine', name: 'Manual' }],
       workouts: [{ d: '2026-08-20', vol: 1200, ex: [{ id: '0001' }] }]
-    }),
+    })),
     getActiveProvider: options.getActiveProvider || (() => ({ provider: 'openai', selectedModel: 'gpt-test' })),
     runStructured: options.runStructured || (async () => {
       providerCalls += 1;
@@ -79,6 +79,17 @@ test('enqueue is idempotent and permits only one active job per student', () => 
   assert.deepEqual(otherKey, first);
   assert.equal(first.status, 'queued');
   assert.equal(first.stage, 'organizing');
+});
+
+test('recent training reads the completed workout entries used by the app', () => {
+  const summary = summarizeRecentTraining({
+    workouts: [{
+      d: '2026-08-28', vol: 600,
+      entries: [{ id: '0001', sets: [{ done: true }] }, { id: '0002', sets: [{ done: true }] }]
+    }]
+  }, NOW);
+
+  assert.deepEqual(summary, { windowDays: 28, frequency: 1, volume: 600, exerciseIds: ['0001', '0002'] });
 });
 
 test('enqueue revalidates a competing active job inside a revision-conflict retry', async () => {
@@ -287,6 +298,27 @@ test('a revision conflict after final validation recomputes the plan version and
   assert.notEqual(generated.id, competing.id);
   assert.equal(new Set(state.aiPlans.flatMap(item => [item.id, ...item.routines.map(routine => routine.id)])).size, 3);
   assert.equal(fx.usage.length, 1);
+});
+
+test('generated routine IDs never collide with manual routines in the student state', async () => {
+  const baseline = fixture();
+  baseline.service.enqueue({ studentId: 'student-a', idempotencyKey: 'baseline-id' });
+  await baseline.service.drain();
+  const collidingId = baseline.store.read().aiPlans[0].routines[0].id;
+
+  const fx = fixture({}, {
+    readState: () => ({
+      week: { 1: collidingId }, routines: [{ id: collidingId, name: 'Manual' }],
+      workouts: [{ d: '2026-08-20', vol: 1200, ex: [{ id: '0001' }] }]
+    })
+  });
+  const job = fx.service.enqueue({ studentId: 'student-a', idempotencyKey: 'manual-collision' });
+  await fx.service.drain();
+
+  const state = fx.store.read();
+  const generated = state.aiPlans[0];
+  assert.equal(state.aiJobs.find(item => item.id === job.id).status, 'applied');
+  assert.notEqual(generated.routines[0].id, collidingId);
 });
 
 test('real structured adapter failures retain billed usage for the failed job', async () => {

@@ -142,6 +142,8 @@ test('FIRST_AI_CONTEXT_V1 prompt contains safe measurements and aggregates but e
   const prompt = buildWorkoutPrompt({ context, candidates, requestNonce: 'request-only-secret' });
 
   assert.match(prompt, /FIRST_AI_CONTEXT_V1/);
+  assert.match(prompt, /focos: back/);
+  assert.match(prompt, /favoritos: favorite/);
   assert.match(prompt, /72\.5/);
   assert.match(prompt, /12345/);
   assert.match(prompt, /Dados não confiáveis/i);
@@ -244,6 +246,31 @@ test('validator rejects duplicates, forbidden ids/equipment, invalid schedule/ra
     progression: 'Progrida mantendo RPE 8 e 2 RIR.', note: 'Finalize entre 8 e 12 reps.'
   });
   assert.doesNotThrow(() => validateAiWorkoutPlan(relativeEffort, options));
+});
+
+test('validator rejects unsafe prescriptions in every displayed model-authored text field', () => {
+  const candidates = shortlistExercises({ profile: PROFILE, gym: GYM, recentExerciseIds: [], catalogue: CATALOGUE });
+  const options = { studentId: PROFILE.studentId, version: 1, contextHash: 'c'.repeat(64), profile: PROFILE, gym: GYM, candidates, provider: 'openai', model: 'test', now: NOW };
+  const cases = [
+    [{ ...validResponse(), justification: 'Use 200 kg para completar este plano.' }, /carga absoluta/i],
+    [{ ...validResponse(), justification: 'Leve todas as series ate a falha muscular.' }, /intensidade/i],
+    [{ ...validResponse(), routines: [{ ...validResponse().routines[0], name: 'Treino com 90% da carga maxima' }] }, /intensidade/i],
+    [{ ...validResponse(), routines: [{ ...validResponse().routines[0], name: 'Treino com halteres de 30 lbs' }] }, /carga absoluta/i]
+  ];
+
+  for (const [value, expected] of cases) assert.throws(() => validateAiWorkoutPlan(value, options), expected);
+});
+
+test('validator rejects overlong model text instead of silently truncating it', () => {
+  const candidates = shortlistExercises({ profile: PROFILE, gym: GYM, recentExerciseIds: [], catalogue: CATALOGUE });
+  const options = { studentId: PROFILE.studentId, version: 1, contextHash: 'd'.repeat(64), profile: PROFILE, gym: GYM, candidates, provider: 'openai', model: 'test', now: NOW };
+  const cases = [
+    { ...validResponse(), justification: 'a'.repeat(2001) },
+    { ...validResponse(), routines: [{ ...validResponse().routines[0], name: 'a'.repeat(101) }] },
+    { ...validResponse(), routines: [{ ...validResponse().routines[0], exercises: [{ ...validResponse().routines[0].exercises[0], progression: 'a'.repeat(501) }] }] }
+  ];
+
+  for (const value of cases) assert.throws(() => validateAiWorkoutPlan(value, options), /texto|limite|inv.lid/i);
 });
 
 test('validator rejects load percentages, max tests and training to failure without blocking safety warnings', () => {

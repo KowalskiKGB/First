@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { AI_WORKOUT_SCHEMA } from '../ai.js';
 import {
   activateProvider,
   activeProvider,
@@ -20,6 +21,21 @@ const masterKey = '11'.repeat(32);
 const schema = {
   type: 'object', additionalProperties: false, required: ['ok'], properties: { ok: { type: 'boolean' } }
 };
+const providerTestPlan = () => ({
+  justification: 'Plano diagnostico seguro.',
+  routines: [{
+    routineRef: 'diagnostic',
+    name: 'Treino diagnostico',
+    exercises: [{
+      exerciseId: 'diagnostic', mode: 'reps', sets: 1, repMin: 8, repMax: 8,
+      seconds: null, restSeconds: 60, progression: 'Mantenha a tecnica estavel.', note: ''
+    }]
+  }],
+  schedule: [{ day: 0, routineRef: 'diagnostic' }]
+});
+const hasSchemaKeyword = (value, keyword) => value && typeof value === 'object' && (
+  Object.hasOwn(value, keyword) || Object.values(value).some(item => hasSchemaKeyword(item, keyword))
+);
 
 test('provider secrets use AES-256-GCM with a strict environment master key', () => {
   const encrypted = encryptProviderKey(masterKey, 'complete-secret-key');
@@ -84,18 +100,36 @@ test('official OpenAI and Anthropic structured output contracts are used', () =>
   assert.equal(anthropicBody.output_config.format.type, 'json_schema');
 });
 
+test('provider requests remove only unsupported schema constraints without mutating the local contract', () => {
+  const before = structuredClone(AI_WORKOUT_SCHEMA);
+  const openai = JSON.parse(buildProviderRequest('openai', { apiKey: 'a', model: 'gpt', prompt: 'ok', schema: AI_WORKOUT_SCHEMA }).options.body);
+  const gemini = JSON.parse(buildProviderRequest('gemini', { apiKey: 'b', model: 'gemini', prompt: 'ok', schema: AI_WORKOUT_SCHEMA }).options.body);
+  const anthropic = JSON.parse(buildProviderRequest('anthropic', { apiKey: 'c', model: 'claude', prompt: 'ok', schema: AI_WORKOUT_SCHEMA }).options.body);
+
+  assert.equal(hasSchemaKeyword(openai.text.format.schema, 'minLength'), true);
+  assert.equal(hasSchemaKeyword(gemini.generationConfig.responseJsonSchema, 'minLength'), false);
+  assert.equal(hasSchemaKeyword(gemini.generationConfig.responseJsonSchema, 'minimum'), true);
+  for (const keyword of ['minimum', 'maximum', 'minLength', 'maxLength']) {
+    assert.equal(hasSchemaKeyword(anthropic.output_config.format.schema, keyword), false, keyword);
+  }
+  assert.deepEqual(AI_WORKOUT_SCHEMA, before);
+});
+
 test('activation is rejected until the same slot passes a real structured output request', async () => {
   const { records } = upsertProvider([], {
     provider: 'openai', selectedModel: 'gpt-test', apiKey: 'complete-secret-key'
   }, masterKey, '2026-08-29T12:00:00.000Z');
   assert.throws(() => activateProvider(records, 'openai', '2026-08-29T12:01:00.000Z'), /successful test/);
   let calls = 0;
-  const fetchImpl = async () => {
+  let requestedSchema;
+  const fetchImpl = async (_url, options) => {
     calls += 1;
-    return new Response(JSON.stringify({ output_text: '{"ok":true}', usage: { input_tokens: 4, output_tokens: 2, total_tokens: 6 } }), { status: 200 });
+    requestedSchema = JSON.parse(options.body).text.format.schema;
+    return new Response(JSON.stringify({ output_text: JSON.stringify(providerTestPlan()), usage: { input_tokens: 4, output_tokens: 2, total_tokens: 6 } }), { status: 200 });
   };
   const tested = await testProvider(records, 'openai', { masterKey, fetchImpl, now: () => '2026-08-29T12:02:00.000Z' });
   assert.equal(calls, 1);
+  assert.deepEqual(requestedSchema, AI_WORKOUT_SCHEMA);
   assert.equal(tested.provider.testStatus, 'success');
   const active = activateProvider(tested.records, 'openai', '2026-08-29T12:03:00.000Z');
   assert.equal(activeProvider(active.records).provider, 'openai');
@@ -106,10 +140,14 @@ test('failed structured slot test is persisted as failed and cannot become activ
   const tested = await testProvider(records, 'anthropic', {
     masterKey,
     now: () => 'later',
-    fetchImpl: async () => new Response(JSON.stringify({ content: [{ type: 'text', text: '{"ok":false}' }] }), { status: 200 })
+    fetchImpl: async () => new Response(JSON.stringify({
+      stop_reason: 'end_turn', content: [{ type: 'text', text: '{"ok":false}' }],
+      usage: { input_tokens: 19, output_tokens: 3 }
+    }), { status: 200 })
   });
   assert.equal(tested.provider.testStatus, 'failed');
   assert.equal(tested.error, 'AI provider test failed');
+  assert.deepEqual(tested.usage, { provider: 'anthropic', model: 'claude-test', inputTokens: 19, outputTokens: 3, totalTokens: 22 });
   assert.throws(() => activateProvider(tested.records, 'anthropic'), /successful test/);
 });
 
@@ -226,6 +264,48 @@ test('structured generation rejects refusals and truncated provider responses', 
     prompt: 'private',
     fetchImpl: async () => new Response(JSON.stringify({ stop_reason: 'max_tokens', content: [{ type: 'text', text: '{"ok":true}' }] }), { status: 200 })
   }), /truncated/);
+
+  for (const body of [
+    { stop_reason: 'refusal', content: [{ type: 'text', text: JSON.stringify(providerTestPlan()) }], usage: { input_tokens: 8, output_tokens: 2 } },
+    { stop_reason: 'end_turn', stop_details: { type: 'refusal' }, content: [{ type: 'text', text: JSON.stringify(providerTestPlan()) }], usage: { input_tokens: 7, output_tokens: 1 } }
+  ]) {
+    await assert.rejects(() => runStructuredOutput(anthropicSlot, {
+      masterKey,
+      schema: AI_WORKOUT_SCHEMA,
+      prompt: 'private',
+      fetchImpl: async () => new Response(JSON.stringify(body), { status: 200 })
+    }), error => /refused/.test(error.message) && error.usage?.totalTokens > 0);
+  }
+});
+
+test('Anthropic refusal cannot mark a provider test successful and retains billed usage', async () => {
+  const slot = upsertProvider([], { provider: 'anthropic', selectedModel: 'claude-test', apiKey: 'key-c' }, masterKey, 'now').records[0];
+  const tested = await testProvider([slot], 'anthropic', {
+    masterKey,
+    now: () => 'later',
+    fetchImpl: async () => new Response(JSON.stringify({
+      stop_reason: 'refusal', content: [{ type: 'text', text: '{"ok":true}' }],
+      usage: { input_tokens: 8, output_tokens: 2 }
+    }), { status: 200 })
+  });
+
+  assert.equal(tested.provider.testStatus, 'failed');
+  assert.equal(tested.error, 'AI provider test failed');
+  assert.deepEqual(tested.usage, { provider: 'anthropic', model: 'claude-test', inputTokens: 8, outputTokens: 2, totalTokens: 10 });
+  assert.throws(() => activateProvider(tested.records, 'anthropic'), /successful test/);
+});
+
+test('structured provider requests enforce their timeout', async () => {
+  const slot = upsertProvider([], { provider: 'openai', selectedModel: 'gpt-timeout', apiKey: 'key-a' }, masterKey, 'now').records[0];
+  const fetchImpl = async (_url, options) => new Promise((resolve, reject) => {
+    options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+  });
+  const startedAt = Date.now();
+
+  await assert.rejects(() => runStructuredOutput(slot, {
+    masterKey, schema, prompt: 'private', fetchImpl, timeoutMs: 10
+  }), /abort|timeout/i);
+  assert.ok(Date.now() - startedAt < 1_000);
 });
 
 test('provider HTTP errors are sanitized and never include the complete key', async () => {

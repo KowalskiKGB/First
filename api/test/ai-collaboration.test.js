@@ -370,6 +370,22 @@ test('trainer workspace projects profile and AI plan through separate grants and
   assert.equal(JSON.stringify(planOnly).includes('hash-b'), false);
 });
 
+test('trainer AI projection ignores applied Personal plans with a higher version', () => {
+  const common = {
+    studentId: 'student-a', provider: 'openai', model: 'test', contextHash: 'hash',
+    justification: 'Plano', routines: [], schedule: [], status: 'applied', createdAt: NOW, updatedAt: NOW
+  };
+  const collaboration = linked({ aiPlanRead: true }, {
+    aiPlans: [
+      { ...common, id: 'ai-plan', version: 1, source: 'ai' },
+      { ...common, id: 'personal-plan', version: 99, source: 'personal' }
+    ]
+  });
+
+  const workspace = buildWorkspace({ collaboration, trainerId: 'trainer-a', now: NOW, readState: () => null });
+  assert.equal(workspace.clients[0].aiPlan.id, 'ai-plan');
+});
+
 test('student AI context is isolated, safe, complete-aware and exposes current measurements', () => {
   const state = linked({}, {
     trainingProfiles: [{ studentId: 'student-a', ...profileData, ageBand: '14to17', guardianConsent: false, createdAt: NOW, updatedAt: NOW }],
