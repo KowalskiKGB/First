@@ -1,14 +1,14 @@
 # Revisão diferencial de segurança — Painel Dev e treinos com IA
 
-Data: 2026-08-29
+Data: 2026-08-30
 
 Baseline: `2658eb57a1d8c44b64e0498e7f8f270d49591e79`
 
-Revisado até: `e1736c21f7a0a98b47cf06fadee152b46fb90f72`
+Revisado até: `4c9f22aa5c26922a69d21dd304be74987c34c4b1`
 
 ## Resumo executivo
 
-**Aprovado para o deploy privado de instância única, sem achados críticos ou altos abertos.** O diferencial tem 100 arquivos, 9.977 adições e 998 remoções. A revisão foi classificada como alta criticidade por alterar autenticação Dev, criptografia de chaves, chamadas externas, autorização entre aluno e Personal, aplicação automática de planos e recuperação do volume.
+**Aprovado para o deploy privado de instância única, sem achados críticos ou importantes abertos.** O diferencial tem 108 arquivos, 13.901 adições e 1.034 remoções. A revisão foi classificada como alta criticidade por alterar autenticação Dev, criptografia de chaves, chamadas externas, autorização entre aluno e Personal, aplicação automática de planos e recuperação do volume.
 
 O protótipo inseguro que persistia `initialPassword` foi removido. A configuração atual exige credencial Dev via ambiente, guarda somente hash scrypt, criptografa chaves comerciais com AES-256-GCM e só ativa uma combinação provedor/modelo depois de teste estruturado real.
 
@@ -80,21 +80,20 @@ Os módulos críticos possuem unitários e integração, e os fluxos principais 
 
 ## Testes e cobertura
 
-- API: 157/157; cobertura total 99,67% de linhas, 81,69% de branches e 92,82% de funções.
-- Frontend: 412/412.
-- Módulos frontend novos/alterados de IA, agenda e Personal: 134/134; 88,14% statements, 80,62% branches, 84,18% funções e 92,18% linhas.
-- Playwright: 11/11, incluindo wizard/aplicação/rollback, remount de job, Dev sem vazamento de chave, Personal e seletor de sessões em mobile/desktop.
+- API: 189/189; cobertura total 89,11% de linhas, 82,47% de branches e 82,37% de funções. `ai-usage.js` ficou com 98,41% de linhas, 89,66% de branches e 100% de funções.
+- Frontend: 481/481. `ai-job-flow.js`, incluindo a migração de planos legados, ficou com 100% de linhas e 89,44% de branches.
+- Playwright: 21/21, incluindo wizard/aplicação/rollback, retomada e reconciliação de job, Dev sem vazamento de chave, Personal, agendas coexistentes e foco de modais em mobile, tablet e desktop.
 - `npm audit` completo e produção: zero vulnerabilidades em API e frontend.
 - Build Vite, build das imagens `first-api`/`first-web`, Compose config e APK debug passaram.
-- Release operacional: 26/26 testes comportamentais/contratuais em Windows/Git Bash e Alpine 3.22, deployment 2/2 e sintaxe Bash dos dois scripts validada nos dois ambientes. Os casos cobrem `TMPDIR` canônico, diretório 0700 inacessível a `nobody`, snapshot real 0600 removido após vincular o FD, troca da origem, placeholder vazio, substituição após a checagem de inode, falha de `find` com stdout vazio, API ainda ativa após `stop`, links, FIFO e device.
+- Release operacional: 39 testes passaram e um teste exclusivo de ownership root foi ignorado no Windows; deployment, sintaxe Bash e comportamento de backup/restore/credenciais foram validados. Os casos cobrem lock, diretório 0700, arquivo 0600, troca da origem, placeholder vazio, falha de `find`, API ainda ativa após `stop`, links, FIFO e device.
 
 ## Blast radius e histórico
 
-- Estratégia focada para repositório médio: todos os 100 arquivos alterados foram triados; auth, crypto, chamadas externas, job, schema, autorização e recovery tiveram leitura profunda.
+- Estratégia focada para repositório médio: todos os 108 arquivos alterados foram triados; auth, crypto, chamadas externas, job, schema, autorização e recovery tiveram leitura profunda.
 - Ocorrências por arquivo: `createDevAuth` 3, `isTrustedMutation` 3, `encryptProviderKey` 2, `runStructuredOutput` 4, `createAiJobService` 3, `saveTrainingProfile` 2, `saveGymProfile` 2 e `buildAiContext` 2.
 - O histórico mostra a remoção explícita de `initialPassword`, geração automática em `/data`, fallback para qualquer provedor configurado, retenção excessiva de uso e restore destrutivo. Os commits de endurecimento relevantes incluem `bef5b4d`, `7db2f1f`, `c72737d`, `4671d35`, `b33fe54`, `e1dd575`, `60babb2`, `1007c28`, `4232e78`, `c5dafb7`, `0389e3c`, `bf3dae8`, `a944ee6`, `f50f5d0`, `0ebfa58`, `7f24175`, `2f78055` e `e1736c2`.
 - Nenhum acesso removido de um commit de segurança foi encontrado sem controle substituto.
 
 ## Limitações e confiança
 
-Confiança **alta** para o checkout local e **moderada-alta** para produção. Não houve chave comercial, chamada real a provedor, deploy, teste contra a URL pública, restauração real do volume nem ADB nesta revisão. Os adapters foram exercitados com mocks determinísticos. O build iOS exige macOS/Xcode e não foi produzido no Windows.
+Confiança **alta** para o checkout local e **moderada-alta** para produção antes do smoke público. Não houve chave comercial nem chamada real a provedor; os adapters foram exercitados com mocks determinísticos. Backup, deploy, teste contra a URL pública e ADB são registrados separadamente no handoff operacional. O build iOS exige macOS/Xcode e não foi produzido no Windows.
