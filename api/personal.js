@@ -590,7 +590,7 @@ export function buildAiContext({ collaboration, studentId }) {
   const profile = projectTrainingProfile(collaboration.trainingProfiles.find(item => item.studentId === studentId));
   const gym = projectGymProfile(collaboration.gymProfiles.find(item => item.studentId === studentId));
   const measurements = currentMeasurements(collaboration, studentId);
-  const aiPlans = collaboration.aiPlans.filter(item => item.studentId === studentId && item.source === 'ai')
+  const aiPlans = collaboration.aiPlans.filter(item => item.studentId === studentId && ['ai', 'generated'].includes(item.source))
     .slice().sort((a, b) => (Number(b.version) || 0) - (Number(a.version) || 0) ||
       String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')));
   const plan = latestByVersion(aiPlans.filter(item => item.status === 'applied'));
