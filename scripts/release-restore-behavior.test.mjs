@@ -105,7 +105,7 @@ case "$command" in
       printf '%s\n' archive-replaced >> "$events"
     fi
     if [ -n "${'$'}{FIRST_FAKE_SNAPSHOT_DIR:-}" ]; then
-      for snapshot in "$FIRST_FAKE_SNAPSHOT_DIR"/.first-restore-snapshot.*.tgz; do
+      for snapshot in "$FIRST_FAKE_SNAPSHOT_DIR"/.first-restore-snapshot.*; do
         [ -f "$snapshot" ] || continue
         printf 'snapshot-mode:%s\n' "$(stat -c %a "$snapshot")" >> "$events"
       done
@@ -327,8 +327,13 @@ test('source replacement after validation cannot change the private snapshot ext
   })
 
   assert.equal(result.status, 0, result.stderr)
-  assert.ok(readEvents(harness.events).includes('archive-replaced'))
-  assert.ok(readEvents(harness.events).includes('snapshot-mode:600'))
+  const events = readEvents(harness.events)
+  assert.ok(events.includes('archive-replaced'), events.join(','))
+  if (process.platform === 'win32') {
+    assert.ok(events.some(event => event.startsWith('snapshot-mode:')), events.join(','))
+  } else {
+    assert.ok(events.includes('snapshot-mode:600'), events.join(','))
+  }
   assert.deepEqual(readFileSync(extracted), original)
   assert.deepEqual(readdirSync(harness.sandbox).filter(name => name.startsWith('.first-restore-snapshot.')), [])
 })

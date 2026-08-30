@@ -21,12 +21,37 @@ case "$archive" in
   "$repo_dir"|"$repo_dir"/*) echo "FIRST_RESTORE_ARCHIVE must be outside the repository" >&2; exit 64 ;;
 esac
 test -f "$archive"
+archive_dir=$(dirname -- "$archive")
+snapshot=""
+manifest=""
+entry_types=""
 
+cleanup_release_files() {
+  local cleanup_status=0
+  local release_file
+  for release_file in "$snapshot" "$manifest" "$entry_types"; do
+    [ -n "$release_file" ] || continue
+    rm -f -- "$release_file" || cleanup_status=1
+  done
+  return "$cleanup_status"
+}
+
+cleanup_early_exit() {
+  local status=$?
+  trap - EXIT INT TERM
+  cleanup_release_files || status=1
+  exit "$status"
+}
+trap cleanup_early_exit EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+snapshot=$(mktemp "$archive_dir/.first-restore-snapshot.XXXXXX")
+chmod 600 -- "$snapshot"
+cp -- "$archive" "$snapshot"
+chmod 600 -- "$snapshot"
 manifest=$(mktemp "${TMPDIR:-/tmp}/first-restore-manifest.XXXXXX")
-if ! entry_types=$(mktemp "${TMPDIR:-/tmp}/first-restore-types.XXXXXX"); then
-  rm -f -- "$manifest"
-  exit 1
-fi
+entry_types=$(mktemp "${TMPDIR:-/tmp}/first-restore-types.XXXXXX")
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 stage_name=".first-restore-stage-$stamp-$$"
 recovery_name=".first-recovery-$stamp-$$"
@@ -101,7 +126,7 @@ restart_or_rollback() {
       echo "Rollback completed but the restored service did not become healthy." >&2
     fi
   fi
-  rm -f -- "$manifest" "$entry_types"
+  if ! cleanup_release_files; then status=1; fi
   exit "$status"
 }
 trap restart_or_rollback EXIT
@@ -109,7 +134,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 # Validate structure, entry types, and traversal before stopping the live writer.
-if ! tar -tzf "$archive" > "$manifest" || ! LC_ALL=C tar -tvzf "$archive" > "$entry_types"; then
+if ! tar -tzf "$snapshot" > "$manifest" || ! LC_ALL=C tar -tvzf "$snapshot" > "$entry_types"; then
   echo "Archive listing could not be parsed safely" >&2
   exit 65
 fi
@@ -151,12 +176,13 @@ docker compose run --rm --no-deps --entrypoint sh api -ceu '
   test ! -e "$stage"
   mkdir -m 700 "$stage"
   tar -C "$stage" -xzf -
+  test -z "$(find "$stage" -mindepth 1 ! -type d ! -type f -exec printf x \;)"
+  test -z "$(find "$stage" -type f -links +1 -exec printf x \;)"
   test -f "$stage/db.json"
   test ! -L "$stage/db.json"
   test -f "$stage/secret"
   test ! -L "$stage/secret"
-  test -z "$(find "$stage" -type l -print -quit)"
-' -- "$stage_name" < "$archive"
+' -- "$stage_name" < "$snapshot"
 
 # Retain a complete recovery copy before the first live path is moved.
 docker compose run --rm --no-deps --entrypoint sh api -ceu '
@@ -219,6 +245,6 @@ if ! docker compose run --rm --no-deps --entrypoint sh api -ceu '
   echo "Healthy restore completed; redundant retired data could not be removed." >&2
 fi
 
+cleanup_release_files
 trap - EXIT INT TERM
-rm -f -- "$manifest" "$entry_types"
 printf 'Restore healthy. Retain recovery until final smoke: /data/%s\n' "$recovery_name"

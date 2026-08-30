@@ -279,12 +279,17 @@ separada. Não use `./backups`: além de misturar dados com código, uma limpeza
 eliminar a única cópia.
 
 O restore resolve o próprio arquivo com `realpath`, exige que o destino canônico fique fora do
-checkout e exige a URL HTTPS de health. Antes de parar a API, ele valida as duas listagens do tar,
-rejeita caminhos absolutos/traversal, symlinks e hardlinks, tipos especiais e exige `db.json` e
-`secret`. A parada do writer só é considerada confirmada quando `docker compose stop api` termina
+checkout e exige a URL HTTPS de health. O diretório externo do backup precisa permitir a criação de
+um snapshot temporário: o script copia a origem uma única vez para um nome aleatório 0600 ao lado
+do backup e usa somente essa cópia para listar, validar e extrair. A trap remove o snapshot em
+sucesso, erro ou interrupção; trocar o caminho original durante a operação não muda os bytes usados.
+Antes de parar a API, ele valida as duas listagens do snapshot, rejeita caminhos
+absolutos/traversal, symlinks e hardlinks, tipos especiais e exige `db.json` e `secret`. A parada do
+writer só é considerada confirmada quando `docker compose stop api` termina
 com sucesso e `api` deixa de aparecer entre os serviços ativos. Com a API parada, o script extrai
-tudo em staging, rejeita links novamente e cria uma cópia completa de recovery do `/data` atual.
-Só então move os dados atuais e instala o staging.
+tudo em staging e aceita somente diretórios ou arquivos regulares com link count igual a um; FIFO,
+device, socket, symlink ou hardlink abortam antes da troca. Depois cria uma cópia completa de
+recovery do `/data` atual. Só então move os dados atuais e instala o staging.
 
 Cada tentativa de health usa `curl --connect-timeout 5 --max-time 10`. Erro de troca, startup ou
 health aciona rollback para a cópia retida, mas o rollback só toca `/data` depois de confirmar

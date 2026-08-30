@@ -7,7 +7,6 @@ import {
   linkSync,
   openSync,
   realpathSync,
-  renameSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
@@ -23,7 +22,6 @@ const defaultRuntime = {
   linkSync,
   openSync,
   realpathSync,
-  renameSync,
   stdout: process.stdout,
   unlinkSync,
   writeFileSync,
@@ -90,23 +88,13 @@ function privateWrite(target, contents, runtime, owned) {
   }
 }
 
-function preparePrivateOutput(target, contents, runtime, owned) {
+function publishPrivateOutput(target, contents, runtime, owned) {
   const partial = privateSibling(target, 'partial', runtime)
-  const ready = privateSibling(target, 'ready', runtime)
   privateWrite(partial, contents, runtime, owned)
-  if (runtime.existsSync(ready)) fail('private temporary output collision')
-  owned.add(ready)
-  runtime.renameSync(partial, ready)
-  owned.delete(partial)
-  return ready
-}
-
-function publishPrivateOutput(ready, target, runtime, owned) {
-  if (runtime.existsSync(target)) fail('output appeared while credentials were being generated')
-  runtime.linkSync(ready, target)
+  runtime.linkSync(partial, target)
   owned.add(target)
-  runtime.unlinkSync(ready)
-  owned.delete(ready)
+  runtime.unlinkSync(partial)
+  owned.delete(partial)
 }
 
 function cleanupOwned(runtime, owned) {
@@ -158,20 +146,18 @@ export function generateReleaseCredentials(argv = process.argv.slice(2), overrid
   const generatedAt = new Date().toISOString()
   const owned = new Set()
   try {
-    const credentialsReady = preparePrivateOutput(
+    publishPrivateOutput(
       credentialsPath,
       credentialDocument({ url, username, password, generatedAt }),
       runtime,
       owned,
     )
-    const handoffReady = preparePrivateOutput(
+    publishPrivateOutput(
       handoffPath,
       `${JSON.stringify(handoff, null, 2)}\n`,
       runtime,
       owned,
     )
-    publishPrivateOutput(credentialsReady, credentialsPath, runtime, owned)
-    publishPrivateOutput(handoffReady, handoffPath, runtime, owned)
   } catch (error) {
     if (!cleanupOwned(runtime, owned)) throw new Error('release credential generation failed and private artifact cleanup was incomplete')
     throw error
