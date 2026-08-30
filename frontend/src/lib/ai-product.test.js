@@ -57,6 +57,13 @@ describe('AI product flow helpers', () => {
     expect(validateWizardStep({ ...draft, ageBand: 'under14', consent: true, guardianConsent: true }, 4)).toEqual({})
   })
 
+  it('blocks wizard persistence while acute risk or a medical restriction is active', () => {
+    const draft = draftFromAiContext(context)
+
+    expect(validateWizardStep({ ...draft, acuteRisk: true }, 4)).toHaveProperty('health')
+    expect(validateWizardStep({ ...draft, medicalRestriction: true }, 4)).toHaveProperty('health')
+  })
+
   it('rejects server-invalid numeric bounds while keeping optional measurements optional', () => {
     const draft = draftFromAiContext(context)
 

@@ -246,6 +246,24 @@ describe('AI job flow', () => {
     expect(request).not.toHaveBeenCalled()
   })
 
+  it('rejects health blockers and invalid measurement dates before the first remote write', async () => {
+    const request = vi.fn()
+    const draft = {
+      ageBand: 'adult', heightCm: 170, weight: 74, waistCm: '', chestCm: '', hipCm: '', armCm: '', thighCm: '', calfCm: '',
+      goal: 'Força', experience: 'intermediario', availableDays: [1, 3], minutesPerSession: 45, focusAreas: [],
+      gymName: 'Centro', genericEquipment: ['dumbbell'], specificMachines: [], favoriteExerciseIds: [], avoidedExerciseIds: [],
+      limitations: '', acuteRisk: false, medicalRestriction: false, consent: true, guardianConsent: false,
+    }
+
+    await expect(persistAiWizardContext({ request, draft: { ...draft, acuteRisk: true }, rev: 7, observedAt: '2026-08-29' }))
+      .rejects.toMatchObject({ name: 'AiWizardValidationError', step: 4 })
+    await expect(persistAiWizardContext({ request, draft, rev: 7, observedAt: 'not-a-date' }))
+      .rejects.toMatchObject({ name: 'AiWizardValidationError', step: 1 })
+    await expect(persistAiWizardContext({ request, draft, rev: 7, observedAt: '2999-01-01' }))
+      .rejects.toMatchObject({ name: 'AiWizardValidationError', step: 1 })
+    expect(request).not.toHaveBeenCalled()
+  })
+
   it('requires explicit age, consent, guardian consent, days and gym', () => {
     const profile = {
       heightCm: 170, goal: 'Força', experience: 'iniciante', minutesPerSession: 45,
