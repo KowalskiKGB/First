@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import {
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync
 } from 'node:fs';
 import net from 'node:net';
@@ -221,4 +223,69 @@ test('readiness reports only status and fails when collaboration storage becomes
   const failed = await fetch(`${url}/api/ready`);
   assert.equal(failed.status, 503);
   assert.deepEqual(await failed.json(), { ok: false });
+});
+
+test('corrupt individual state fails readiness and authenticated reads and writes closed until recovery', async t => {
+  const { dataDir, url } = await startServer(t);
+  const file = path.join(dataDir, 'state-admin-a.json');
+  const corrupt = Buffer.from('{"routines": [');
+  writeFileSync(file, corrupt);
+
+  const ready = await fetch(`${url}/api/ready`);
+  assert.equal(ready.status, 503);
+  assert.deepEqual(await ready.json(), { ok: false });
+
+  const read = await fetch(`${url}/api/data`, { headers: { Cookie: adminCookie() } });
+  assert.equal(read.status, 500);
+  assert.deepEqual(await read.json(), { error: 'server error' });
+
+  const write = await mutate(url, ['PUT', '/api/data', { state: { _ts: 2 } }], { Origin: ORIGIN });
+  assert.equal(write.status, 500);
+  assert.deepEqual(await write.json(), { error: 'server error' });
+  assert.deepEqual(readFileSync(file), corrupt);
+
+  const recoveredState = { _ts: 3, routines: [] };
+  writeFileSync(file, JSON.stringify(recoveredState));
+  const recoveredReady = await fetch(`${url}/api/ready`);
+  assert.equal(recoveredReady.status, 200);
+  assert.deepEqual(await recoveredReady.json(), { ok: true });
+  const recoveredRead = await fetch(`${url}/api/data`, { headers: { Cookie: adminCookie() } });
+  assert.equal(recoveredRead.status, 200);
+  assert.deepEqual(await recoveredRead.json(), { state: recoveredState });
+});
+
+test('individual state I/O errors fail readiness and cannot be overwritten through the API', async t => {
+  const { dataDir, url } = await startServer(t);
+  const file = path.join(dataDir, 'state-admin-a.json');
+  mkdirSync(file);
+
+  const ready = await fetch(`${url}/api/ready`);
+  assert.equal(ready.status, 503);
+
+  const read = await fetch(`${url}/api/data`, { headers: { Cookie: adminCookie() } });
+  assert.equal(read.status, 500);
+
+  const write = await mutate(url, ['PUT', '/api/data', { state: { _ts: 4 } }], { Origin: ORIGIN });
+  assert.equal(write.status, 500);
+  assert.equal(statSync(file).isDirectory(), true);
+
+  rmSync(file, { recursive: true });
+  writeFileSync(file, JSON.stringify({ _ts: 5 }));
+  const recovered = await fetch(`${url}/api/ready`);
+  assert.equal(recovered.status, 200);
+});
+
+test('state writes reject JSON arrays without poisoning readiness', async t => {
+  const { dataDir, url } = await startServer(t);
+  const missing = await fetch(`${url}/api/data`, { headers: { Cookie: adminCookie() } });
+  assert.equal(missing.status, 200);
+  assert.deepEqual(await missing.json(), { state: null });
+
+  const write = await mutate(url, ['PUT', '/api/data', { state: [] }], { Origin: ORIGIN });
+  assert.equal(write.status, 400);
+  assert.deepEqual(await write.json(), { error: 'state required' });
+  assert.throws(() => readFileSync(path.join(dataDir, 'state-admin-a.json')), error => error.code === 'ENOENT');
+
+  const ready = await fetch(`${url}/api/ready`);
+  assert.equal(ready.status, 200);
 });

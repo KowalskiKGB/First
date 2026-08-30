@@ -90,8 +90,19 @@ function atomicWrite(file, content) {
   fs.renameSync(tmp, file);
 }
 const stateFile = uid => path.join(DATA, 'state-' + uid.replace(/[^a-zA-Z0-9_-]/g, '') + '.json');
+function parseStateFile(file) {
+  const stats = fs.lstatSync(file);
+  if (!stats.isFile() || stats.size > MAX_STATE_BODY) throw new TypeError('invalid state file');
+  const state = JSON.parse(fs.readFileSync(file, 'utf8'));
+  if (!state || typeof state !== 'object' || Array.isArray(state)) throw new TypeError('state file must contain an object');
+  return state;
+}
 function readState(uid) {
-  try { return JSON.parse(fs.readFileSync(stateFile(uid), 'utf8')); } catch { return null; }
+  try { return parseStateFile(stateFile(uid)); }
+  catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
 }
 const collaborationStore = createCollaborationStore(DATA);
 bridgeAiUsageProperty({ db, store: collaborationStore, saveDb });
@@ -124,6 +135,11 @@ function isReady() {
         !Number.isInteger(collaboration.rev) || collaboration.rev < 0) return false;
     for (const [key, initial] of Object.entries(INITIAL_COLLABORATION)) {
       if (Array.isArray(initial) && !Array.isArray(collaboration[key])) return false;
+    }
+    for (const entry of fs.readdirSync(DATA, { withFileTypes: true })) {
+      if (!/^state-[a-zA-Z0-9_-]*\.json$/.test(entry.name)) continue;
+      if (!entry.isFile()) return false;
+      parseStateFile(path.join(DATA, entry.name));
     }
     return dataDirIsWritable();
   } catch { return false; }
@@ -204,7 +220,9 @@ function userNow(tz) {
 setInterval(() => {
   for (const user of db.users) {
     if (!db.subs.some(s => s.userId === user.id)) continue;
-    const S = readState(user.id);
+    let S;
+    try { S = readState(user.id); }
+    catch (error) { console.error('state read failed', user.id, error.message); continue; }
     if (!S?.reminder?.on) continue;
     const now = userNow(S.reminder.tz || 'UTC');
     if (!now || S.reminder.time !== now.hhmm) continue;
@@ -478,17 +496,15 @@ const routes = {
   'GET /api/data': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
-    try {
-      const state = JSON.parse(fs.readFileSync(stateFile(user.id), 'utf8'));
-      json(res, 200, { state });
-    } catch { json(res, 200, { state: null }); }
+    json(res, 200, { state: readState(user.id) });
   },
 
   'PUT /api/data': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
     const body = await readBody(req, MAX_STATE_BODY);
-    if (!body.state || typeof body.state !== 'object') return json(res, 400, { error: 'state required' });
+    if (!body.state || typeof body.state !== 'object' || Array.isArray(body.state)) return json(res, 400, { error: 'state required' });
+    readState(user.id);
     delete body.state.active;              // in-progress workouts stay device-local
     atomicWrite(stateFile(user.id), JSON.stringify(body.state));
     json(res, 200, { ok: true, ts: body.state._ts || null });
