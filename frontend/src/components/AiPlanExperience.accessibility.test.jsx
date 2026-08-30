@@ -60,6 +60,17 @@ function findElement(node, type) {
   return null
 }
 
+function findElementByChild(node, child) {
+  if (!node || typeof node !== 'object') return null
+  if (node.props?.children === child) return node
+  const children = Array.isArray(node.props?.children) ? node.props.children : [node.props?.children]
+  for (const nested of children) {
+    const found = findElementByChild(nested, child)
+    if (found) return found
+  }
+  return null
+}
+
 describe('AiWizard accessibility', () => {
   beforeEach(() => {
     harness.hook = 0
@@ -101,5 +112,19 @@ describe('AiWizard accessibility', () => {
     requestAnimationFrame.mock.calls[0][0]()
     expect(harness.form.querySelector).toHaveBeenCalledWith(expect.stringContaining('[aria-invalid="true"]'))
     expect(invalidControl.focus).toHaveBeenCalledOnce()
+  })
+
+  it('prevents the Continue click from becoming an implicit final submit after the step changes', () => {
+    harness.hook = 0
+    harness.step = 3
+    harness.errors = {}
+    const tree = AiWizard({ draft, onDraft: () => {}, onClose: () => {}, onSubmit: () => {}, busy: false })
+    const continueButton = findElementByChild(tree, 'Continue')
+    const event = { preventDefault: vi.fn() }
+
+    continueButton.props.onClick(event)
+
+    expect(event.preventDefault).toHaveBeenCalledOnce()
+    expect(harness.setStep).toHaveBeenCalledOnce()
   })
 })
