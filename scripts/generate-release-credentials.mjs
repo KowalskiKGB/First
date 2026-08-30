@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import crypto from 'node:crypto'
+import { spawnSync } from 'node:child_process'
 import {
   chmodSync,
   closeSync,
@@ -36,7 +37,9 @@ const defaultRuntime = {
   openSync,
   realpathSync,
   rmdirSync,
+  spawnSync,
   stdout: process.stdout,
+  platform: process.platform,
   unlinkSync,
   writeFileSync,
 }
@@ -80,17 +83,46 @@ function validateUrl(value) {
   return url.origin
 }
 
+function currentWindowsSid(runtime) {
+  const result = runtime.spawnSync('powershell.exe', [
+    '-NoProfile',
+    '-NonInteractive',
+    '-Command',
+    '[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value',
+  ], { encoding: 'utf8', windowsHide: true })
+  const sid = result.stdout?.trim()
+  if (result.status !== 0 || !/^S-\d(?:-\d+)+$/.test(sid)) fail('could not resolve the Windows owner SID for private credential output')
+  return sid
+}
+
+function protectWindowsPath(target, directory, runtime) {
+  if (runtime.platform !== 'win32') return
+  const inheritance = directory ? '(OI)(CI)' : ''
+  const result = runtime.spawnSync('icacls.exe', [
+    target,
+    '/inheritance:r',
+    '/grant:r',
+    `*${runtime.windowsSid}:${inheritance}F`,
+    `*S-1-5-18:${inheritance}F`,
+  ], { encoding: 'utf8', windowsHide: true })
+  if (result.status !== 0) fail('could not restrict the Windows ACL for private credential output')
+}
+
 function privateWorkspace(target, runtime) {
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const suffix = crypto.randomBytes(16).toString('hex')
     const candidate = path.join(path.dirname(target), `.first-release-private-${process.pid}-${suffix}`)
+    let created = false
     try {
       runtime.mkdirSync(candidate, { mode: 0o700 })
-      try { runtime.chmodSync(candidate, 0o700) } catch {
-        // Windows does not expose POSIX mode bits; exclusive creation still applies.
-      }
+      created = true
+      if (runtime.platform === 'win32') protectWindowsPath(candidate, true, runtime)
+      else runtime.chmodSync(candidate, 0o700)
       return candidate
     } catch (error) {
+      if (created) try { runtime.rmdirSync(candidate) } catch {
+        // Preserve the ACL error; cleanup is best-effort before any secret is written.
+      }
       if (error?.code !== 'EEXIST') throw error
     }
   }
@@ -122,10 +154,9 @@ function privateWrite(target, contents, runtime, owned) {
     descriptor = runtime.openSync(privatePath, 'wx', 0o600)
     const record = { descriptor, privateDirectory, privatePath, publishedPath: null }
     owned.add(record)
+    if (runtime.platform === 'win32') protectWindowsPath(privatePath, false, runtime)
     runtime.writeFileSync(descriptor, contents, { encoding: 'utf8' })
-    try { runtime.fchmodSync(descriptor, 0o600) } catch {
-      // Windows does not expose POSIX mode bits; exclusive creation still applies.
-    }
+    if (runtime.platform !== 'win32') runtime.fchmodSync(descriptor, 0o600)
     return record
   } catch (error) {
     if (descriptor != null && ![...owned].some(record => record.descriptor === descriptor)) runtime.closeSync(descriptor)
@@ -213,8 +244,11 @@ function credentialDocument({ url, username, password, generatedAt }) {
 }
 
 export function generateReleaseCredentials(argv = process.argv.slice(2), overrides = {}) {
-  const runtime = { ...defaultRuntime, ...overrides }
+  const configuredRuntime = { ...defaultRuntime, ...overrides }
   const options = parseArguments(argv)
+  const runtime = configuredRuntime.platform === 'win32'
+    ? { ...configuredRuntime, windowsSid: configuredRuntime.windowsSid || currentWindowsSid(configuredRuntime) }
+    : configuredRuntime
   const credentialsPath = canonicalTarget(options['credentials-out'], 'credentials', runtime)
   const handoffPath = canonicalTarget(options['handoff-out'], 'handoff', runtime)
   if (credentialsPath === handoffPath) fail('credentials and handoff outputs must be different files')

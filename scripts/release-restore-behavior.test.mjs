@@ -282,7 +282,7 @@ exit 0
         FIRST_FAKE_STAGE_BIN: shellPath(stageBin),
         FIRST_FAKE_STAGE_DATA: shellPath(stageData),
         FIRST_FAKE_STOP_COUNT: shellPath(stopCount),
-        FIRST_HEALTH_URL: 'https://first.example.test/api/health',
+        FIRST_READY_URL: 'https://first.example.test/api/ready',
         FIRST_RESTORE_ARCHIVE: shellPath(archive),
         FIRST_RESTORE_SCRIPT: shellPath(restoreScript),
         TMPDIR: shellPath(runtimeRoot),
@@ -315,6 +315,8 @@ test('safe restore orders stop, staging, recovery, swap, start, and bounded heal
   const curl = events.find(event => event.startsWith('curl:'))
   assert.match(curl, /--connect-timeout\s+[1-9][0-9]*/)
   assert.match(curl, /--max-time\s+[1-9][0-9]*/)
+  assert.match(curl, /https:\/\/first\.example\.test\/api\/ready(?:\s|$)/)
+  assert.doesNotMatch(curl, /\/api\/health(?:\s|$)/)
   assert.equal(events.includes('rollback-mutate-attempt'), false)
 })
 

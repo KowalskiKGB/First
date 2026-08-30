@@ -2,14 +2,14 @@
 set -Eeuo pipefail
 
 : "${FIRST_RESTORE_ARCHIVE:?FIRST_RESTORE_ARCHIVE must be an absolute validated first-data archive}"
-: "${FIRST_HEALTH_URL:?FIRST_HEALTH_URL must be the public HTTPS /api/health URL}"
+: "${FIRST_READY_URL:?FIRST_READY_URL must be the public HTTPS /api/ready URL}"
 case "$FIRST_RESTORE_ARCHIVE" in
   /*) ;;
   *) echo "FIRST_RESTORE_ARCHIVE must be absolute" >&2; exit 64 ;;
 esac
-case "$FIRST_HEALTH_URL" in
-  https://*/api/health) ;;
-  *) echo "FIRST_HEALTH_URL must be an HTTPS /api/health URL" >&2; exit 64 ;;
+case "$FIRST_READY_URL" in
+  https://*/api/ready) ;;
+  *) echo "FIRST_READY_URL must be an HTTPS /api/ready URL" >&2; exit 64 ;;
 esac
 
 repo_dir=$(pwd -P)
@@ -111,9 +111,9 @@ api_should_run=0
 recovery_ready=0
 swap_started=0
 
-wait_for_health() {
+wait_for_readiness() {
   for ((attempt = 1; attempt <= 30; attempt += 1)); do
-    if curl --fail --silent --show-error --connect-timeout 5 --max-time 10 "$FIRST_HEALTH_URL" >/dev/null; then return 0; fi
+    if curl --fail --silent --show-error --connect-timeout 5 --max-time 10 "$FIRST_READY_URL" >/dev/null; then return 0; fi
     sleep 2
   done
   return 1
@@ -171,9 +171,9 @@ restart_or_rollback() {
   if [ "$api_should_run" -eq 1 ]; then
     if ! docker compose start api >/dev/null; then
       status=1
-    elif [ "$rolled_back" -eq 1 ] && ! wait_for_health; then
+    elif [ "$rolled_back" -eq 1 ] && ! wait_for_readiness; then
       status=1
-      echo "Rollback completed but the restored service did not become healthy." >&2
+      echo "Rollback completed but the restored service did not become ready." >&2
     fi
   fi
   if ! cleanup_release_files; then status=1; fi
@@ -285,8 +285,8 @@ docker compose run --rm --no-deps --entrypoint sh api -ceu '
 ' -- "$stage_name" "$recovery_name" "$retired_name" "$failed_name"
 
 docker compose start api >/dev/null
-if ! wait_for_health; then
-  echo "Restored API did not become healthy; rolling back automatically." >&2
+if ! wait_for_readiness; then
+  echo "Restored API did not become ready; rolling back automatically." >&2
   exit 1
 fi
 
@@ -295,9 +295,9 @@ swap_started=0
 if ! docker compose run --rm --no-deps --entrypoint sh api -ceu '
   case "$1" in .first-retired-*) rm -rf -- "/data/$1" ;; *) exit 64 ;; esac
 ' -- "$retired_name"; then
-  echo "Healthy restore completed; redundant retired data could not be removed." >&2
+  echo "Ready restore completed; redundant retired data could not be removed." >&2
 fi
 
 cleanup_release_files
 trap - EXIT INT TERM
-printf 'Restore healthy. Retain recovery until final smoke: /data/%s\n' "$recovery_name"
+printf 'Restore ready. Retain recovery until final smoke: /data/%s\n' "$recovery_name"

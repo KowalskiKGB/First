@@ -35,6 +35,17 @@ function run(args) {
   })
 }
 
+function windowsSddl(target) {
+  const result = spawnSync('powershell.exe', [
+    '-NoProfile',
+    '-NonInteractive',
+    '-Command',
+    '(Get-Acl -LiteralPath $env:FIRST_ACL_TARGET).Sddl',
+  ], { encoding: 'utf8', env: { ...process.env, FIRST_ACL_TARGET: target } })
+  assert.equal(result.status, 0, result.stderr)
+  return result.stdout.trim()
+}
+
 test('generator separates owner credentials from the ephemeral Coolify handoff', () => {
   const sandbox = mkdtempSync(path.join(tmpdir(), 'first-release-credentials-'))
   try {
@@ -86,6 +97,12 @@ test('generator separates owner credentials from the ephemeral Coolify handoff',
     if (process.platform !== 'win32') {
       assert.equal(statSync(credentialsPath).mode & 0o777, 0o600)
       assert.equal(statSync(handoffPath).mode & 0o777, 0o600)
+    } else {
+      for (const output of [credentialsPath, handoffPath]) {
+        const sddl = windowsSddl(output)
+        assert.doesNotMatch(sddl, /;;;(?:BU|AU)\)/, 'broad built-in principals must not read generated secrets')
+        assert.doesNotMatch(sddl, /;ID;/, 'generated secrets must not inherit ambient ACL entries')
+      }
     }
   } finally {
     rmSync(sandbox, { recursive: true, force: true })
