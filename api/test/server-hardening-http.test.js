@@ -123,16 +123,28 @@ test('existing invalid primary DB fails closed and remains byte-for-byte unchang
     env: { ...process.env, DATA_DIR: dataDir, PORT: String(await availablePort()), NODE_ENV: 'test', ORIGIN },
     stdio: ['ignore', 'pipe', 'pipe']
   });
+  let stderr = '';
+  child.stderr.on('data', chunk => { stderr += chunk; });
   t.after(() => {
     child.kill();
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  const exitCode = await Promise.race([
-    new Promise(resolve => child.once('exit', resolve)),
-    new Promise(resolve => setTimeout(() => resolve('still-running'), 750))
-  ]);
-  assert.notEqual(exitCode, 'still-running');
+  const exitCode = await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(new Error(`invalid DB server did not exit within 10s: ${stderr}`));
+    }, 10_000);
+    child.once('error', error => {
+      clearTimeout(timeout);
+      reject(new Error(`invalid DB server spawn failed: ${error.message}; ${stderr}`));
+    });
+    child.once('exit', code => {
+      clearTimeout(timeout);
+      resolve(code);
+    });
+  });
+  assert.equal(Number.isInteger(exitCode) && exitCode !== 0, true, `unexpected exit ${exitCode}: ${stderr}`);
   assert.deepEqual(readFileSync(path.join(dataDir, 'db.json')), invalid);
 });
 
