@@ -158,6 +158,9 @@ Read this before hosting First for anyone other than yourself.
   one on the user record (`api/server.js:167`, `api/server.js:187-188`), so every cookie ever
   issued for the account — on every device, including a copy someone walked off with — stops
   verifying at once. Passkeys are untouched; signing back in works immediately.
+- **Exercise media follows the app session.** Nginx uses an internal authorization subrequest and
+  the API validates the signed `gymsid` cookie before serving `/media/`. Anonymous requests are
+  denied, and media responses stay `private, no-store` so a shared proxy must not publish them.
 - **Data is isolated per user by the session's uid.** `GET`/`PUT /api/data` only ever touch
   `state-<uid>.json` for the caller (`api/server.js:375-392`); no route lets a normal user name
   another user.

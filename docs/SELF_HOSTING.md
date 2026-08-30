@@ -99,10 +99,12 @@ DEV_PANEL_USER=<first_dev_mais_sufixo_aleatorio>
 DEV_PANEL_PASSWORD_HASH=<hash-scrypt>
 ```
 
-`FIRST_BASIC_AUTH_USERS` protege exclusivamente `/media/`. Mantenha
-`FIRST_BOOTSTRAP_MIDDLEWARE=` vazio: o app Capacitor precisa alcançar o shell, o Digital Asset
-Links e a API antes de possuir uma sessão e não envia credenciais Basic Auth. Para controlar novos
-cadastros, use `INVITE_ONLY` e convites da aplicação, não Basic Auth no host inteiro.
+O próprio Nginx protege `/media/` consultando a sessão assinada da aplicação; usuários anônimos não
+recebem os arquivos e as respostas não usam cache público. `FIRST_BASIC_AUTH_USERS` define apenas o
+middleware Basic Auth opcional para bloquear temporariamente o host inteiro durante um bootstrap.
+Mantenha `FIRST_BOOTSTRAP_MIDDLEWARE=` vazio: o app Capacitor precisa alcançar o shell, o Digital
+Asset Links e a API antes de possuir uma sessão e não envia credenciais Basic Auth. Para controlar
+novos cadastros, use `INVITE_ONLY` e convites da aplicação, não Basic Auth no host inteiro.
 
 Depois de criar o primeiro perfil, obtenha seu `id` no `db.json`, configure `ADMIN_UIDS` e habilite
 convites:
@@ -114,9 +116,9 @@ FIRST_BASIC_AUTH_USERS=first-bootstrap:{SHA}<mantenha-o-hash>
 FIRST_BOOTSTRAP_MIDDLEWARE=
 ```
 
-`FIRST_BASIC_AUTH_USERS` continua obrigatório para proteger `/media/`; não o remova enquanto a mídia
-do servidor estiver habilitada. A rota `/.well-known/assetlinks.json` também deve permanecer pública
-para a verificação do app Android.
+`FIRST_BASIC_AUTH_USERS` continua obrigatório no template Compose, mas não deve ser ligado ao
+roteador de mídia. A rota `/.well-known/assetlinks.json` também deve permanecer pública para a
+verificação do app Android.
 
 ## Portal do personal
 
@@ -207,8 +209,10 @@ Revise no recurso Compose, sem registrar valores em logs:
 - `FIRST_BASIC_AUTH_USERS` e `FIRST_BOOTSTRAP_MIDDLEWARE`.
 
 `INVITE_ONLY` deve ser informado explicitamente. Use `0` apenas durante um bootstrap controlado e
-volte para `1` antes de expor o host. `FIRST_BASIC_AUTH_USERS` protege `/media/`; mantenha
-`FIRST_BOOTSTRAP_MIDDLEWARE` vazio para o app Capacitor alcançar shell, API e Digital Asset Links.
+volte para `1` antes de expor o host. O acesso a `/media/` usa a sessão assinada da aplicação;
+mantenha `FIRST_BOOTSTRAP_MIDDLEWARE` vazio para o app Capacitor alcançar shell, API e Digital Asset
+Links. Use o Basic Auth apenas como bloqueio temporário do host inteiro, nunca como autenticação de
+mídia do aplicativo.
 
 Use o gerador versionado, que reutiliza `hashDevPassword()` de `api/dev-auth.js`. Ele cria um
 usuário `first_dev_<24 hex>`, uma senha de 32 bytes em base64url, um hash scrypt compatível e uma

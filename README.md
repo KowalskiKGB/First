@@ -136,7 +136,7 @@ Use [.env.example](.env.example) como base.
 | `DEV_PANEL_USER` | Usuário Dev aleatório iniciado por `first_dev_` | obrigatório em produção |
 | `DEV_PANEL_PASSWORD_HASH` | Hash scrypt da senha Dev; nunca a senha | obrigatório em produção |
 | `AI_CONFIG_MASTER_KEY` | 32 bytes/64 hex para cifrar chaves BYOK | vazio desabilita IA |
-| `FIRST_BASIC_AUTH_USERS` | Hash Basic Auth que protege `/media/` | obrigatório no Compose |
+| `FIRST_BASIC_AUTH_USERS` | Hash do Basic Auth opcional para bloquear o host inteiro durante bootstrap | obrigatório no template Compose |
 | `WEB_PORT` | Porta do override local | `8080` |
 
 Trocar `RP_ID` invalida as passkeys registradas para o hostname anterior.
@@ -149,8 +149,8 @@ As instruções pt-BR usam a
 [`contribuição tutods`](https://github.com/tutods/exercises-dataset/commit/93475e2982117339d2cbf88eb900ad2ceb8d97d6).
 
 Imagens e GIFs exigem direitos separados e não são commitados neste repositório. O deploy privado
-baixa 2.648 mídias — 1.324 JPGs e 1.324 GIFs — do commit upstream fixado e as serve com
-autenticação. A interface
+baixa 2.648 mídias — 1.324 JPGs e 1.324 GIFs — do commit upstream fixado e as serve somente para
+sessões autenticadas da aplicação, com cache privado desabilitado. A interface
 exibe **© Gym visual**. Operar ou distribuir esses arquivos continua sendo responsabilidade de quem
 faz o deploy; veja [NOTICE.md](NOTICE.md).
 
