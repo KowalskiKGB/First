@@ -1,5 +1,11 @@
 import { expect, test } from '@playwright/test'
 
+const VIEWPORTS = [
+  { name: 'mobile', width: 390, height: 844 },
+  { name: 'tablet', width: 768, height: 1024 },
+  { name: 'desktop', width: 1440, height: 900 },
+]
+
 const initialState = () => ({
   lang: 'pt', theme: 'dark', accent: 'lime', unit: 'kg', body: 'male',
   bodyweight: [], week: { 1: 'manual' }, routines: [{ id: 'manual', name: 'Meu treino', emoji: 'dumbbell', ex: [] }],
@@ -16,7 +22,7 @@ const profile = () => ({
 const gym = () => ({ name: 'Academia Centro', genericEquipment: ['dumbbell'], specificMachines: [] })
 
 const generatedPlan = (id = 'plan-1', version = 1) => ({
-  id, version, provider: 'openai', model: 'gpt-5-mini', contextHash: `ctx-${version}`,
+  id, version, studentId: 'student-a', source: 'ai', provider: 'openai', model: 'gpt-5-mini', contextHash: `ctx-${version}`,
   justification: version === 1 ? 'Prioriza força com o equipamento disponível.' : 'Versão anterior segura.',
   appliedAt: '2026-08-29T17:00:00.000Z',
   routines: [{
@@ -33,12 +39,15 @@ function aiFixtures({ plan = null, job = null } = {}) {
   let measurements = { weight: { value: 70, unit: 'kg', observedAt: '2026-08-29' } }
   let currentPlan = plan
   let currentJob = job
+  let planHistory = [generatedPlan('plan-0', 0)]
+  if (currentPlan) planHistory = [currentPlan, ...planHistory.filter(item => item.id !== currentPlan.id)]
   let dataState = initialState()
   if (currentPlan) dataState.aiLastGeneration = { planId: currentPlan.id, version: currentPlan.version, summary: currentPlan.justification, generatedAt: currentPlan.appliedAt }
   const calls = []
   const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
   const context = () => ({
     rev, profile: currentProfile, gym: currentGym, measurements, plan: currentPlan, job: currentJob,
+    planHistory,
     completeness: { eligible: true, missing: [], blockers: [] },
   })
 
@@ -86,11 +95,12 @@ function aiFixtures({ plan = null, job = null } = {}) {
       }
       if (pathname === '/api/ai/job') {
         currentPlan = generatedPlan()
+        planHistory = [currentPlan, ...planHistory.filter(item => item.id !== currentPlan.id)]
         currentJob = { id: 'job-1', status: 'applied', planVersion: 1, contextHash: 'ctx-1' }
         return json(route, { job: currentJob })
       }
       if (pathname === '/api/ai/plan/rollback' && method === 'POST') {
-        currentPlan = generatedPlan('plan-0', 0)
+        currentPlan = planHistory.find(item => item.id === body.planId) || currentPlan
         currentJob = null
         return json(route, { ok: true })
       }
@@ -100,16 +110,16 @@ function aiFixtures({ plan = null, job = null } = {}) {
 }
 
 const watchBrowser = page => {
-  const errors = []
-  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
-  page.on('pageerror', error => errors.push(error.message))
+  const errors = { console: [], page: [] }
+  page.on('console', message => { if (message.type() === 'error') errors.console.push(message.text()) })
+  page.on('pageerror', error => errors.page.push(error.message))
   return errors
 }
 
-test('wizard persists canonical context, applies, copies and rolls back on mobile', async ({ page }, testInfo) => {
+for (const viewport of VIEWPORTS) test(`wizard persists canonical context, applies, copies and rolls back on ${viewport.name}`, async ({ page }, testInfo) => {
   const fixtures = aiFixtures()
   const errors = watchBrowser(page)
-  await page.setViewportSize({ width: 390, height: 844 })
+  await page.setViewportSize(viewport)
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.route('**/api/**', route => fixtures.handle(route))
 
@@ -141,8 +151,9 @@ test('wizard persists canonical context, applies, copies and rolls back on mobil
   expect(jobWrite.headers['idempotency-key']).toBeTruthy()
   expect(fixtures.calls.find(call => call.pathname === '/api/ai/plan/rollback').body).toEqual({ planId: 'plan-0' })
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1)
-  await page.screenshot({ path: testInfo.outputPath('ai-plan-mobile.png'), fullPage: true })
-  expect(errors).toEqual([])
+  await page.screenshot({ path: testInfo.outputPath(`ai-plan-${viewport.name}.png`), fullPage: true, animations: 'disabled', caret: 'hide' })
+  expect(errors.console).toEqual([])
+  expect(errors.page).toEqual([])
 })
 
 test('an active job resumes after remount without creating a second job', async ({ page }, testInfo) => {
@@ -157,7 +168,8 @@ test('an active job resumes after remount without creating a second job', async 
   await expect(page.getByText('Versão 1')).toBeVisible()
   expect(fixtures.calls.filter(call => call.pathname === '/api/ai/jobs')).toHaveLength(0)
   await page.screenshot({ path: testInfo.outputPath('ai-plan-tablet-resumed.png'), fullPage: true })
-  expect(errors).toEqual([])
+  expect(errors.console).toEqual([])
+  expect(errors.page).toEqual([])
 })
 
 test('a job applied while closed is reconciled into local schedules exactly once', async ({ page }, testInfo) => {
@@ -186,7 +198,8 @@ test('a job applied while closed is reconciled into local schedules exactly once
   expect(fixtures.calls.filter(call => call.pathname === '/api/ai/jobs')).toHaveLength(0)
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1)
   await page.screenshot({ path: testInfo.outputPath('ai-plan-mobile-closed-reconcile.png'), fullPage: true })
-  expect(errors).toEqual([])
+  expect(errors.console).toEqual([])
+  expect(errors.page).toEqual([])
 })
 
 test('stale context is discoverable from Home and never generates automatically', async ({ page }, testInfo) => {
@@ -204,5 +217,6 @@ test('stale context is discoverable from Home and never generates automatically'
   await page.goto('/#/home')
   await expect(page.getByText('Revisar seu treino com IA', { exact: true })).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('ai-home-desktop.png'), fullPage: true })
-  expect(errors).toEqual([])
+  expect(errors.console).toEqual([])
+  expect(errors.page).toEqual([])
 })

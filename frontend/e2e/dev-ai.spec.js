@@ -1,5 +1,11 @@
 import { expect, test } from '@playwright/test'
 
+const VIEWPORTS = [
+  { name: 'mobile', width: 390, height: 844 },
+  { name: 'tablet', width: 768, height: 1024 },
+  { name: 'desktop', width: 1440, height: 900 },
+]
+
 function devFixtures() {
   let unlocked = false
   let providers = ['openai', 'gemini', 'anthropic'].map(provider => ({
@@ -61,12 +67,17 @@ function devFixtures() {
   }
 }
 
-test('Dev configures, tests and activates one provider without redisplaying its secret', async ({ page }, testInfo) => {
+const watchBrowser = page => {
+  const errors = { console: [], page: [] }
+  page.on('console', message => { if (message.type() === 'error') errors.console.push(message.text()) })
+  page.on('pageerror', error => errors.page.push(error.message))
+  return errors
+}
+
+for (const viewport of VIEWPORTS) test(`Dev configures, tests and activates one provider on ${viewport.name}`, async ({ page }, testInfo) => {
   const fixtures = devFixtures()
-  const errors = []
-  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
-  page.on('pageerror', error => errors.push(error.message))
-  await page.setViewportSize({ width: 1440, height: 900 })
+  const errors = watchBrowser(page)
+  await page.setViewportSize(viewport)
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.route('**/api/**', route => fixtures.handle(route))
 
@@ -95,10 +106,6 @@ test('Dev configures, tests and activates one provider without redisplaying its 
   await openai.getByRole('button', { name: 'Ativar globalmente' }).click()
   await expect(openai.getByText('Ativo', { exact: true })).toBeVisible()
 
-  const gemini = page.locator('form[aria-labelledby="provider-gemini"]')
-  await gemini.getByRole('button', { name: 'Carregar modelos' }).click()
-  await expect(gemini.getByText('Não foi possível carregar os modelos. Tente novamente.').first()).toBeVisible()
-  expect(await page.content()).not.toContain('upstream credential material')
   await page.getByRole('button', { name: '30 dias' }).click()
   await expect(page.getByText('30').first()).toBeVisible()
   await expect(page.locator('#tabbar')).toHaveCount(0)
@@ -107,9 +114,30 @@ test('Dev configures, tests and activates one provider without redisplaying its 
   expect(fixtures.writes.find(write => write.pathname === '/api/dev/ai/provider/test').body).toEqual({ provider: 'openai' })
   expect(fixtures.writes.find(write => write.pathname === '/api/dev/ai/active').body).toEqual({ provider: 'openai' })
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1)
-  await page.screenshot({ path: testInfo.outputPath('dev-ai-desktop.png'), fullPage: true })
+  await page.screenshot({ path: testInfo.outputPath(`dev-ai-${viewport.name}.png`), fullPage: true, animations: 'disabled', caret: 'hide' })
 
   await page.getByRole('button', { name: 'Sair do Painel Dev' }).click()
   await expect(page.getByRole('heading', { name: 'Credencial Dev' })).toBeVisible()
-  expect(errors.filter(message => !message.includes('500 (Internal Server Error)'))).toEqual([])
+  expect(errors.console).toEqual([])
+  expect(errors.page).toEqual([])
+})
+
+test('Dev shows a sanitized Gemini model error without leaking upstream material', async ({ page }, testInfo) => {
+  const fixtures = devFixtures()
+  const errors = watchBrowser(page)
+  await page.setViewportSize(VIEWPORTS[2])
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.route('**/api/**', route => fixtures.handle(route))
+
+  await page.goto('/#/dev')
+  await page.locator('[name="dev-password"]').fill('temporary-demo-password')
+  await page.getByRole('button', { name: 'Abrir Painel Dev' }).click()
+  const gemini = page.locator('form[aria-labelledby="provider-gemini"]')
+  await gemini.getByRole('button', { name: 'Carregar modelos' }).click()
+
+  await expect(gemini.getByText('Não foi possível carregar os modelos. Tente novamente.').first()).toBeVisible()
+  expect(await page.content()).not.toContain('upstream credential material')
+  await page.screenshot({ path: testInfo.outputPath('dev-ai-gemini-error-desktop.png'), fullPage: true, animations: 'disabled', caret: 'hide' })
+  expect(errors.console).toEqual([expect.stringContaining('500 (Internal Server Error)')])
+  expect(errors.page).toEqual([])
 })

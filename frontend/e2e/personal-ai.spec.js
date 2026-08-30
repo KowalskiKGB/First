@@ -1,10 +1,15 @@
 import { expect, test } from '@playwright/test'
 
+const VIEWPORTS = [
+  { name: 'mobile', width: 390, height: 844 },
+  { name: 'tablet', width: 768, height: 1024 },
+  { name: 'desktop', width: 1440, height: 900 },
+]
+
 const trainer = { userId: 'trainer-1', name: 'Personal Teste', roles: ['student', 'trainer'], timezone: 'America/Fortaleza' }
 
-function personalAiFixtures() {
+function personalAiFixtures({ conflictProfile = false } = {}) {
   let rev = 7
-  let conflictProfile = true
   let client = {
     id: 'client-1', trainerId: 'trainer-1', studentUserId: 'student-1', name: 'Ana Teste', goal: 'Força',
     targetSessionsPerWeek: 3, inactiveAfterDays: 7, priority: 'ok', reasons: [],
@@ -67,12 +72,12 @@ function personalAiFixtures() {
   }
 }
 
-test('Personal edits the authorized AI profile and canonical gym machines with conflict recovery', async ({ page }, testInfo) => {
+for (const viewport of VIEWPORTS) test(`Personal edits the authorized AI profile and canonical gym on ${viewport.name}`, async ({ page }, testInfo) => {
   const fixtures = personalAiFixtures()
-  const errors = []
-  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
-  page.on('pageerror', error => errors.push(error.message))
-  await page.setViewportSize({ width: 768, height: 1024 })
+  const errors = { console: [], page: [] }
+  page.on('console', message => { if (message.type() === 'error') errors.console.push(message.text()) })
+  page.on('pageerror', error => errors.page.push(error.message))
+  await page.setViewportSize(viewport)
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.route('**/api/**', route => fixtures.handle(route))
 
@@ -84,8 +89,7 @@ test('Personal edits the authorized AI profile and canonical gym machines with c
   const profileForm = page.getByRole('form', { name: 'Editar perfil de treino para IA' })
   await profileForm.locator('[name="personal-ai-goal"]').fill('Força e mobilidade')
   await profileForm.getByRole('button', { name: 'Salvar perfil de treino' }).click()
-  await expect(page.getByText('Os dados foram atualizados; mantenha este formulário aberto e repita a ação.')).toBeVisible()
-  await profileForm.getByRole('button', { name: 'Salvar perfil de treino' }).click()
+  await expect(profileForm.locator('[name="personal-ai-goal"]')).toHaveValue('Força e mobilidade')
 
   const gymForm = page.getByRole('form', { name: 'Editar academia do aluno' })
   await gymForm.getByRole('button', { name: 'Adicionar máquina' }).click()
@@ -95,12 +99,39 @@ test('Personal edits the authorized AI profile and canonical gym machines with c
   await gymForm.locator('.exercise-preference-results button').first().click()
   await gymForm.getByRole('button', { name: 'Salvar academia' }).click()
 
-  expect(fixtures.writes.find(write => write.pathname === '/api/personal/training-profile').body).toMatchObject({ clientId: 'client-1', rev: 8, goal: 'Força e mobilidade' })
+  expect(fixtures.writes.find(write => write.pathname === '/api/personal/training-profile').body).toMatchObject({ clientId: 'client-1', rev: 7, goal: 'Força e mobilidade' })
   expect(fixtures.writes.find(write => write.pathname === '/api/personal/gym').body).toMatchObject({
-    clientId: 'client-1', rev: 9,
+    clientId: 'client-1', rev: 8,
     specificMachines: [{ name: 'Crossover duplo', category: 'Polia', exerciseIds: [expect.any(String)] }],
   })
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1)
-  await page.screenshot({ path: testInfo.outputPath('personal-ai-tablet.png'), fullPage: true })
-  expect(errors.filter(message => !message.includes('409 (Conflict)'))).toEqual([])
+  await page.screenshot({ path: testInfo.outputPath(`personal-ai-${viewport.name}.png`), fullPage: true, animations: 'disabled', caret: 'hide' })
+  expect(errors.console).toEqual([])
+  expect(errors.page).toEqual([])
+})
+
+test('Personal recovers from one profile revision conflict without losing the draft', async ({ page }, testInfo) => {
+  const fixtures = personalAiFixtures({ conflictProfile: true })
+  const errors = { console: [], page: [] }
+  page.on('console', message => { if (message.type() === 'error') errors.console.push(message.text()) })
+  page.on('pageerror', error => errors.page.push(error.message))
+  await page.setViewportSize(VIEWPORTS[1])
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.route('**/api/**', route => fixtures.handle(route))
+
+  await page.goto('/#/personal/alunos/client-1/ia')
+  const profileForm = page.getByRole('form', { name: 'Editar perfil de treino para IA' })
+  await profileForm.locator('[name="personal-ai-goal"]').fill('Força e mobilidade')
+  await profileForm.getByRole('button', { name: 'Salvar perfil de treino' }).click()
+  await expect(page.getByText('Os dados foram atualizados; mantenha este formulário aberto e repita a ação.')).toBeVisible()
+  await expect(profileForm.locator('[name="personal-ai-goal"]')).toHaveValue('Força e mobilidade')
+  await profileForm.getByRole('button', { name: 'Salvar perfil de treino' }).click()
+
+  expect(fixtures.writes).toEqual([expect.objectContaining({
+    pathname: '/api/personal/training-profile',
+    body: expect.objectContaining({ clientId: 'client-1', rev: 8, goal: 'Força e mobilidade' }),
+  })])
+  await page.screenshot({ path: testInfo.outputPath('personal-ai-conflict-tablet.png'), fullPage: true, animations: 'disabled', caret: 'hide' })
+  expect(errors.console).toEqual([expect.stringContaining('409 (Conflict)')])
+  expect(errors.page).toEqual([])
 })
