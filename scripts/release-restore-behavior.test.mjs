@@ -79,9 +79,14 @@ function createHarness(t, extraEntries = []) {
   const stopCount = path.join(sandbox, 'stop-count')
   const apiState = path.join(sandbox, 'api-state')
   const replaceMarker = path.join(sandbox, 'archive-replaced')
+  const snapshotRaceMarker = path.join(sandbox, 'snapshot-race-attempted')
   const fakeBin = path.join(sandbox, 'bin')
+  const stageBin = path.join(sandbox, 'stage-bin')
+  const stageData = path.join(sandbox, 'stage-data')
   const runner = path.join(sandbox, 'run-restore.sh')
   mkdirSync(fakeBin)
+  mkdirSync(stageBin)
+  mkdirSync(stageData)
   writeArchive(archive, extraEntries)
   writeFileSync(events, '')
   writeFileSync(stopCount, '0\n')
@@ -105,10 +110,25 @@ case "$command" in
       printf '%s\n' archive-replaced >> "$events"
     fi
     if [ -n "${'$'}{FIRST_FAKE_SNAPSHOT_DIR:-}" ]; then
+      snapshot_found=0
       for snapshot in "$FIRST_FAKE_SNAPSHOT_DIR"/.first-restore-snapshot.*; do
         [ -f "$snapshot" ] || continue
+        snapshot_found=1
         printf 'snapshot-mode:%s\n' "$(stat -c %a "$snapshot")" >> "$events"
       done
+      if [ "$snapshot_found" -eq 0 ]; then printf '%s\n' snapshot-path-absent >> "$events"; fi
+    fi
+    if [ -n "${'$'}{FIRST_FAKE_SNAPSHOT_RACE_DIR:-}" ] && [ ! -e "$FIRST_FAKE_SNAPSHOT_RACE_MARKER" ]; then
+      snapshot_found=0
+      for snapshot in "$FIRST_FAKE_SNAPSHOT_RACE_DIR"/.first-restore-snapshot.*; do
+        [ -f "$snapshot" ] || continue
+        snapshot_found=1
+        rm -f -- "$snapshot"
+        /usr/bin/cp -- "$FIRST_FAKE_SNAPSHOT_REPLACEMENT" "$snapshot"
+        printf '%s\n' snapshot-replaced >> "$events"
+      done
+      if [ "$snapshot_found" -eq 0 ]; then printf '%s\n' snapshot-path-absent >> "$events"; fi
+      : > "$FIRST_FAKE_SNAPSHOT_RACE_MARKER"
     fi
     if grep -Fxq running "$FIRST_FAKE_API_STATE"; then printf '%s\n' api; fi
     ;;
@@ -140,6 +160,18 @@ case "$command" in
       printf '%s\n' rollback-mutate >> "$events"
     elif [[ "$all" == *'tar -C "$stage" -xzf -'* ]]; then
       printf '%s\n' extract >> "$events"
+      if [ "${'$'}{FIRST_FAKE_EXECUTE_STAGE_VALIDATION:-0}" = 1 ]; then
+        stage_script=
+        previous=
+        for argument in "$@"; do
+          if [ "$previous" = -ceu ]; then stage_script=$argument; previous=; continue; fi
+          if [ "$argument" = -ceu ]; then previous=-ceu; fi
+        done
+        stage_name=${'$'}{@: -1}
+        translated=${'$'}{stage_script//\/data/$FIRST_FAKE_STAGE_DATA}
+        PATH="$FIRST_FAKE_STAGE_BIN:$PATH" /usr/bin/sh -ceu "$translated" -- "$stage_name"
+        exit $?
+      fi
       if [ -n "${'$'}{FIRST_FAKE_EXTRACTED_ARCHIVE:-}" ]; then
         cat > "$FIRST_FAKE_EXTRACTED_ARCHIVE"
       fi
@@ -156,6 +188,36 @@ case "$command" in
     ;;
   *) exit 92 ;;
 esac
+`)
+
+  writeExecutable(path.join(stageBin, 'tar'), String.raw`
+#!/usr/bin/env bash
+set -u
+if [ "${'$'}{1:-}" = -C ]; then
+  stage=$2
+  cat >/dev/null
+  printf '%s\n' '{}' > "$stage/db.json"
+  printf '%s\n' fixture-only > "$stage/secret"
+  exit 0
+fi
+exec /usr/bin/tar "$@"
+`)
+
+  writeExecutable(path.join(stageBin, 'find'), String.raw`
+#!/usr/bin/env bash
+set -u
+if [ "${'$'}{FIRST_FAKE_STAGE_FIND_FAIL:-0}" = 1 ]; then
+  printf '%s\n' find-failed-empty >> "$FIRST_FAKE_EVENTS"
+  exit 47
+fi
+exec /usr/bin/find "$@"
+`)
+
+  writeExecutable(path.join(stageBin, 'mkdir'), String.raw`
+#!/usr/bin/env bash
+set -u
+if [ "${'$'}{1:-}" = -m ]; then shift 2; fi
+exec /usr/bin/mkdir "$@"
 `)
 
   writeExecutable(path.join(fakeBin, 'curl'), String.raw`
@@ -190,6 +252,9 @@ exit 0
         FIRST_FAKE_BIN: shellPath(fakeBin),
         FIRST_FAKE_EVENTS: shellPath(events),
         FIRST_FAKE_REPLACE_MARKER: shellPath(replaceMarker),
+        FIRST_FAKE_SNAPSHOT_RACE_MARKER: shellPath(snapshotRaceMarker),
+        FIRST_FAKE_STAGE_BIN: shellPath(stageBin),
+        FIRST_FAKE_STAGE_DATA: shellPath(stageData),
         FIRST_FAKE_STOP_COUNT: shellPath(stopCount),
         FIRST_HEALTH_URL: 'https://first.example.test/api/health',
         FIRST_RESTORE_ARCHIVE: shellPath(archive),
@@ -329,13 +394,45 @@ test('source replacement after validation cannot change the private snapshot ext
   assert.equal(result.status, 0, result.stderr)
   const events = readEvents(harness.events)
   assert.ok(events.includes('archive-replaced'), events.join(','))
-  if (process.platform === 'win32') {
-    assert.ok(events.some(event => event.startsWith('snapshot-mode:')), events.join(','))
-  } else {
-    assert.ok(events.includes('snapshot-mode:600'), events.join(','))
-  }
+  assert.ok(events.includes('snapshot-path-absent'), events.join(','))
   assert.deepEqual(readFileSync(extracted), original)
   assert.deepEqual(readdirSync(harness.sandbox).filter(name => name.startsWith('.first-restore-snapshot.')), [])
+})
+
+test('snapshot pathname replacement cannot change the validated inode extracted', t => {
+  const harness = createHarness(t)
+  const replacement = path.join(harness.sandbox, 'snapshot-replacement.tgz')
+  const extracted = path.join(harness.sandbox, 'snapshot-extracted.tgz')
+  const original = readFileSync(harness.archive)
+  writeArchive(replacement, [], '{"snapshotReplacement":true}\n')
+
+  const result = harness.run({
+    FIRST_FAKE_EXTRACTED_ARCHIVE: shellPath(extracted),
+    FIRST_FAKE_SNAPSHOT_RACE_DIR: shellPath(harness.sandbox),
+    FIRST_FAKE_SNAPSHOT_REPLACEMENT: shellPath(replacement),
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+  const events = readEvents(harness.events)
+  assert.ok(events.includes('snapshot-path-absent'), events.join(','))
+  assert.equal(events.includes('snapshot-replaced'), false, events.join(','))
+  assert.deepEqual(readFileSync(extracted), original)
+  assert.deepEqual(readdirSync(harness.sandbox).filter(name => name.startsWith('.first-restore-snapshot.')), [])
+})
+
+test('empty-output find failure during staging aborts before live data mutation', t => {
+  const harness = createHarness(t)
+  const result = harness.run({
+    FIRST_FAKE_EXECUTE_STAGE_VALIDATION: '1',
+    FIRST_FAKE_STAGE_FIND_FAIL: '1',
+  })
+
+  assert.notEqual(result.status, 0)
+  const events = readEvents(harness.events)
+  assert.ok(events.includes('find-failed-empty'), `${events.join(',')}\n${result.stderr}`)
+  assert.equal(events.includes('recovery'), false, events.join(','))
+  assert.equal(events.includes('swap'), false, events.join(','))
+  assert.equal(events.includes('rollback-mutate-attempt'), false, events.join(','))
 })
 
 test('an external symlink resolving into the repository is rejected canonically', t => {

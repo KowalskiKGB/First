@@ -10,6 +10,7 @@ import {
   renameSync,
   rmSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -212,6 +213,46 @@ test('generator leaves a racing external publication file untouched', () => {
 
     assert.equal(racedPath, credentialsPath)
     assert.equal(readFileSync(credentialsPath, 'utf8'), 'external-race\n')
+    assert.equal(existsSync(handoffPath), false)
+    assert.deepEqual(readdirSync(sandbox).sort(), ['handoff', 'owner.md'])
+    assert.deepEqual(readdirSync(handoffDirectory), [])
+    assert.equal(leakedOutput, '')
+  } finally {
+    process.stdout.write = originalWrite
+    rmSync(sandbox, { recursive: true, force: true })
+  }
+})
+
+test('generator cleanup preserves a published file replaced before the second publication fails', () => {
+  const sandbox = mkdtempSync(path.join(tmpdir(), 'first-release-cleanup-race-'))
+  const handoffDirectory = path.join(sandbox, 'handoff')
+  mkdirSync(handoffDirectory)
+  const credentialsPath = path.join(sandbox, 'owner.md')
+  const handoffPath = path.join(handoffDirectory, 'coolify.json')
+  let links = 0
+  let leakedOutput = ''
+  const originalWrite = process.stdout.write
+  process.stdout.write = chunk => {
+    leakedOutput += String(chunk)
+    return true
+  }
+  try {
+    assert.throws(() => generateReleaseCredentials([
+      '--url', 'https://first.example.test',
+      '--credentials-out', credentialsPath,
+      '--handoff-out', handoffPath,
+    ], {
+      linkSync: (source, target) => {
+        links += 1
+        if (links === 1) return linkSync(source, target)
+        unlinkSync(credentialsPath)
+        writeFileSync(credentialsPath, 'external-after-publication\n', { flag: 'wx' })
+        throw new Error('injected second publication failure')
+      },
+    }), /injected second publication failure/)
+
+    assert.equal(links, 2)
+    assert.equal(readFileSync(credentialsPath, 'utf8'), 'external-after-publication\n')
     assert.equal(existsSync(handoffPath), false)
     assert.deepEqual(readdirSync(sandbox).sort(), ['handoff', 'owner.md'])
     assert.deepEqual(readdirSync(handoffDirectory), [])
