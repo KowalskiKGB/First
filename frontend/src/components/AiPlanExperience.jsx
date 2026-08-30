@@ -126,7 +126,7 @@ export function AiWizard({ draft, onDraft, onClose, onSubmit, busy }) {
     if (Object.keys(next).length) focusFirstInvalid()
     return Object.keys(next).length === 0
   }
-  const next = () => { if (validate(step)) setStep(value => Math.min(4, value + 1)) }
+  const next = event => { event.preventDefault(); if (validate(step)) setStep(value => Math.min(4, value + 1)) }
   const submit = event => {
     event.preventDefault()
     for (let target = 1; target <= 4; target += 1) {
