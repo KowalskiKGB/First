@@ -81,8 +81,8 @@ function InvitesCard({ invites, reload }) {
       <Button variant="primary" size="sm" onClick={gen} icon="plus">Gerar</Button></div>
     <div className="small muted" style={{ margin: '6px 0 10px' }}>{open.length} disponíveis · {used.length} resgatados</div>
     {open.map(i => <div key={i.code} className="row between" style={{ padding: '7px 2px', borderBottom: '1px solid var(--sep)' }}>
-      <span style={{ fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontWeight: 500, letterSpacing: '.06em' }}
-        onClick={() => { navigator.clipboard?.writeText(i.code).catch(() => {}); toast(`Código ${i.code} copiado`) }}>{i.code}</span>
+      <button type="button" style={{ fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', fontWeight: 500, letterSpacing: '.06em', padding: '7px 2px' }}
+        onClick={() => { navigator.clipboard?.writeText(i.code).catch(() => {}); toast(`Código ${i.code} copiado`) }} aria-label={`Copiar código ${i.code}`}>{i.code}</button>
       <button className="iconbtn" style={{ width: 32, height: 30, borderRadius: 8, fontSize: 15, color: 'var(--red)' }} onClick={() => revoke(i.code)} aria-label="Revogar código"><Icon name="trash" /></button>
     </div>)}
     {used.map(i => <div key={i.code} className="row between dim" style={{ padding: '7px 2px', fontSize: '.8rem' }}>
@@ -100,8 +100,13 @@ export default function Admin() {
   const [users, setUsers] = useState(null)
   const [invites, setInvites] = useState(null)
   const [inviteOnly, setInviteOnly] = useState(false)
+  const [serverNow, setServerNow] = useState(null)
 
-  const loadUsers = () => api('/api/admin/users').then(d => { setUsers(d.users); setInviteOnly(d.invite_only) }).catch(e => toast(e.message || 'Não foi possível carregar as contas'))
+  const loadUsers = () => api('/api/admin/users').then(d => {
+    setUsers(d.users)
+    setInviteOnly(d.invite_only)
+    setServerNow(Number.isFinite(d.now) ? d.now : null)
+  }).catch(e => toast(e.message || 'Não foi possível carregar as contas'))
   const loadInvites = () => api('/api/admin/invites').then(d => setInvites(d.invites)).catch(() => {})
   // Polling keeps presence and active workouts current without requiring a manual refresh.
   useEffect(() => { if (!user?.admin) return; loadUsers(); loadInvites(); const iv = setInterval(loadUsers, 15000); return () => clearInterval(iv) }, [])
@@ -145,7 +150,7 @@ export default function Admin() {
           <div className="tt">{u.name} {u.admin && <span className="tag acc" style={{ marginLeft: 4 }}>admin</span>}{u.disabled && <span className="tag nocap" style={{ marginLeft: 4, color: 'var(--red)' }}>desativada</span>}</div>
           <div className="ss" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.email || 'E-mail não informado'}</div>
           <div className="ss row" style={{ gap: 6, flexWrap: 'wrap' }}>
-            <span style={{ color: u.online && !u.disabled ? 'var(--acc)' : undefined }}>{accountPresence(u)}</span>
+            <span style={{ color: u.online && !u.disabled ? 'var(--acc)' : undefined }}>{accountPresence(u, serverNow ?? Date.now())}</span>
             <span aria-hidden="true">·</span>
             <span>{u.workouts || 0} treinos{u.lastWorkout ? ` · último em ${fmtDate(u.lastWorkout)}` : ''}</span>
             {u.live && <span className="tag acc nocap">Treinando · {u.live.name || 'Treino'}</span>}

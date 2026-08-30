@@ -110,7 +110,7 @@ export function AccountAccess({
           : 'Sign in to sync your workouts and build a weekly plan with AI.')}</p>
       </div>
 
-      {error || validationError ? <p id={`${prefix}-form-error`} className="form-error" role="alert">{validationError || error}</p> : null}
+      {error ? <p className="form-error" role="alert">{error}</p> : null}
 
       <form className="account-access-form" onSubmit={submit}>
         <fieldset className="account-access-section" disabled={busy}>
@@ -146,7 +146,7 @@ export function AccountAccess({
                 maxLength={128}
                 required
                 aria-invalid={validationError ? true : undefined}
-                aria-describedby={validationError ? `${prefix}-form-error` : undefined}
+                aria-describedby={validationError ? `${prefix}-confirm-error` : undefined}
                 value={values.confirmPassword}
                 onChange={event => {
                   const confirmPassword = event.target.value
@@ -154,6 +154,7 @@ export function AccountAccess({
                   if (validationError && confirmPassword === values.password) setValidationError('')
                 }}
               />
+              {validationError ? <small id={`${prefix}-confirm-error`} className="form-error" role="alert">{validationError}</small> : null}
             </label>
           ) : null}
 

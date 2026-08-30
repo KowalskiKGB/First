@@ -1141,7 +1141,11 @@ const routes = {
     if (!u) return json(res, 404, { error: 'no such user' });
     if (isAdmin(u)) return json(res, 400, { error: 'cannot disable an admin' });
     const disabled = !!body.disabled;
-    const nextUser = { ...u, disabled };
+    const nextUser = {
+      ...u,
+      disabled,
+      ...(disabled ? { sv: sessionVersion(u) + 1, lastAccessAt: Date.now() } : {})
+    };
     db = { ...db, users: db.users.map(item => item.id === u.id ? nextUser : item) };
     if (disabled) {
       accountPresence.delete(u.id);

@@ -33,6 +33,7 @@ vi.mock('../lib/i18n.js', () => ({
       'Build workout with AI': 'Montar treino com IA',
       'Create your week with AI': 'Montar treino com IA',
       'Set up my AI workout': 'Montar treino com IA',
+      'Rest day': 'Dia de descanso',
     }
     return args.reduce((value, arg, index) => value.replaceAll(`{${index}}`, arg), pt[message] || message)
   },
@@ -303,6 +304,7 @@ describe('Home schedule summary', () => {
     harness.state = { ...harness.state, targetW: 60 }
     const markup = renderToStaticMarkup(<Home />)
     expect(markup).toContain('10 kg to lose')
-    expect(markup).toContain('Rest day')
+    expect(markup).toContain('Dia de descanso')
+    expect(markup).not.toContain('Dia De Descanso')
   })
 })

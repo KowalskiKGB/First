@@ -70,6 +70,8 @@ test('student Home invites login, registers profile data, gates AI and exposes p
   await page.goto('/#/home')
   await expect(page.getByRole('heading', { name: 'Fazer login' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Fazer login' })).toBeVisible()
+  await expect(page.getByText('Esta semana', { exact: true })).toHaveCount(1)
+  expect(await page.locator('.home-week-day-card').first().evaluate(element => getComputedStyle(element).flexDirection)).toBe('column')
   await expect(page.getByText(/PPL|Push\s*\/\s*Pull\s*\/\s*Legs/i)).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Montar treino com IA' }).first().click()

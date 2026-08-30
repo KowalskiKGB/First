@@ -130,6 +130,12 @@ test('student registers with email/password and optional training profile withou
   assert.equal('password' in body, false);
   assert.equal('passwordHash' in body, false);
 
+  const session = await fetch(`${url}/api/me`, {
+    headers: { Cookie: cookieFrom(response, 'gymsid') }
+  });
+  assert.equal(session.status, 200);
+  assert.deepEqual((await session.json()).user, body.user);
+
   const persisted = readFileSync(path.join(dataDir, 'db.json'), 'utf8');
   assert.equal(persisted.includes('treino123'), false);
   assert.match(persisted, /scrypt:/);
@@ -168,6 +174,28 @@ test('admin sees registered accounts with durable last access and distinct onlin
   assert.equal(Number.isFinite(online.lastAccessAt), true);
   assert.equal(offline.online, false);
   assert.equal(offline.lastAccessAt, oldAccess);
+});
+
+test('disabling an account revokes its existing sessions after the account is re-enabled', async t => {
+  const { url } = await startServer(t, {
+    db: {
+      ...emptyDb(),
+      users: [
+        { id: 'admin-one', name: 'Admin', admin: true, sv: 0 },
+        { id: 'student-one', name: 'Student', email: 'student@example.com', sv: 0 }
+      ]
+    }
+  });
+  const adminCookie = appCookie('admin-one');
+  const studentCookie = appCookie('student-one');
+  assert.equal((await fetch(`${url}/api/me`, { headers: { Cookie: studentCookie } })).status, 200);
+
+  const disabled = await post(url, '/api/admin/user/disable', { id: 'student-one', disabled: true }, { Cookie: adminCookie });
+  assert.equal(disabled.status, 200);
+  const enabled = await post(url, '/api/admin/user/disable', { id: 'student-one', disabled: false }, { Cookie: adminCookie });
+  assert.equal(enabled.status, 200);
+
+  assert.equal((await fetch(`${url}/api/me`, { headers: { Cookie: studentCookie } })).status, 401);
 });
 
 test('student can log in case-insensitively and duplicate email registration is rejected', async t => {

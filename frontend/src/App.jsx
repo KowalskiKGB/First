@@ -135,13 +135,22 @@ function AccountSheet({ initialMode, close }) {
         body: JSON.stringify(registering ? registrationBody(values) : { email: values.email, password: values.password }),
       })
       let authenticatedUser = response?.user
-      if (registering && !validAuthUser(authenticatedUser)) {
+      if (registering) {
+        const expectedEmail = values.email.trim().toLowerCase()
         try {
-          authenticatedUser = (await api('/api/auth/login', {
-            method: 'POST',
-            body: JSON.stringify({ email: values.email, password: values.password }),
-          }))?.user
+          const sessionUser = (await api('/api/me'))?.user
+          authenticatedUser = validAuthUser(sessionUser) && String(sessionUser.email || '').toLowerCase() === expectedEmail
+            ? sessionUser
+            : null
         } catch { authenticatedUser = null }
+        if (!validAuthUser(authenticatedUser)) {
+          try {
+            authenticatedUser = (await api('/api/auth/login', {
+              method: 'POST',
+              body: JSON.stringify({ email: values.email, password: values.password }),
+            }))?.user
+          } catch { authenticatedUser = null }
+        }
       }
       if (!registering && !validAuthUser(authenticatedUser)) {
         try { authenticatedUser = (await api('/api/me'))?.user } catch { authenticatedUser = null }
