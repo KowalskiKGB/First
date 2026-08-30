@@ -4,11 +4,11 @@ Data: 2026-08-29
 
 Baseline: `2658eb57a1d8c44b64e0498e7f8f270d49591e79`
 
-Revisado até: `4232e78559d827d31ae26a95f547bad4972cbf40`
+Revisado até: `0389e3cd9f7c81b4112906b174f9084847d3e3ee`
 
 ## Resumo executivo
 
-**Aprovado para o deploy privado de instância única, sem achados críticos ou altos abertos.** O diferencial tem 99 arquivos, 8.949 adições e 998 remoções. A revisão foi classificada como alta criticidade por alterar autenticação Dev, criptografia de chaves, chamadas externas, autorização entre aluno e Personal, aplicação automática de planos e recuperação do volume.
+**Aprovado para o deploy privado de instância única, sem achados críticos ou altos abertos.** O diferencial tem 100 arquivos, 9.473 adições e 998 remoções. A revisão foi classificada como alta criticidade por alterar autenticação Dev, criptografia de chaves, chamadas externas, autorização entre aluno e Personal, aplicação automática de planos e recuperação do volume.
 
 O protótipo inseguro que persistia `initialPassword` foi removido. A configuração atual exige credencial Dev via ambiente, guarda somente hash scrypt, criptografa chaves comerciais com AES-256-GCM e só ativa uma combinação provedor/modelo depois de teste estruturado real.
 
@@ -20,7 +20,7 @@ O protótipo inseguro que persistia `initialPassword` foi removido. A configura�
 - Fila persistida e idempotente, validação semântica antes da aplicação, recuperação conservadora após reinício e rollback (`api/ai-jobs.js:111-325`).
 - Perfis, academia, medidas, permissões `trainingProfileWrite`/`aiPlanRead`, planos e uso migrados para o armazenamento colaborativo (`api/domain/schema.js:1-277`, `api/personal.js`).
 - Agendas manual, Personal e IA coexistem, com origem e versão no histórico; o frontend recebeu wizard, estados de job, Painel Dev e aba IA do Personal.
-- Backup/restore agora param o único writer, validam antes da troca, mantêm recovery e fazem rollback por health; o gerador Dev separa senha local do handoff efêmero (`scripts/backup-first-data.sh`, `scripts/restore-first-data.sh`, `scripts/generate-release-credentials.mjs`).
+- Backup/restore agora param e confirmam o único writer, rejeitam links/tipos especiais antes da troca, mantêm recovery e só fazem rollback após nova confirmação de parada; o gerador Dev publica arquivos privados sem sobrescrever alvos e separa senha local do handoff efêmero (`scripts/backup-first-data.sh`, `scripts/restore-first-data.sh`, `scripts/generate-release-credentials.mjs`).
 
 ## Análise por superfície
 
@@ -86,13 +86,13 @@ Os módulos críticos possuem unitários e integração, e os fluxos principais 
 - Playwright: 11/11, incluindo wizard/aplicação/rollback, remount de job, Dev sem vazamento de chave, Personal e seletor de sessões em mobile/desktop.
 - `npm audit` completo e produção: zero vulnerabilidades em API e frontend.
 - Build Vite, build das imagens `first-api`/`first-web`, Compose config e APK debug passaram.
-- Release operacional: 6/6 testes, deployment 2/2 e sintaxe dos dois scripts validada no Alpine 3.22.
+- Release operacional: 17/17 testes comportamentais/contratuais, deployment 2/2 e sintaxe Bash dos dois scripts validada no Alpine 3.22.
 
 ## Blast radius e histórico
 
 - Estratégia focada para repositório médio: todos os 99 arquivos alterados foram triados; auth, crypto, chamadas externas, job, schema, autorização e recovery tiveram leitura profunda.
 - Ocorrências por arquivo: `createDevAuth` 3, `isTrustedMutation` 3, `encryptProviderKey` 2, `runStructuredOutput` 4, `createAiJobService` 3, `saveTrainingProfile` 2, `saveGymProfile` 2 e `buildAiContext` 2.
-- O histórico mostra a remoção explícita de `initialPassword`, geração automática em `/data`, fallback para qualquer provedor configurado, retenção excessiva de uso e restore destrutivo. Os commits de endurecimento relevantes incluem `bef5b4d`, `7db2f1f`, `c72737d`, `4671d35`, `b33fe54`, `e1dd575`, `60babb2`, `1007c28` e `4232e78`.
+- O histórico mostra a remoção explícita de `initialPassword`, geração automática em `/data`, fallback para qualquer provedor configurado, retenção excessiva de uso e restore destrutivo. Os commits de endurecimento relevantes incluem `bef5b4d`, `7db2f1f`, `c72737d`, `4671d35`, `b33fe54`, `e1dd575`, `60babb2`, `1007c28`, `4232e78`, `c5dafb7` e `0389e3c`.
 - Nenhum acesso removido de um commit de segurança foi encontrado sem controle substituto.
 
 ## Limitações e confiança
