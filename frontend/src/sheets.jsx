@@ -352,17 +352,33 @@ const AI_ROUTINE_FOCUSES = [
 ]
 
 function AiRoutineChoice({ onManual, onAi, close }) {
-  const chooseManual = () => { close(); onManual?.() }
-  const chooseAi = choice => { close(); onAi?.({ focus: choice[0] }) }
+  const [busyFocus, setBusyFocus] = useState('')
+  const chooseManual = () => {
+    if (busyFocus) return
+    close(); onManual?.()
+  }
+  const chooseAi = async choice => {
+    if (busyFocus) return
+    setBusyFocus(choice[0])
+    try {
+      const succeeded = await onAi?.({ focus: choice[0] })
+      if (succeeded !== false) close()
+      else setBusyFocus('')
+    } catch (error) {
+      setBusyFocus('')
+      ui().toast(t(error?.message || 'The AI routine could not be created.'))
+    }
+  }
   return <>
     <h3>{t('New routine')}</h3>
     <div className="muted small" style={{ marginBottom: 12 }}>{t('Choose how to create this routine.')}</div>
+    {busyFocus ? <p className="muted small" role="status" aria-live="polite">{t('Creating your routine…')}</p> : null}
     <div className="list">
-      <button type="button" className="item" onClick={chooseManual}>
+      <button type="button" className="item" onClick={chooseManual} disabled={!!busyFocus}>
         <span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="dumbbell" /></span>
         <div className="grow"><div className="tt">{t('Manual')}</div><div className="ss">{t('Create an empty editable routine.')}</div></div><Icon name="plus" className="chev" />
       </button>
-      {AI_ROUTINE_FOCUSES.map(choice => <button type="button" key={choice[0]} className="item" onClick={() => chooseAi(choice)}>
+      {AI_ROUTINE_FOCUSES.map(choice => <button type="button" key={choice[0]} className="item" onClick={() => chooseAi(choice)} disabled={!!busyFocus} aria-busy={busyFocus === choice[0] ? 'true' : undefined}>
         <span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name={choice[3]} /></span>
         <div className="grow"><div className="tt">IA · {t(choice[1])}</div><div className="ss">{t('Generate an editable routine for this focus.')}</div></div><Icon name="sparkles" className="chev" />
       </button>)}

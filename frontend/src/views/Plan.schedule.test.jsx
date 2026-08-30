@@ -170,6 +170,21 @@ describe('Plan weekly schedule', () => {
     expect(harness.navigate).toHaveBeenCalledWith('/plan/r/ai-suggested')
   })
 
+  it('applies a coalesced AI routine response only once', async () => {
+    harness.user = { id: 'student-1', name: 'Ana' }
+    harness.api.mockResolvedValue({
+      routine: { id: 'ai-shared', name: 'Pernas IA', ex: [] },
+    })
+    const tree = Plan()
+    const button = findElement(tree, element => element.props.children === 'New' && typeof element.props.onClick === 'function')
+
+    button.props.onClick()
+    const onAi = harness.generateAiRoutineSheet.mock.calls[0][0].onAi
+    await Promise.all([onAi({ focus: 'legs' }), onAi({ focus: 'legs' })])
+
+    expect(harness.state.routines.filter(routine => routine.id === 'ai-shared')).toHaveLength(1)
+  })
+
   it('translates legacy starter routine names when rendering existing data', () => {
     harness.state = {
       ...stateFixture(),

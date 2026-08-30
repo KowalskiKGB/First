@@ -103,6 +103,39 @@ test('creates one editable AI-suggested routine limited to the selected focus', 
   assert.equal(usage[0].details.status, 'success');
 });
 
+test('coalesces the same routine request only while it is in flight and gives later generations a new ID', async () => {
+  let releaseProvider;
+  let providerCalls = 0;
+  let ids = 0;
+  const providerGate = new Promise(resolve => { releaseProvider = resolve; });
+  const { service, usage } = fixture({
+    randomId: () => `request-${++ids}`,
+    runStructured: async () => {
+      providerCalls += 1;
+      await providerGate;
+      return {
+        value: generated(),
+        usage: { provider: 'gemini', model: 'gemini-test', inputTokens: 10, outputTokens: 20, totalTokens: 30 }
+      };
+    }
+  });
+
+  const firstRequest = service.generate({ studentId: 'student-a', focus: 'legs' });
+  const duplicateRequest = service.generate({ studentId: 'student-a', focus: 'legs' });
+  releaseProvider();
+  const [first, duplicate] = await Promise.all([firstRequest, duplicateRequest]);
+
+  assert.equal(providerCalls, 1);
+  assert.equal(usage.length, 1);
+  assert.equal(first.routine.id, duplicate.routine.id);
+  assert.notEqual(first.routine.id, 'manual-routine');
+
+  const later = await service.generate({ studentId: 'student-a', focus: 'legs' });
+  assert.equal(providerCalls, 2);
+  assert.equal(usage.length, 2);
+  assert.notEqual(later.routine.id, first.routine.id);
+});
+
 test('rejects unsupported focus before calling the provider', async () => {
   let providerCalls = 0;
   const { service } = fixture({

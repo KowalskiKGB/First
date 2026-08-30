@@ -125,7 +125,7 @@ describe('Dev AI panel UI contracts', () => {
     expect(harness.api).toHaveBeenCalledWith('/api/dev/ai/provider', { method: 'PUT', body: JSON.stringify(draft) })
     expect(harness.api).toHaveBeenCalledWith('/api/dev/ai/provider/test', { method: 'POST', body: JSON.stringify({ provider: 'openai' }) })
     expect(harness.api).toHaveBeenCalledWith('/api/dev/ai/active', { method: 'PUT', body: JSON.stringify({ provider: 'openai' }) })
-    expect(onChanged).toHaveBeenCalledTimes(3)
+    expect(onChanged).toHaveBeenCalledTimes(4)
     expect(harness.setters[0]).toHaveBeenCalled()
     expect(harness.setters[1]).toHaveBeenCalledWith(['gpt-5-mini'])
     const clearKey = harness.setters[0].mock.calls.map(([value]) => value).find(value => typeof value === 'function')
@@ -153,6 +153,26 @@ describe('Dev AI panel UI contracts', () => {
     expect(harness.api).toHaveBeenNthCalledWith(2, '/api/dev/ai/models?provider=openai')
     expect(harness.setters[1]).toHaveBeenCalledWith(['gpt-5-mini'])
     expect(harness.setters[0]).not.toHaveBeenCalledWith(expect.objectContaining({ selectedModel: 'gpt-5-mini' }))
+  })
+
+  it('saves a replacement key before loading models when a model is already selected', async () => {
+    const slot = { provider: 'gemini', selectedModel: 'gemini-2.5-flash', configured: true, testStatus: 'success', active: false }
+    const draft = { provider: 'gemini', selectedModel: 'gemini-2.5-flash', apiKey: 'replacement-key' }
+    harness.reset([draft, [], '', 'idle', '', ''])
+    harness.api
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ models: ['gemini-2.5-flash', 'gemini-2.5-pro'] })
+    const dashboard = DevDashboard({ providers: [slot], usage: {}, window: '7d', onWindow: vi.fn(), onLogout: vi.fn(), onChanged: vi.fn() })
+    const provider = findElements(dashboard, element => element.props.definition?.provider === 'gemini')[0]
+    const form = provider.type(provider.props)
+
+    await findElements(form, element => element.props.children === 'Load models' && typeof element.props.onClick === 'function')[0].props.onClick()
+
+    expect(harness.api).toHaveBeenNthCalledWith(1, '/api/dev/ai/provider', {
+      method: 'PUT',
+      body: JSON.stringify(draft),
+    })
+    expect(harness.api).toHaveBeenNthCalledWith(2, '/api/dev/ai/models?provider=gemini')
   })
 
   it('deactivates the active provider and refreshes with no global provider active', async () => {

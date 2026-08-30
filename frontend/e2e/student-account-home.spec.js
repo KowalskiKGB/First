@@ -160,3 +160,39 @@ test('a 2xx registration response without user never exposes an internal TypeErr
   }).toBeTruthy()
   await expect(page.locator('body')).not.toContainText(/Cannot read properties|undefined.*name/i)
 })
+
+test('AI routine choice stays visible and blocks another choice while generation is running', async ({ page }) => {
+  const fixtures = accountFixtures()
+  let routineCalls = 0
+  await page.route('**/api/**', route => fixtures.handle(route))
+
+  await page.goto('/#/home')
+  await page.getByRole('button', { name: 'Fazer login' }).click()
+  await page.getByRole('button', { name: 'Cadastre-se' }).click()
+  await page.locator('[name="fullName"]').fill('Aluno Rotina')
+  await page.locator('[name="email"]').fill('rotina@example.com')
+  await page.locator('[name="password"]').fill('abc123')
+  await page.getByRole('button', { name: 'Criar minha conta' }).click()
+
+  await page.route('**/api/ai/routine', async route => {
+    routineCalls += 1
+    await new Promise(resolve => setTimeout(resolve, 500))
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ routine: { id: 'ai-legs-once', name: 'Pernas sob medida', emoji: 'legs', ex: [] } }),
+    })
+  })
+
+  await page.goto('/#/plan')
+  await page.locator('.plan-routine-heading').getByRole('button', { name: 'Nova' }).click()
+  const dialog = page.getByRole('dialog')
+  const legs = dialog.getByRole('button', { name: /IA.*Pernas/ })
+  await legs.click()
+
+  await expect(dialog).toBeVisible()
+  await expect(legs).toBeDisabled()
+  await expect(dialog.getByRole('status')).toContainText('Criando sua rotina')
+  await expect(page).toHaveURL(/#\/plan\/r\/ai-legs-once/)
+  expect(routineCalls).toBe(1)
+})

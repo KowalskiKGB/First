@@ -80,7 +80,7 @@ function ProviderCard({ definition, slot, onChanged }) {
   const loadModels = () => run('models', async () => {
     setModelState('loading')
     try {
-      if (draft.apiKey && !draft.selectedModel) {
+      if (draft.apiKey) {
         await api('/api/dev/ai/provider', { method: 'PUT', body: JSON.stringify(providerPayload()) })
         setDraft(current => ({ ...current, apiKey: '' }))
         await onChanged?.()

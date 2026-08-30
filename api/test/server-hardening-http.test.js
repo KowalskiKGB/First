@@ -205,6 +205,23 @@ test('all authenticated legacy mutations reject a wrong Origin', async t => {
   }
 });
 
+test('AI routine generation rejects a wrong Origin before reaching the provider flow', async t => {
+  const { url } = await startServer(t);
+  const response = await fetch(`${url}/api/ai/routine`, {
+    method: 'POST',
+    headers: {
+      Cookie: adminCookie(),
+      Origin: 'https://evil.example',
+      'X-First-Client': 'capacitor',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ focus: 'legs' })
+  });
+
+  assert.equal(response.status, 403);
+  assert.deepEqual(await response.json(), { error: 'invalid origin' });
+});
+
 test('originless Capacitor mutations pass the common gate while WebAuthn entry points remain public', async t => {
   const { url } = await startServer(t);
   for (const mutation of legacyMutations) {

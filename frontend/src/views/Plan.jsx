@@ -43,12 +43,13 @@ export default function Plan() {
     navigate(`/plan/r/${routine.id}`)
   }
   const addSuggestedRoutine = async choice => {
-    if (!user) { openAccount(); return }
+    if (!user) { openAccount(); return true }
     try {
       const response = await api('/api/ai/routine', { method: 'POST', body: JSON.stringify(choice) })
       const routine = response.routine || response
       const id = routine.id || uid()
       update(next => {
+        if (next.routines.some(existing => existing.id === id)) return
         next.routines.push({
           ...routine,
           id,
@@ -62,8 +63,10 @@ export default function Plan() {
         })
       })
       navigate(`/plan/r/${id}`)
+      return true
     } catch (error) {
       useUI.getState().toast(t(error?.message || 'The AI routine could not be created.'))
+      return false
     }
   }
   const addRoutine = () => generateAiRoutineSheet({ onManual: addManualRoutine, onAi: addSuggestedRoutine })

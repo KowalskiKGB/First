@@ -85,6 +85,7 @@ export default {
   'Choose how to create this routine.': 'Escolha como criar esta rotina.',
   'Create an empty editable routine.': 'Crie uma rotina vazia e editável.',
   'Generate an editable routine for this focus.': 'Gere uma rotina editável para este foco.',
+  'Creating your routine…': 'Criando sua rotina…',
   'Add “{0}”': 'Adicionar “{0}”',
   '“{0}” added to {1}': '“{0}” adicionado a {1}',
   'Pick a routine — sets, reps & weight come next.': 'Escolha uma rotina — séries, repetições e peso vêm em seguida.',

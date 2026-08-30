@@ -6,17 +6,17 @@
 |----------|-------|
 | CRITICAL | 0 |
 | HIGH | 0 |
-| MEDIUM | 1 |
+| MEDIUM | 0 |
 | LOW | 1 |
 
-**Overall Risk:** MEDIUM  
-**Recommendation:** CONDITIONAL for Android packaging, APPROVE for web/API deployment.
+**Overall Risk:** LOW
+**Recommendation:** APPROVE after the production smoke check.
 
 **Key Metrics:**
 - Files analyzed: high-risk API/auth/provider/routine paths plus changed Home, Plan, AccountAccess, Settings and DevPanel.
 - Security regressions detected: 0.
 - Blocking product findings in reviewed web/API scope: 0.
-- Residual operational blocker: local Android Gradle daemon is being stopped before APK generation.
+- Residual operational note: the USB phone was not listed by ADB, so installation waits for reconnection; the APK itself was generated and verified.
 
 ## What Changed
 
@@ -36,19 +36,14 @@ High-risk files reviewed:
 
 ## Findings
 
-### MEDIUM: Android APK generation is blocked by local Gradle daemon termination
+### Resolved during review: concurrent AI routine generation
 
-**Files:** Android packaging environment, not a source-code defect isolated to one file.  
-**Evidence:** `npm run build:mobile` completed and `cap sync` found `@capacitor/app@7.1.2`, but `gradlew assembleDebug` and a reduced `--no-daemon --max-workers=1` run both failed with "Gradle build daemon has been stopped: stop command received" / daemon disappearance. `adb devices` listed no attached devices at verification time.
-
-**Impact:** Web/API can be deployed, but APK install/update on the USB phone could not be completed in this local run.
-
-**Recommendation:** Retry from a stable terminal/Android Studio process after reconnecting the device, or inspect local Gradle/JVM process management. No source rollback is recommended from this evidence.
+Identical in-flight requests are now coalesced by student, focus and context hash, later legitimate generations receive a fresh server ID, and the client ignores a repeated response ID. The routine sheet also exposes a live busy state and disables every creation choice while the request is running. This closes duplicate provider spend and duplicate React keys for the current single-instance deployment.
 
 ### LOW: Frontend whole-app coverage remains below 80% because of legacy untested surfaces
 
 **Files:** Legacy frontend modules outside this focused change.  
-**Evidence:** `npx vitest run --coverage` passed 513 tests but reported 63.19% lines / 57.64% statements for the whole frontend. Changed high-risk UI modules such as `DevPanel.jsx`, `Home.jsx`, `Plan.jsx`, `mobile.js` and `AiPlanExperience.jsx` are well covered, while large legacy views remain low.
+**Evidence:** `npx vitest run --coverage` passed 515 tests but reported 62.96% lines / 57.49% statements for the whole frontend. Changed high-risk UI modules such as `DevPanel.jsx`, `Home.jsx`, `Plan.jsx`, `mobile.js` and `AiPlanExperience.jsx` are well covered, while large legacy views remain low.
 
 **Impact:** This does not block the specific account/Dev/AI routine changes, but it prevents an honest "80% whole frontend" claim.
 
@@ -60,25 +55,29 @@ High-risk files reviewed:
 - Dev provider DTOs expose only configured state, selected model, fingerprint and status.
 - Custom provider base URLs remain rejected.
 - Gemini model listing uses `x-goog-api-key` header and filters for `generateContent` models.
+- A replacement provider key is saved before model listing even when the slot already has a selected model.
 - `/api/ai/routine` is protected by the server's common trusted-origin guard because it is a non-GET route and is not in `TRUSTED_WRITE_EXEMPTIONS`.
 - New AI routine generation has a six-per-hour authenticated student rate limit before body/provider work.
+- Identical in-flight routine requests share one provider call and one usage record; the in-memory guard matches the documented single-instance architecture.
 - Provider errors returned to the browser are sanitized.
 
 ## Verification Evidence
 
-- `npm test` in `api`: 211 passed.
-- `npm test` in `frontend`: 513 passed.
-- `npm run test:e2e` in `frontend`: 23 passed.
+- `npm test` in `api`: 213 passed.
+- `npm test` in `frontend`: 515 passed.
+- `npm run test:e2e` in `frontend`: 24 passed.
 - `npm run build` in `frontend`: passed, with existing large chunk warning.
 - `npm audit --audit-level=moderate` in `api` and `frontend`: 0 vulnerabilities.
-- `npm run test:coverage` in `api`: 211 passed, all files 85.25% line coverage.
-- `npx vitest run --coverage` in `frontend`: 513 passed, global frontend coverage below 80%.
+- `npm run test:coverage` in `api`: 213 passed; all files reached 85.31% lines and 81.96% branches.
+- `npx vitest run --coverage` in `frontend`: 515 passed; global frontend remained at 62.96% lines because of inherited untested surfaces.
 - Local Playwright smoke across mobile/tablet/desktop Home, mobile cadastro and desktop `/devadmin`: passed with no console errors and no horizontal overflow.
 - `npm run build:mobile`: passed through Vite build, media copy and Capacitor sync.
-- `gradlew assembleDebug`: blocked by local daemon stop before APK creation.
+- `gradlew clean assembleDebug --no-daemon --max-workers=1`: passed with 203 tasks.
+- Debug APK: generated at `frontend/android/app/build/outputs/apk/debug/app-debug.apk` (146,299,228 bytes; SHA-256 `B4DE81C17459CF07EA9D9EF3A014739BEC598EB6E2D0DC2F07F3C41A73E00174`) and verified with APK Signature Scheme v1/v2.
+- `adb devices -l`: no phone attached at the final local verification, so no installation claim is made.
 
 ## Methodology
 
 Strategy: focused high-risk differential review. Reviewed auth/session boundaries, secret handling, provider external calls, new public API mutation, profile state flow, Dev activation/deactivation behavior, changed mobile navigation, tests and deployment packaging.
 
-Confidence: high for web/API security and behavior in the reviewed scope; medium for Android packaging because local Gradle process termination prevented APK verification.
+Confidence: high for web/API security, behavior and Android packaging in the reviewed scope. Device-only interaction remains to be checked after the phone reconnects.

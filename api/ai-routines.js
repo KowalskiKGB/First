@@ -61,10 +61,10 @@ function frontendExercise(exercise) {
   };
 }
 
-function editableRoutine(plan, focus, generatedAt) {
+function editableRoutine(plan, focus, generatedAt, routineId) {
   const routine = plan.routines[0];
   return {
-    id: routine.id,
+    id: routineId,
     name: routine.name,
     emoji: FOCUS[focus].emoji,
     ex: routine.exercises.map(frontendExercise),
@@ -90,6 +90,19 @@ export function createAiRoutineService({
 }) {
   if (!store || typeof store.read !== 'function') throw new TypeError('collaboration store required');
   if (typeof runStructured !== 'function') throw new TypeError('structured provider runner required');
+  const inFlight = new Map();
+  let routineSequence = 0;
+
+  const nextRoutineId = (studentId, focus, existingIds) => {
+    let id;
+    do {
+      routineSequence += 1;
+      id = `ai-routine-${crypto.createHash('sha256')
+        .update(`${studentId}:${focus}:${randomId()}:${routineSequence}`)
+        .digest('hex').slice(0, 18)}`;
+    } while (existingIds.has(id));
+    return id;
+  };
 
   return Object.freeze({
     async generate({ studentId, focus }) {
@@ -121,44 +134,57 @@ export function createAiRoutineService({
       }).filter(focusDefinition.accepts);
       if (!candidates.length) throw fail('Nenhum exercício compatível com esse foco está disponível.', 422);
 
-      const provider = getActiveProvider?.();
-      if (!provider) throw fail('Nenhum provedor de IA testado está ativo.', 503);
+      const contextHash = computeContextHash(context);
+      const requestKey = JSON.stringify([studentId, focusKey, contextHash]);
+      const pending = inFlight.get(requestKey);
+      if (pending) return pending;
 
-      let generated;
-      try {
-        const prompt = [
-          buildWorkoutPrompt({ context, candidates, requestNonce: randomId() }),
-          '',
-          '## Pedido de rotina única',
-          `- Crie exatamente uma rotina de ${focusDefinition.label}, em pt-BR.`,
-          `- Use exatamente um item em routines e um item em schedule no dia ${day}.`
-        ].join('\n');
-        generated = await runStructured(provider, { prompt, schema: AI_WORKOUT_SCHEMA });
-        if (generated?.value?.routines?.length !== 1 || generated?.value?.schedule?.length !== 1) {
-          throw new Error('AI single routine response has invalid cardinality');
+      const generation = (async () => {
+        const provider = getActiveProvider?.();
+        if (!provider) throw fail('Nenhum provedor de IA testado está ativo.', 503);
+        let generated;
+        const existingIds = new Set((localState.routines || []).map(routine => routine?.id).filter(Boolean));
+        try {
+          const prompt = [
+            buildWorkoutPrompt({ context, candidates, requestNonce: randomId() }),
+            '',
+            '## Pedido de rotina única',
+            `- Crie exatamente uma rotina de ${focusDefinition.label}, em pt-BR.`,
+            `- Use exatamente um item em routines e um item em schedule no dia ${day}.`
+          ].join('\n');
+          generated = await runStructured(provider, { prompt, schema: AI_WORKOUT_SCHEMA });
+          if (generated?.value?.routines?.length !== 1 || generated?.value?.schedule?.length !== 1) {
+            throw new Error('AI single routine response has invalid cardinality');
+          }
+          const plan = validateAiWorkoutPlan(generated.value, {
+            studentId,
+            version: 1,
+            contextHash,
+            profile: context.profile,
+            gym: context.gym,
+            candidates,
+            provider: provider.provider,
+            model: provider.selectedModel,
+            now: generatedAt,
+            existingIds: [...existingIds]
+          });
+          appendUsage?.(generated.usage, {
+            status: 'success', studentId, latencyMs: Date.now() - startedAt, timestamp: generatedAt
+          });
+          return { routine: editableRoutine(plan, focusKey, generatedAt, nextRoutineId(studentId, focusKey, existingIds)) };
+        } catch (error) {
+          if (!generated && error?.usage) generated = { usage: error.usage };
+          appendUsage?.(failedGenerationUsage(generated, provider), {
+            status: 'failed', studentId, latencyMs: Date.now() - startedAt, timestamp: generatedAt
+          });
+          throw error;
         }
-        const plan = validateAiWorkoutPlan(generated.value, {
-          studentId,
-          version: 1,
-          contextHash: computeContextHash(context),
-          profile: context.profile,
-          gym: context.gym,
-          candidates,
-          provider: provider.provider,
-          model: provider.selectedModel,
-          now: generatedAt,
-          existingIds: (localState.routines || []).map(routine => routine?.id).filter(Boolean)
-        });
-        appendUsage?.(generated.usage, {
-          status: 'success', studentId, latencyMs: Date.now() - startedAt, timestamp: generatedAt
-        });
-        return { routine: editableRoutine(plan, focusKey, generatedAt) };
-      } catch (error) {
-        if (!generated && error?.usage) generated = { usage: error.usage };
-        appendUsage?.(failedGenerationUsage(generated, provider), {
-          status: 'failed', studentId, latencyMs: Date.now() - startedAt, timestamp: generatedAt
-        });
-        throw error;
+      })();
+      inFlight.set(requestKey, generation);
+      try {
+        return await generation;
+      } finally {
+        if (inFlight.get(requestKey) === generation) inFlight.delete(requestKey);
       }
     }
   });
