@@ -80,6 +80,7 @@ function createHarness(t, extraEntries = []) {
   const stopCount = path.join(sandbox, 'stop-count')
   const apiState = path.join(sandbox, 'api-state')
   const replaceMarker = path.join(sandbox, 'archive-replaced')
+  const snapshotPathRecord = path.join(sandbox, 'snapshot-path')
   const fakeBin = path.join(sandbox, 'bin')
   const runtimeRoot = path.join(sandbox, 'runtime')
   const stageBin = path.join(sandbox, 'stage-bin')
@@ -156,6 +157,16 @@ case "$command" in
       if [ -n "${'$'}{FIRST_FAKE_EXTRACTED_ARCHIVE:-}" ]; then
         cat > "$FIRST_FAKE_EXTRACTED_ARCHIVE"
       fi
+      if [ -s "$FIRST_FAKE_SNAPSHOT_PATH_RECORD" ]; then
+        snapshot_path=$(cat "$FIRST_FAKE_SNAPSHOT_PATH_RECORD")
+        case "$snapshot_path" in
+          "$FIRST_FAKE_RUNTIME_ROOT"/first-restore-private.*/snapshot) ;;
+          *) exit 94 ;;
+        esac
+        [ -f "$snapshot_path" ] || exit 94
+        /bin/rm -f -- "$snapshot_path" || exit $?
+        printf '%s\n' snapshot-race-cleaned >> "$events"
+      fi
     elif [[ "$all" == *'cp -a -- "$entry" "$recovery/"'* ]]; then
       printf '%s\n' recovery >> "$events"
     elif [[ "$all" == *'mv -- "$entry" /data/'* ]]; then
@@ -191,8 +202,14 @@ if [ -n "$snapshot" ]; then
       printf '%s\n' private-accessible >> "$FIRST_FAKE_EVENTS"
     fi
   fi
-  /bin/rm "$@"
+  /bin/rm "$@" || exit $?
   if [ ! -e "$snapshot" ]; then printf '%s\n' snapshot-path-absent >> "$FIRST_FAKE_EVENTS"; fi
+  if [ -n "${'$'}{FIRST_FAKE_SNAPSHOT_REPLACEMENT:-}" ]; then
+    /bin/cp -- "$FIRST_FAKE_SNAPSHOT_REPLACEMENT" "$snapshot" || exit $?
+    [ -f "$snapshot" ] || exit 94
+    printf '%s\n' "$snapshot" > "$FIRST_FAKE_SNAPSHOT_PATH_RECORD" || exit $?
+    printf '%s\n' snapshot-replaced >> "$FIRST_FAKE_EVENTS"
+  fi
   exit 0
 fi
 exec /bin/rm "$@"
@@ -261,6 +278,7 @@ exit 0
         FIRST_FAKE_EVENTS: shellPath(events),
         FIRST_FAKE_REPLACE_MARKER: shellPath(replaceMarker),
         FIRST_FAKE_RUNTIME_ROOT: shellPath(runtimeRoot),
+        FIRST_FAKE_SNAPSHOT_PATH_RECORD: shellPath(snapshotPathRecord),
         FIRST_FAKE_STAGE_BIN: shellPath(stageBin),
         FIRST_FAKE_STAGE_DATA: shellPath(stageData),
         FIRST_FAKE_STOP_COUNT: shellPath(stopCount),
@@ -412,6 +430,29 @@ test('source replacement after validation cannot change the private snapshot ext
     assert.ok(events.includes('private-access-denied'), events.join(','))
     assert.equal(events.includes('private-accessible'), false, events.join(','))
   }
+  assert.deepEqual(readFileSync(extracted), original)
+  assert.deepEqual(readdirSync(harness.runtimeRoot), [])
+})
+
+test('replacement at the current private snapshot pathname cannot change the inode extracted', t => {
+  const harness = createHarness(t)
+  const replacement = path.join(harness.sandbox, 'snapshot-replacement.tgz')
+  const extracted = path.join(harness.sandbox, 'snapshot-extracted.tgz')
+  const original = readFileSync(harness.archive)
+  writeArchive(replacement, [], '{"snapshotReplacement":true}\n')
+  assert.notDeepEqual(readFileSync(replacement), original, 'the racing archive must differ from the owned inode')
+
+  const result = harness.run({
+    FIRST_FAKE_EXTRACTED_ARCHIVE: shellPath(extracted),
+    FIRST_FAKE_SNAPSHOT_REPLACEMENT: shellPath(replacement),
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+  const events = readEvents(harness.events)
+  assert.ok(events.includes('snapshot-mode:600'), events.join(','))
+  assert.ok(events.includes('snapshot-path-absent'), events.join(','))
+  assert.ok(events.includes('snapshot-replaced'), events.join(','))
+  assert.ok(events.includes('snapshot-race-cleaned'), events.join(','))
   assert.deepEqual(readFileSync(extracted), original)
   assert.deepEqual(readdirSync(harness.runtimeRoot), [])
 })
