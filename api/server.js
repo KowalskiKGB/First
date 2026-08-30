@@ -223,6 +223,30 @@ function withinLimit(store, key, limit, windowMs) {
   store.set(key, { ...entry, count: entry.count + 1 });
   return true;
 }
+function firstHeader(value) {
+  return Array.isArray(value) ? value[0] : value;
+}
+function normalizedIp(value) {
+  const ip = String(value || '').trim();
+  return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+}
+function isTrustedProxyAddress(value) {
+  const ip = normalizedIp(value);
+  if (ip === '127.0.0.1' || ip === '::1' || ip === 'localhost') return true;
+  const parts = ip.split('.').map(part => Number(part));
+  if (parts.length === 4 && parts.every(part => Number.isInteger(part) && part >= 0 && part <= 255)) {
+    return parts[0] === 10
+      || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31)
+      || (parts[0] === 192 && parts[1] === 168);
+  }
+  const lower = ip.toLowerCase();
+  return lower.startsWith('fc') || lower.startsWith('fd') || lower.startsWith('fe80:');
+}
+function requestAddress(req) {
+  const remote = normalizedIp(req.socket.remoteAddress || 'unknown');
+  const realIp = normalizedIp(firstHeader(req.headers['x-real-ip']));
+  return isTrustedProxyAddress(remote) && realIp ? realIp : remote;
+}
 setInterval(() => {
   const now = Date.now();
   for (const attempts of [devLoginAttempts, studentLoginAttempts, studentRegistrationAttempts]) {
@@ -553,7 +577,7 @@ const routes = {
     const email = normalizeEmail(body.email);
     const name = normalizeStudentName(body.fullName);
     const password = normalizeStudentPassword(body.password);
-    const registrationKey = req.socket.remoteAddress || 'unknown';
+    const registrationKey = requestAddress(req);
     if (!withinLimit(studentRegistrationAttempts, registrationKey, 5, 60 * 60000)) {
       return json(res, 429, { error: 'too many registration attempts' });
     }
@@ -595,7 +619,7 @@ const routes = {
     const body = await readBody(req);
     onlyFields(body, STUDENT_LOGIN_FIELDS);
     const email = normalizeEmail(body.email);
-    const attemptKey = req.socket.remoteAddress || 'unknown';
+    const attemptKey = requestAddress(req);
     if (!withinLimit(studentLoginAttempts, attemptKey, 8, 15 * 60000)) {
       return json(res, 429, { error: 'too many login attempts' });
     }
@@ -630,6 +654,7 @@ const routes = {
     const email = Object.hasOwn(body, 'email') ? normalizeEmail(body.email) : user.email;
     const changesEmail = email !== user.email;
     const changesPassword = Object.hasOwn(body, 'newPassword');
+    const changesCredentials = changesEmail || changesPassword;
     if (email && db.users.some(item => item.id !== user.id && String(item.email || '').toLowerCase() === email)) {
       return json(res, 409, { error: 'email already registered' });
     }
@@ -653,12 +678,13 @@ const routes = {
       name,
       ...(email ? { email } : {}),
       ...(passwordHash ? { passwordHash } : {}),
+      ...(changesCredentials ? { sv: sessionVersion(user) + 1 } : {}),
       ...(Object.keys(profile).length ? { profile } : {})
     };
     persistProfileState(user.id, profile);
     db = { ...db, users: db.users.map(item => item.id === user.id ? nextUser : item) };
     saveDb();
-    json(res, 200, { user: publicUser(nextUser), profile });
+    json(res, 200, { user: publicUser(nextUser), profile }, changesCredentials ? { 'Set-Cookie': sessionCookie(nextUser) } : undefined);
   },
 
   'POST /api/register/options': async (req, res) => {
@@ -812,7 +838,7 @@ const routes = {
     const body = await readBody(req);
     const username = String(body.username || '').trim();
     const password = String(body.password || '');
-    const attemptKey = req.socket.remoteAddress || 'unknown';
+    const attemptKey = requestAddress(req);
     if (!withinLimit(devLoginAttempts, attemptKey, 8, 15 * 60000)) return json(res, 429, { error: 'too many dev login attempts' });
     if (!devAuth.credential) return json(res, 503, { error: 'dev credentials not configured' });
     if (!devAuth.authenticate(username, password)) {

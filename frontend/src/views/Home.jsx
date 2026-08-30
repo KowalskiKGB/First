@@ -87,9 +87,10 @@ export default function Home() {
     else dayOverrideSheet(todayId)
   }
   const onAi = () => {
-    if (!user) openAccount()
-    // The Plan route remains protected by AiPlanCard; navigating underneath the
-    // account sheet also leaves the requested wizard ready after sign-in.
+    if (!user) {
+      openAccount()
+      return
+    }
     nav('/plan', { state: { openAi: true } })
   }
 

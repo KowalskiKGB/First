@@ -81,7 +81,7 @@ for (const viewport of VIEWPORTS) test(`Dev configures, tests and activates one 
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.route('**/api/**', route => fixtures.handle(route))
 
-  await page.goto('/#/dev')
+  await page.goto('/devadmin')
   await expect(page.getByRole('heading', { name: 'Credencial Dev' })).toBeVisible()
   await expect(page.locator('[name="dev-username"]')).toHaveValue('')
   await page.locator('[name="dev-username"]').fill('first_dev_demo')
@@ -130,7 +130,7 @@ test('Dev shows a sanitized Gemini model error without leaking upstream material
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.route('**/api/**', route => fixtures.handle(route))
 
-  await page.goto('/#/dev')
+  await page.goto('/devadmin')
   await page.locator('[name="dev-username"]').fill('first_dev_demo')
   await page.locator('[name="dev-password"]').fill('temporary-demo-password')
   await page.getByRole('button', { name: 'Abrir Painel Dev' }).click()

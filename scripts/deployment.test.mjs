@@ -63,7 +63,6 @@ test('the deployment template is complete and builds only this repository', () =
   const api = read('api/server.js')
   assert.doesNotMatch(api, /GET \/api\/health[\s\S]*?users:\s*db\.users\.length/i)
   assert.match(api, /RP_ID and ORIGIN are required in production/)
-
   const capacitor = JSON.parse(read('frontend/capacitor.config.json'))
   assert.equal(capacitor.appName, 'First')
   assert.equal(capacitor.appId, 'com.kowalskikgb.first')
@@ -109,6 +108,7 @@ test('the deployment template is complete and builds only this repository', () =
   )
   assert.match(nginx, /real_ip_header X-Real-IP;/)
   assert.match(nginx, /zone=auth_limit:10m rate=60r\/m;/)
+  assert.match(nginx, /auth\/\(register\|login\)/, 'email/password auth endpoints must use the nginx auth rate limit')
   assert.match(
     nginx,
     /location = \/_internal\/media-auth \{[\s\S]*internal;[\s\S]*proxy_pass http:\/\/api:3000\/api\/internal\/media-auth;[\s\S]*proxy_set_header Cookie \$http_cookie;/,

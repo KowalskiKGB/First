@@ -369,6 +369,8 @@ function profileDraft(user, S, profile = {}) {
   return {
     fullName: user?.name || '',
     email: user?.email || '',
+    currentPassword: '',
+    newPassword: '',
     weightKg: profile.weightKg ?? (latestWeight ? rounded(kgFromLocal(latestWeight, S.unit)) : ''),
     heightCm: profile.heightCm ?? localProfile.heightCm ?? '',
     waistCm: measurements.waistCm ?? '',
@@ -382,7 +384,7 @@ function validOptional(value, min, max) {
   return value === '' || value == null || (Number.isFinite(Number(value)) && Number(value) >= min && Number(value) <= max)
 }
 
-function ProfileEditor({ close }) {
+export function ProfileEditor({ close }) {
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
   const setUser = useStore(s => s.setUser)
@@ -407,7 +409,13 @@ function ProfileEditor({ close }) {
     event.preventDefault()
     setError('')
     const fullName = draft.fullName.trim()
+    const email = draft.email.trim().toLowerCase()
     if (!fullName) { setError(t('Enter your full name.')); return }
+    if ((email || user?.email) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError(t('Enter a valid email.')); return }
+    if (draft.newPassword && draft.newPassword.length < 6) { setError(t('Use at least 6 characters.')); return }
+    const changesCredentials = email !== (user?.email || '') || Boolean(draft.newPassword)
+    if (changesCredentials && user?.email && !draft.currentPassword) { setError(t('Enter your current password.')); return }
+    if (!user?.email && email && !draft.newPassword) { setError(t('Create a password to add an email.')); return }
     if (!validOptional(draft.weightKg, 20, 350)) { setError(t('Enter a valid weight.')); return }
     if (!validOptional(draft.heightCm, 80, 250)) { setError(t('Enter a valid height.')); return }
     if (!validOptional(draft.waistCm, 10, 250) || !validOptional(draft.armCm, 10, 250)) {
@@ -420,9 +428,12 @@ function ProfileEditor({ close }) {
     if (draft.armCm === '' || draft.armCm == null) delete measurements.armCm
     else measurements.armCm = Number(draft.armCm)
     const payload = { fullName, measurements }
+    if (email || user?.email) payload.email = email
     if (draft.goal) payload.goal = draft.goal
     if (draft.weightKg !== '' && draft.weightKg != null) payload.weightKg = Number(draft.weightKg)
     if (draft.heightCm !== '' && draft.heightCm != null) payload.heightCm = Number(draft.heightCm)
+    if (draft.currentPassword) payload.currentPassword = draft.currentPassword
+    if (draft.newPassword) payload.newPassword = draft.newPassword
 
     setBusy(true)
     try {
@@ -450,7 +461,7 @@ function ProfileEditor({ close }) {
       close()
       toast(t('Profile updated'))
     } catch (requestError) {
-      setError(requestError.message || t('Could not save your profile.'))
+      setError(t(requestError.message || 'Could not save your profile.'))
     } finally { setBusy(false) }
   }
 
@@ -463,17 +474,19 @@ function ProfileEditor({ close }) {
       <fieldset className="personal-fieldset" disabled={loading || busy}>
         <legend>{t('Account')}</legend>
         <label className="form-field"><span>{t('Full name')}</span><TextField name="profile-full-name" autoComplete="name" maxLength={80} required value={draft.fullName} onChange={event => patch({ fullName: event.target.value })} /></label>
-        <label className="form-field"><span>{t('Email')}</span><TextField name="profile-email" type="email" autoComplete="email" value={draft.email} disabled /><small className="form-hint">{t('Changing your email requires a protected confirmation flow.')}</small></label>
+        <label className="form-field"><span>{t('Email')}</span><TextField name="profile-email" type="email" autoComplete="email" spellCheck={false} maxLength={254} required={!!user?.email} value={draft.email} onChange={event => patch({ email: event.target.value })} /></label>
+        <label className="form-field"><span>{t('Current password')}</span><TextField name="profile-current-password" type="password" autoComplete="current-password" maxLength={128} value={draft.currentPassword} onChange={event => patch({ currentPassword: event.target.value })} /><small className="form-hint">{t('Required only to change email or password.')}</small></label>
+        <label className="form-field"><span>{t('New password')}</span><TextField name="profile-new-password" type="password" autoComplete="new-password" minLength={6} maxLength={128} value={draft.newPassword} onChange={event => patch({ newPassword: event.target.value })} /><small className="form-hint">{t('Leave blank to keep your current password.')}</small></label>
       </fieldset>
       <fieldset className="personal-fieldset" disabled={loading || busy}>
         <legend>{t('Body and goal')}</legend>
         <div className="personal-form-grid compact">
-          <label className="form-field"><span>{t('Current weight')} (kg)</span><NumberField className="field" name="profile-weight" value={draft.weightKg} nullable onChange={weightKg => patch({ weightKg })} /></label>
-          <label className="form-field"><span>{t('Height (cm)')}</span><NumberField className="field" name="profile-height" value={draft.heightCm} decimal={false} nullable onChange={heightCm => patch({ heightCm })} /></label>
-          <label className="form-field"><span>{t('Waist')} (cm)</span><NumberField className="field" name="profile-waist" value={draft.waistCm} nullable onChange={waistCm => patch({ waistCm })} /></label>
-          <label className="form-field"><span>{t('Arm')} (cm)</span><NumberField className="field" name="profile-arm" value={draft.armCm} nullable onChange={armCm => patch({ armCm })} /></label>
+          <label className="form-field"><span>{t('Current weight')} (kg)</span><NumberField className="field" name="profile-weight" autoComplete="off" value={draft.weightKg} nullable onChange={weightKg => patch({ weightKg })} /></label>
+          <label className="form-field"><span>{t('Height (cm)')}</span><NumberField className="field" name="profile-height" autoComplete="off" value={draft.heightCm} decimal={false} nullable onChange={heightCm => patch({ heightCm })} /></label>
+          <label className="form-field"><span>{t('Waist')} (cm)</span><NumberField className="field" name="profile-waist" autoComplete="off" value={draft.waistCm} nullable onChange={waistCm => patch({ waistCm })} /></label>
+          <label className="form-field"><span>{t('Arm')} (cm)</span><NumberField className="field" name="profile-arm" autoComplete="off" value={draft.armCm} nullable onChange={armCm => patch({ armCm })} /></label>
         </div>
-        <label className="form-field"><span>{t('Main goal')}</span><select className="field" name="profile-goal" value={draft.goal} onChange={event => patch({ goal: event.target.value })}><option value="">{t('Choose later')}</option>{PROFILE_GOALS.map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select></label>
+        <label className="form-field"><span>{t('Main goal')}</span><select className="field" name="profile-goal" autoComplete="off" value={draft.goal} onChange={event => patch({ goal: event.target.value })}><option value="">{t('Choose later')}</option>{PROFILE_GOALS.map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select></label>
       </fieldset>
       <div className="form-actions">
         <Button type="submit" variant="primary" disabled={loading || busy}>{busy ? t('Saving…') : t('Save changes')}</Button>

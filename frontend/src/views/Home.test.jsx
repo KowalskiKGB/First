@@ -1,6 +1,6 @@
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const harness = vi.hoisted(() => ({
   state: null,
@@ -87,6 +87,7 @@ describe('Home schedule summary', () => {
   })
 
   afterAll(() => vi.useRealTimers())
+  afterEach(() => vi.unstubAllGlobals())
 
   it('counts a date once in weekly adherence when two sessions were completed that day', () => {
     harness.state.workouts = [
@@ -162,12 +163,22 @@ describe('Home schedule summary', () => {
   })
 
   it('sends guests to authentication instead of allowing direct AI setup', () => {
+    const dispatchEvent = vi.fn()
+    vi.stubGlobal('window', { dispatchEvent })
+    vi.stubGlobal('CustomEvent', class CustomEvent {
+      constructor(type, init) {
+        this.type = type
+        this.detail = init?.detail
+      }
+    })
     const tree = Home()
     const aiAction = findElements(tree, element => elementText(element).includes('Montar treino com IA') && (element.props.to || element.props.onClick))[0]
 
     expect(aiAction).toBeDefined()
-    expect(aiAction.props.to).not.toBe('/plan')
-    expect(aiAction.props.to === '/login' || typeof aiAction.props.onClick === 'function').toBe(true)
+    aiAction.props.onClick()
+    expect(dispatchEvent).toHaveBeenCalledOnce()
+    expect(dispatchEvent.mock.calls[0][0]).toMatchObject({ type: 'first:account', detail: { mode: 'login' } })
+    expect(harness.navigate).not.toHaveBeenCalled()
   })
 
   it('executes keyboard button actions for navigation, week paging and calendar dates', () => {
@@ -203,6 +214,7 @@ describe('Home schedule summary', () => {
   })
 
   it('opens AI setup instead of loading a PPL starter, while keeping the manual, goal and weight actions', () => {
+    harness.user = { id: 'student-1', name: 'Ana' }
     harness.state = { ...baseState(), routines: [], week: {} }
     const tree = Home()
     const action = label => findElements(tree, element => element.props.children === label && typeof element.props.onClick === 'function')[0]

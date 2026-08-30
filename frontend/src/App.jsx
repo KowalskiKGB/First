@@ -52,6 +52,7 @@ function registrationBody(values) {
     ...(Number.isFinite(optionalNumber(values.heightCm)) ? { heightCm: optionalNumber(values.heightCm) } : {}),
     ...(Object.keys(measurements).length ? { measurements } : {}),
     ...(values.goal ? { goal: values.goal } : {}),
+    ...(values.inviteCode ? { inviteCode: values.inviteCode } : {}),
   }
 }
 
@@ -86,6 +87,15 @@ function AccountSheet({ initialMode, close }) {
   const [mode, setMode] = useState(initialMode)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [inviteOnly, setInviteOnly] = useState(false)
+
+  useEffect(() => {
+    let current = true
+    api('/api/config').then(config => {
+      if (current) setInviteOnly(config.invite_only === true)
+    }).catch(() => {})
+    return () => { current = false }
+  }, [])
 
   const submit = async values => {
     setBusy(true); setError('')
@@ -108,13 +118,13 @@ function AccountSheet({ initialMode, close }) {
       }
       close()
     } catch (requestError) {
-      setError(requestError?.message || t(mode === 'register' ? 'Registration failed' : 'Sign-in failed'))
+      setError(t(requestError?.message || (mode === 'register' ? 'Registration failed' : 'Sign-in failed')))
     } finally {
       setBusy(false)
     }
   }
 
-  return <AccountAccess mode={mode} onModeChange={setMode} onSubmit={submit} busy={busy} error={error} />
+  return <AccountAccess mode={mode} onModeChange={setMode} onSubmit={submit} busy={busy} error={error} inviteOnly={inviteOnly} />
 }
 
 function AccountAccessListener() {
@@ -209,7 +219,17 @@ function StudentApp() {
   </>
 }
 
+function DevAdminApp() {
+  useLang()
+  useEffect(() => {
+    applyPrefs('dark', 'lime')
+    document.documentElement.lang = DEFAULT_LANG === 'pt' ? 'pt-BR' : DEFAULT_LANG
+    void setLang(DEFAULT_LANG)
+  }, [])
+  return <><DevPanel /><Toast /></>
+}
+
 export default function App() {
-  if (window.location.pathname === '/devadmin') return <DevPanel />
+  if (window.location.pathname.replace(/\/+$/, '') === '/devadmin') return <DevAdminApp />
   return <StudentApp />
 }

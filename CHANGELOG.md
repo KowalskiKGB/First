@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Entrada e cadastro do aluno por e-mail/senha, com senha mínima de seis caracteres, hash scrypt e
+  limite de tentativas; perfis antigos com passkey continuam compatíveis.
+- Login/cadastro movidos para a chamada principal do aluno, enquanto Configurações exibe somente a
+  edição de perfil para contas autenticadas. IA permanece indisponível para convidados.
+- Painel Dev movido para a página isolada `/devadmin`, acessível apenas pela credencial Dev própria,
+  sem depender de sessão ou papel administrativo do aplicativo.
+
 ## v1.3.0 — 2026-08-29
 
 ### Painel profissional do personal

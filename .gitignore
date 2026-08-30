@@ -31,6 +31,9 @@ tmp-playwright/
 tmp-device/
 tmp-*.png
 tmp-*.xml
+tmp-*.md
+.tmp-web-data/
+.vite/
 
 # Signing material
 *.jks

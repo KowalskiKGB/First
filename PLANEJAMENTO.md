@@ -6,7 +6,8 @@
 
 **Arquitetura:** manter um único React, uma única API Node e uma única instância de armazenamento. Dados privados do aluno continuam separados; vínculos, permissões, programas atribuídos, notificações, auditoria e medidas compartilhadas entram em um documento JSON versionado, com escrita atômica e controle de revisão. O portal muda por contexto de usuário, não por frontend ou login duplicado.
 
-**Stack:** React 19, React Router, Zustand, Node `http`, WebAuthn/passkeys, arquivos JSON, Vitest, `node:test`, Playwright, nginx e Docker Compose.
+**Stack:** React 19, React Router, Zustand, Node `http`, e-mail/senha com scrypt, compatibilidade
+WebAuthn/passkeys, arquivos JSON, Vitest, `node:test`, Playwright, nginx e Docker Compose.
 
 **Especificação:** este documento incorpora os requisitos de portal aluno/personal, vínculo e notificações bidirecionais, prescrição e acompanhamento, peso/medidas, 5/3/1-style, novos planos iniciais, notas por exercício, calculadora de anilhas e português do Brasil.
 
@@ -44,6 +45,11 @@
 - [x] Programa publicado sincronizado como rotina executável do aluno, preservando planos manuais, treino em andamento e histórico.
 - [x] Web Push para eventos de vínculo e publicação/atualização de programa, com inbox persistida como fonte da verdade.
 - [x] Capacitor Android autenticado por passkey/Digital Asset Links, portal do personal online e fallback de treino offline.
+- [x] Conta do aluno por e-mail/senha (mínimo de seis caracteres, hash scrypt e rate limit),
+  preservando login por passkey para perfis legados.
+- [x] Entrada e cadastro movidos para a chamada principal do aluno; Configurações mantém somente a
+  edição de perfil para quem está autenticado.
+- [x] IA restrita a alunos autenticados; o modo convidado continua disponível para treinos locais.
 
 ### Entregue, parcial e futuro
 
@@ -410,8 +416,8 @@ O roadmap termina somente quando todos os fluxos E2E passam, código novo manté
 
 ## Fase IA/Dev entregue neste ciclo
 
-- [x] Painel Dev em `/dev` com passkey admin, credencial Dev adicional, logout, limite de sessão e
-  erros seguros.
+- [x] Painel Dev isolado em `/devadmin`, sem sessão/admin do app, protegido somente pela credencial
+  Dev própria, cookie de quatro horas `SameSite=Strict`, Origin exato, logout e limite de tentativas.
 - [x] Slots BYOK para OpenAI, Gemini e Anthropic com chave criptografada por `AI_CONFIG_MASTER_KEY`,
   fingerprint, teste obrigatório de saída estruturada, ativação global única e métricas 7/30 dias.
 - [x] Contexto de treino colaborativo: perfil, medidas, academia, aparelhos genéricos, máquinas
@@ -444,6 +450,9 @@ O roadmap termina somente quando todos os fluxos E2E passam, código novo manté
   ordena preferência e o histórico conserva origem, plano e versão.
 - `trainingProfileWrite` e `aiPlanRead` são grants separados, exigem vínculo ativo e são aplicados
   pelo servidor, não apenas escondidos na interface.
+- Login e cadastro do aluno usam e-mail/senha com hash scrypt e rate limit; os fluxos WebAuthn
+  permanecem para compatibilidade com perfis passkey existentes. O Painel Dev não compartilha essa
+  autenticação e só é aberto pela URL literal `/devadmin`.
 
 ### Próximos módulos priorizados
 

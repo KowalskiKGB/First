@@ -8,7 +8,7 @@ vi.mock('../lib/i18n.js', () => ({
 vi.mock('./Icon.jsx', () => ({ default: ({ name }) => <i data-icon={name} /> }))
 vi.mock('./ui.jsx', () => ({
   Button: ({ children, ...props }) => <button {...props}>{children}</button>,
-  NumberField: props => <input {...props} />,
+  NumberField: ({ decimal, nullable, value, ...props }) => <input value={value ?? ''} {...props} />,
   TextField: props => <input {...props} />,
 }))
 
@@ -24,6 +24,7 @@ describe('AccountAccess', () => {
     expect(fieldNames(markup)).toEqual(['email', 'password'])
     expect(fieldTag(markup, 'email')).toContain('type="email"')
     expect(fieldTag(markup, 'email')).toContain('autoComplete="email"')
+    expect(fieldTag(markup, 'email')).not.toContain('spellCheck="true"')
     expect(fieldTag(markup, 'password')).toContain('type="password"')
     expect(fieldTag(markup, 'password')).toContain('autoComplete="current-password"')
     expect(markup).toContain('Create account')
@@ -40,10 +41,20 @@ describe('AccountAccess', () => {
     expect(fieldTag(markup, 'password')).toContain('required=""')
     for (const name of ['weightKg', 'heightCm', 'waistCm', 'armCm', 'goal']) {
       expect(fieldTag(markup, name)).not.toContain('required=""')
+      expect(fieldTag(markup, name)).toContain('autoComplete="off"')
     }
     expect(markup).toContain('Lose weight')
     expect(markup).toContain('Gain muscle')
     expect(markup).toContain('Both')
     expect(markup).toContain('Already have an account')
+  })
+
+  it('asks for an invite code only when the instance requires one', () => {
+    const openMarkup = renderToStaticMarkup(<AccountAccess mode="register" onModeChange={() => {}} onSubmit={() => {}} />)
+    const inviteMarkup = renderToStaticMarkup(<AccountAccess mode="register" inviteOnly onModeChange={() => {}} onSubmit={() => {}} />)
+
+    expect(fieldNames(openMarkup)).not.toContain('inviteCode')
+    expect(fieldNames(inviteMarkup)).toContain('inviteCode')
+    expect(fieldTag(inviteMarkup, 'inviteCode')).toContain('required=""')
   })
 })

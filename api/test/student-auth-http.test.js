@@ -208,13 +208,62 @@ test('password auth mutations reject untrusted origins and throttle repeated log
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const failed = await post(url, '/api/auth/login', {
       email: 'limite@example.com', password: `errada-${attempt}`
-    });
+    }, { 'X-Real-IP': '203.0.113.10' });
     assert.equal(failed.status, 401, `attempt ${attempt + 1}`);
   }
   const throttled = await post(url, '/api/auth/login', {
     email: 'limite@example.com', password: 'abc123'
-  });
+  }, { 'X-Real-IP': '203.0.113.10' });
   assert.equal(throttled.status, 429);
+
+  const otherClient = await post(url, '/api/auth/login', {
+    email: 'limite@example.com', password: 'abc123'
+  }, { 'X-Real-IP': '198.51.100.22' });
+  assert.equal(otherClient.status, 200);
+});
+
+test('email and password changes require the current password and rotate login credentials', async t => {
+  const { url } = await startServer(t);
+  const registered = await post(url, '/api/auth/register', {
+    email: 'antigo@example.com', fullName: 'Conta Protegida', password: 'senha123'
+  });
+  assert.equal(registered.status, 200);
+  const cookie = cookieFrom(registered, 'gymsid');
+
+  const denied = await put(url, '/api/profile', {
+    email: 'novo@example.com', currentPassword: 'incorreta'
+  }, { Cookie: cookie });
+  assert.equal(denied.status, 401);
+
+  const emailChanged = await put(url, '/api/profile', {
+    email: 'novo@example.com', currentPassword: 'senha123'
+  }, { Cookie: cookie });
+  assert.equal(emailChanged.status, 200);
+  const emailRotatedCookie = cookieFrom(emailChanged, 'gymsid');
+
+  const staleAfterEmail = await fetch(`${url}/api/profile`, { headers: { Cookie: cookie } });
+  assert.equal(staleAfterEmail.status, 401);
+  const currentAfterEmail = await fetch(`${url}/api/profile`, { headers: { Cookie: emailRotatedCookie } });
+  assert.equal(currentAfterEmail.status, 200);
+
+  const changed = await put(url, '/api/profile', {
+    currentPassword: 'senha123', newPassword: 'nova456'
+  }, { Cookie: emailRotatedCookie });
+  assert.equal(changed.status, 200);
+  const changedBody = await changed.json();
+  assert.equal(changedBody.user.email, 'novo@example.com');
+  assert.equal('passwordHash' in changedBody.user, false);
+  const rotatedCookie = cookieFrom(changed, 'gymsid');
+
+  const staleSession = await fetch(`${url}/api/profile`, { headers: { Cookie: emailRotatedCookie } });
+  assert.equal(staleSession.status, 401);
+  const currentSession = await fetch(`${url}/api/profile`, { headers: { Cookie: rotatedCookie } });
+  assert.equal(currentSession.status, 200);
+
+  const previousLogin = await post(url, '/api/auth/login', { email: 'antigo@example.com', password: 'senha123' });
+  assert.equal(previousLogin.status, 401);
+  const currentLogin = await post(url, '/api/auth/login', { email: 'novo@example.com', password: 'nova456' });
+  assert.equal(currentLogin.status, 200);
 });
 
 test('AI remains unavailable anonymously and becomes available to a password-authenticated student', async t => {

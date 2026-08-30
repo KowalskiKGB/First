@@ -3,7 +3,8 @@
 First usa três serviços no Docker Compose:
 
 - `web`: nginx com o React estático e proxy de `/api`;
-- `api`: Node com passkeys, sessões, estado dos perfis e domínio colaborativo;
+- `api`: Node com e-mail/senha, compatibilidade com passkeys, sessões, estado dos perfis e domínio
+  colaborativo;
 - `media`: inicializador que valida ou popula o volume privado de mídia.
 
 O código desta versão independente está em <https://github.com/KowalskiKGB/First>. O deploy padrão
@@ -30,7 +31,9 @@ ORIGIN=https://first.rocketxsistemas.com.br
 RP_NAME=First
 ```
 
-Trocar `RP_ID` invalida passkeys registradas no hostname anterior.
+Trocar `RP_ID` invalida passkeys registradas no hostname anterior. Contas por e-mail/senha não
+dependem de `RP_ID`, embora HTTPS continue obrigatório em produção para proteger credenciais e
+cookies.
 
 ## Prévia local
 
@@ -136,6 +139,17 @@ Solicitação, resposta e encerramento de vínculo, além de publicação ou atu
 geram uma entrada persistida na inbox. Quando o usuário possui inscrição Web Push, o mesmo evento é
 enviado ao navegador/PWA; falha no transporte não desfaz a alteração persistida.
 
+## Contas do aluno
+
+O aluno entra ou se cadastra pela chamada principal do app. O cadastro por e-mail pede nome, e-mail
+e senha com pelo menos seis caracteres; peso, medidas e objetivo podem ser preenchidos ali ou mais
+tarde. Senhas são persistidas somente como hash scrypt e os endpoints de cadastro/login possuem
+limite de tentativas. Perfis antigos por passkey continuam compatíveis com WebAuthn.
+
+Configurações não oferece entrada, cadastro nem acesso ao Painel Dev. Para uma conta autenticada,
+ela mostra a área de perfil onde o aluno pode atualizar seus dados. O modo convidado permanece local,
+mas geração de treino por IA exige uma sessão de aluno autenticada.
+
 ## Mídia de exercícios
 
 Metadados e textos do `hasaneyldrm/exercises-dataset` permanecem sob licença MIT. First inclui
@@ -158,15 +172,18 @@ modificada em rede deve oferecer o código correspondente conforme a seção 13 
 
 ## Painel Dev e arquitetura de IA
 
-O Painel Dev usa duas camadas: sessão normal de uma conta administradora por passkey e uma segunda
-credencial exclusiva. Em produção, o processo exige `DEV_PANEL_USER` iniciado por `first_dev_` e
+O Painel Dev fica na página literal `/devadmin`, isolada do roteador e da navegação do aplicativo.
+Ele não usa nem exige sessão de aluno, Personal ou administrador do app: somente sua credencial Dev
+própria. Em produção, o processo exige `DEV_PANEL_USER` iniciado por `first_dev_` e
 `DEV_PANEL_PASSWORD_HASH` no formato aceito por `api/dev-auth.js`:
 
 ```text
 scrypt:<salt-base64url>:<hash-base64url-de-32-bytes>
 ```
 
-A senha em texto puro nunca entra no ambiente. `AI_CONFIG_MASTER_KEY` é opcional para o núcleo do
+A sessão Dev é independente, dura quatro horas e usa cookie assinado `HttpOnly` e
+`SameSite=Strict`. O login exige `Origin` exatamente igual a `ORIGIN`, tem limite de tentativas e
+logout explícito. A senha em texto puro nunca entra no ambiente. `AI_CONFIG_MASTER_KEY` é opcional para o núcleo do
 First e deve conter exatamente 32 bytes aleatórios codificados em 64 caracteres hexadecimais. Sem
 ela, `/api/health`, planos manuais e planos do Personal continuam funcionando; cadastro, teste,
 listagem de modelos e ativação de provedor falham fechados.
@@ -188,7 +205,7 @@ pt-BR de 1.324 itens. O prompt contém perfil anonimizado, medidas atuais, objet
 disponibilidade, limitações como texto não confiável, resumo agregado de 28 dias e os IDs
 permitidos. Nome, telefone, e-mail, financeiro, notas privadas e histórico bruto não são enviados.
 A resposta fechada `AIWorkoutPlanV1` é filtrada novamente antes de receber IDs do servidor e ser
-aplicada.
+aplicada. O fluxo de geração só atende alunos com sessão autenticada; convidado não inicia job.
 
 Planos manuais, do Personal e de IA mantêm agendas independentes. `S.week` é somente manual;
 `dayPlan` registra preferência, não apaga opções. O armazenamento conserva no máximo dez versões
@@ -345,7 +362,7 @@ bash scripts/restore-first-data.sh
 ```
 
 Restore só é aceito quando o script termina com código zero depois de `/api/ready` responder 2xx.
-Ainda preserve o diretório `.first-recovery-*` informado pelo script até confirmar login, `/dev`,
+Ainda preserve o diretório `.first-recovery-*` informado pelo script até confirmar login de aluno, `/devadmin`,
 Plano, Personal, job/rollback e dados anteriores. Qualquer divergência nesse smoke reprova o restore:
 reexecute o script com o backup anterior validado. Remova a recovery somente depois da aceitação e
 de um novo backup; nunca durante a janela de rollback.
@@ -356,7 +373,8 @@ Checklist de deploy:
 2. Instale/rotacione as variáveis necessárias e faça deploy do SHA aprovado.
 3. Verifique `/api/health`, `/api/ready`, carregamento do shell, hash dos bundles, `sw.js` com revalidação e
    ausência de assets antigos no cache; se necessário, remova o service worker antigo e recarregue.
-4. Entre como admin, destrave `/dev`, confirme três slots sem chave exposta e mantenha geração
+4. Abra `/devadmin`, entre somente com a credencial Dev própria, confirme três slots sem chave
+   exposta e mantenha geração
    indisponível enquanto não houver chave comercial cadastrada e testada.
 5. Verifique console/rede no navegador e os fluxos de Plano, Personal, rollback e seletor de
    sessões em celular, tablet e desktop.
@@ -364,6 +382,5 @@ Checklist de deploy:
 
 Rollback de código não reverte dados. Se o schema persistido não for compatível com o commit
 anterior, restaure também o backup completo com a API parada. Para revogar imediatamente uma
-sessão Dev sem derrubar todas as sessões do app, troque **usuário e hash** (novo sufixo), faça
-redeploy e encerre a sessão normal do admin; trocar somente a senha não invalida um cookie Dev já
-emitido até o limite de quatro horas.
+sessão Dev sem derrubar qualquer sessão do app, troque **usuário e hash** (novo sufixo) e faça
+redeploy; trocar somente a senha não invalida um cookie Dev já emitido até o limite de quatro horas.

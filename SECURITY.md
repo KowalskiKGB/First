@@ -39,9 +39,10 @@ publicly, coordinate that disclosure in the advisory thread first.
 
 ## In scope
 
-- **`api/server.js`** — forging or replaying a session cookie, bypassing passkey verification,
-  reading or writing another user's data through `/api/data`, reaching `/api/admin/*` without
-  being an admin, or creating a profile without a valid code while `INVITE_ONLY=1`.
+- **`api/server.js`** — forging or replaying a session cookie, bypassing password or passkey
+  verification, reading or writing another user's data through `/api/data`, reaching
+  `/api/admin/*` without being an admin, bypassing the isolated Dev credential, or creating a
+  profile without a valid code while `INVITE_ONLY=1`.
 - **Frontend** — XSS in the React app, or anything that lets a page on another origin read or
   change a signed-in user's data.
 - **Shipped deployment config** — `docker-compose.yml`, `docker-compose.local.yml`, the root
@@ -71,11 +72,12 @@ Read this before hosting First for anyone other than yourself.
 
 ### Dev panel and AI providers
 
-- **Two gates protect `/dev`.** The browser must already be signed in as an app admin, and the
-  Dev area then requires `DEV_PANEL_USER` plus a password verified against
-  `DEV_PANEL_PASSWORD_HASH`. The second session is a signed `HttpOnly`, `SameSite=Strict` cookie,
-  expires after four hours and has an explicit logout route. Login is limited to eight attempts
-  per remote-address/username pair in fifteen minutes, in addition to reverse-proxy limits.
+- **`/devadmin` is an isolated gate.** It is not linked from the app Settings and does not accept
+  or require a student, Personal or app-admin session. The literal page requires only
+  `DEV_PANEL_USER` plus a password verified against `DEV_PANEL_PASSWORD_HASH`. Its independent
+  session is a signed `HttpOnly`, `SameSite=Strict` cookie, expires after four hours and has an
+  explicit logout route. Login is limited to eight attempts per remote-address/username pair in
+  fifteen minutes, in addition to reverse-proxy limits.
 - **Dev credentials are environment-only.** Production stores only `DEV_PANEL_USER` and a scrypt
   password hash in the form `scrypt:<base64url salt>:<base64url 32-byte hash>`.
   `DEV_PANEL_USER` must begin with `first_dev_`. Plaintext test credentials belong only in the ignored local
@@ -88,10 +90,11 @@ Read this before hosting First for anyone other than yourself.
   selected model, fingerprint, test status and metrics. A provider can be activated only after a
   successful structured-output test for the saved model/key. Custom provider hosts are rejected;
   there is no automatic fallback or embedded commercial key.
-- **Origin checks protect Dev, AI and collaboration mutations.** Browser writes on those surfaces
-  must match the configured `ORIGIN`. The Capacitor client may omit `Origin` only with the native
-  marker expected by the API; the marker never overrides a conflicting header. Legacy core writes
-  still rely on `SameSite=Lax`, as documented below, and there are no CSRF tokens.
+- **Origin checks protect account, Dev, AI and collaboration mutations.** Browser writes on those
+  surfaces must exactly match the configured `ORIGIN`, including Dev login. The Capacitor client
+  may omit `Origin` only with the native marker expected by the API; the marker never overrides a
+  conflicting header. Legacy core writes still rely on `SameSite=Lax`, as documented below, and
+  there are no CSRF tokens.
 
 ### AI workout privacy and safety
 
@@ -132,56 +135,62 @@ Read this before hosting First for anyone other than yourself.
   legacy `collaboration.json` store before publication, test restore separately and restore the
   full compatible volume for a data rollback.
 - **Provider-key incident response:** remove or rotate the affected key at the provider, clear that
-  slot in `/dev`, set a fresh key, run structured-output test again and reactivate only after the
+  slot in `/devadmin`, set a fresh key, run structured-output test again and reactivate only after the
   test succeeds. If `AI_CONFIG_MASTER_KEY` is suspected exposed, rotate it and re-enter every
   provider key because existing encrypted blobs cannot be trusted.
 - **Dev-credential incident response:** replace both `DEV_PANEL_USER` (with a new random suffix)
-  and `DEV_PANEL_PASSWORD_HASH`, redeploy, explicitly log out and use `/api/logout/all` for any
-  affected admin account. Rotating only the password hash does not invalidate an already-issued
-  Dev cookie before its four-hour expiry because the cookie is bound to the username.
+  and `DEV_PANEL_PASSWORD_HASH`, redeploy and explicitly log out of `/devadmin`. No app account is
+  involved. Rotating only the password hash does not invalidate an already-issued Dev cookie before
+  its four-hour expiry; rotating the username as well invalidates that cookie because it is bound to
+  the username.
 - **No billing in this phase.** Usage counters and a feature gate exist, but checkout, quotas tied
   to payment and paid-plan enforcement do not. Do not market the current gate as a billing control.
 
 ### What it does
 
-- **Passkeys only.** No passwords, no email addresses, no reset flow. Registration and login are
-  verified server-side by `@simplewebauthn/server` against `expectedOrigin: ORIGIN` and
-  `expectedRPID: RP_ID`, and the authenticator's signature counter is stored and updated on every
-  login (`api/server.js:292-318`, `api/server.js:338-358`).
+- **Student accounts support e-mail/password.** A password must contain at least six characters;
+  the server stores a salted scrypt hash, never plaintext, and rate-limits registration and login.
+  Authentication failures use a generic response so the login route does not disclose whether an
+  address exists. There is no automated password-reset flow in this phase.
+- **Legacy passkeys remain compatible.** WebAuthn registration remains available and existing
+  passkey-only profiles can still sign in. Verification remains server-side through
+  `@simplewebauthn/server` against `expectedOrigin: ORIGIN` and `expectedRPID: RP_ID`, and the
+  authenticator signature counter is stored and updated after login.
 - **Sessions are a signed cookie.** `gymsid` carries `<uid>:<expiry>:<version>` plus an
-  HMAC-SHA256 tag over it, compared in constant time (`api/server.js:148-161`). The key is 32
+  HMAC-SHA256 tag over it, compared in constant time in `api/server.js`. The key is 32
   random bytes generated on first run and written to `/data/secret` with mode `0600`
-  (`api/server.js:34-36`). The cookie is `HttpOnly` and `SameSite=Lax`, and gets `Secure` **only
-  when `ORIGIN` starts with `https:`** (`api/server.js:29`, `api/server.js:198-201`).
-- **Any user can end every session they have.** `POST /api/logout/all` increments that account's
+  by `api/server.js`. The cookie is `HttpOnly` and `SameSite=Lax`, and gets `Secure` **only
+  when `ORIGIN` starts with `https:`**.
+- **Any signed-in student can end every app session they have.** `POST /api/logout/all` increments that account's
   session version, and every authenticated request checks the version in the cookie against the
-  one on the user record (`api/server.js:167`, `api/server.js:187-188`), so every cookie ever
+  one on the user record, so every cookie ever
   issued for the account — on every device, including a copy someone walked off with — stops
-  verifying at once. Passkeys are untouched; signing back in works immediately.
+  verifying at once. Password hashes and passkeys are untouched; signing back in works immediately.
 - **Exercise media follows the app session.** Nginx uses an internal authorization subrequest and
   the API validates the signed `gymsid` cookie before serving `/media/`. Anonymous requests are
   denied, and media responses stay `private, no-store` so a shared proxy must not publish them.
 - **Data is isolated per user by the session's uid.** `GET`/`PUT /api/data` only ever touch
-  `state-<uid>.json` for the caller (`api/server.js:375-392`); no route lets a normal user name
+  `state-<uid>.json` for the caller; no route lets a normal user name
   another user.
 - **Disabling an account takes effect immediately.** Every authenticated request and every login
-  is rejected for a disabled user (`api/server.js:184`, `api/server.js:357`).
+  is rejected for a disabled user.
 
 ### What it does not do
 
-- **Nothing in `/data` is encrypted.** The `first-data` Docker volume holds `db.json` (users, passkey public keys, push
-  subscriptions, invite codes), one `state-<uid>.json` per user with their complete workout
+- **Nothing in `/data` is encrypted.** The `first-data` Docker volume holds `db.json` (users,
+  e-mail addresses, password hashes, passkey public keys, push subscriptions, invite codes), one
+  `state-<uid>.json` per user with their complete workout
   history and body-weight log, `secret`, and `vapid.json`. Anyone who can read that folder — you,
   whoever holds the backups, whoever gets into the host — can read every user's data, and with
   `secret` can mint a valid session cookie for any account. **If you host First for other
   people, they are trusting you exactly as much as they'd trust any server operator.**
 - **Admins can read everything.** A user listed in `ADMIN_UIDS` (or flagged `admin: true` in
   `db.json`) gets every user's full history and body weight, can disable accounts, and can create
-  or revoke invite codes (`api/server.js:460-540`). Off by default — a fresh instance has no admin.
+  or revoke invite codes. Off by default — a fresh instance has no admin.
 - **Sessions can't be revoked one device at a time.** Revocation is per *account*, not per
   session: `POST /api/logout/all` kills all of them at once and there is no device list to pick
-  from. `POST /api/logout` on its own only clears the cookie in that one browser
-  (`api/server.js:361`) — a copy taken beforehand keeps working. The shipped Compose configuration
+from. `POST /api/logout` on its own only clears the cookie in that one browser
+  — a copy taken beforehand keeps working. The shipped Compose configuration
   sets sessions to **30 days**, configurable with `SESSION_DAYS`; each cookie carries the lifetime it
   was issued with, so changing the setting doesn't reach cookies that are already out. Deleting
   `/data/secret` from the Docker volume and restarting still works as the instance-wide reset, and disabling an account
@@ -189,30 +198,33 @@ Read this before hosting First for anyone other than yourself.
 - **Legacy core CSRF protection is `SameSite=Lax`.** Dev, AI and Personal/collaboration mutations
   additionally check exact `Origin`, but older core routes such as `/api/data` have no CSRF token
   or explicit Origin check.
-- **User verification is preferred, not required.** Both handshakes pass
-  `requireUserVerification: false` (`api/server.js:297`, `api/server.js:343`), so a passkey
+- **Passkey user verification is preferred, not required.** Both WebAuthn handshakes pass
+  `requireUserVerification: false`, so a passkey
   released without a biometric or PIN is still accepted. In practice: unlocked device ≈ account
   access.
-- **One passkey per profile, and no recovery.** Every successful registration creates a *new*
-  profile (`api/server.js:309-319`); there is no route to attach a second passkey to an existing
-  one, and no email or reset path. Lose the passkey and that profile is unreachable — only direct
-  surgery on the `first-data` volume gets it back.
-- **Disabling someone isn't a ban.** They can still register a fresh profile with a new passkey
+- **A passkey-only profile must add a password before losing its passkey.** There is no automated
+  recovery or route to attach a second passkey. While signed in, its owner can add e-mail/password
+  together through profile editing; without doing that first, losing the only passkey makes the
+  profile unreachable without direct operator intervention in the `first-data` volume.
+- **Disabling someone isn't a ban.** They can still register a fresh profile by e-mail or passkey
   unless `INVITE_ONLY=1` is set.
 - **HTTPS is required and the Compose stack doesn't terminate TLS.** The API container speaks plain HTTP and
   nginx listens on `:80` (`web/nginx.conf`); TLS is your reverse proxy's job. Without it,
   browsers won't do passkeys at all (except on `http://localhost`) and the session cookie is sent
   in the clear.
-- **Rate limiting is at nginx, not in the API process.** The shipped config limits authentication
-  endpoints separately from the rest of `/api`, but deployments exposed to the internet should
-  also rate-limit at their TLS edge. `POST /api/register/options` reveals whether an invite code
+- **Authentication has layered rate limiting.** The API limits e-mail/password authentication and
+  the isolated Dev login; the shipped nginx config limits authentication endpoints separately from
+  the rest of `/api`. Deployments exposed to the internet should also rate-limit at their TLS edge.
+  `POST /api/register/options` reveals whether an invite code
   is valid. Current invite codes contain 64 bits of randomness; revoke and reissue older, shorter
   unused codes. The API also enforces a 5 MB request-body limit.
 - **A few endpoints answer without a session:** `/api/health` returns only `{"ok":true}`,
   `/api/config` reports whether invite-only is on, `/api/push/public-key` returns the public VAPID
-  key, and the register/login handshakes.
+  key, the account/register/login handshakes and the isolated Dev session/login handshake.
 - **Changing `RP_ID` invalidates every existing passkey.** They were bound to the old hostname
-  and will fail verification against the new one. The data stays on disk but is unreachable until
-  each user registers again — as a *new* profile. Choose your hostname before anyone registers.
+  and will fail verification against the new one. E-mail/password login is unaffected. Data in a
+  passkey-only profile stays on disk but is unreachable until operator intervention; choose the
+  hostname before anyone registers a passkey.
 - **Guest mode never reaches the backend.** That data lives unencrypted in the browser's
-  `localStorage` and is gone when the browser storage is cleared.
+  `localStorage` and is gone when the browser storage is cleared. AI generation is unavailable
+  until the student signs in.

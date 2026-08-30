@@ -6,6 +6,8 @@ data
 media
 node_modules
 graphify-out
+.tmp-web-data
+.vite
 frontend/node_modules
 frontend/dist
 frontend/coverage

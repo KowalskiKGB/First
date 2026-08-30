@@ -42,7 +42,7 @@ vi.mock('./components/Icon.jsx', () => ({ default: () => <i /> }))
 vi.mock('./components/TabBar.jsx', () => ({ default: () => <nav data-view="student-tabs">tabs</nav> }))
 vi.mock('./components/ErrorBoundary.jsx', () => ({ default: ({ children }) => <>{children}</> }))
 vi.mock('./components/Modals.jsx', () => ({ default: () => <div data-view="student-modals" /> }))
-vi.mock('./components/Toast.jsx', () => ({ default: () => null }))
+vi.mock('./components/Toast.jsx', () => ({ default: () => <div data-view="global-toast" /> }))
 vi.mock('./components/RestTimer.jsx', () => ({ default: () => null }))
 vi.mock('./views/Login.jsx', () => ({ default: () => <main data-view="student-login">student login</main> }))
 vi.mock('./views/DevPanel.jsx', () => ({ default: () => <main data-view="devadmin-login">dev login</main> }))
@@ -68,12 +68,13 @@ import App from './App.jsx'
 describe('literal /devadmin entry', () => {
   afterEach(() => vi.unstubAllGlobals())
 
-  it('renders only the protected Dev surface without requiring a student session', () => {
-    vi.stubGlobal('window', { location: { pathname: '/devadmin' }, scrollTo: vi.fn() })
+  it.each(['/devadmin', '/devadmin/'])('renders only the protected Dev surface at %s without requiring a student session', pathname => {
+    vi.stubGlobal('window', { location: { pathname }, scrollTo: vi.fn() })
 
     const markup = renderToStaticMarkup(<App />)
 
     expect(markup).toContain('data-view="devadmin-login"')
+    expect(markup).toContain('data-view="global-toast"')
     expect(markup).not.toContain('data-view="student-login"')
     expect(markup).not.toContain('data-view="student-tabs"')
     expect(markup).not.toContain('data-router="student-app"')

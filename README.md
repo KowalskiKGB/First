@@ -26,12 +26,15 @@ atribuição ao openGym, os avisos de terceiros e o histórico da cópia indepen
 - Histórico de peso e treinos, estatísticas, mapa muscular, atividade e 1RM estimado.
 - Progressões linear, Greyskull, dupla, por tempo e por peso corporal.
 - RIR/RPE opcional, compartilhamento de plano, backup JSON e importação de outros trackers.
-- Uso como convidado ou por perfil com passkey e sincronização na API autohospedada.
+- Uso local como convidado ou por conta com e-mail/senha; perfis antigos com passkey continuam
+  compatíveis e contas autenticadas sincronizam com a API autohospedada.
+- Login e cadastro ficam na entrada do aluno; Configurações mostra somente a edição do perfil para
+  quem já entrou.
 - Catálogo de 1.324 exercícios com nomes e instruções pt-BR e busca bilíngue.
 - Tela de conexões para solicitar, aceitar, recusar ou encerrar o vínculo com um personal.
 - Programas publicados pelo personal sincronizados como rotinas executáveis, sem apagar planos manuais.
-- Wizard de IA em quatro etapas, geração assíncrona validada, versões e rollback, limitado aos
-  aparelhos cadastrados na academia do aluno.
+- Wizard de IA em quatro etapas para alunos autenticados, geração assíncrona validada, versões e
+  rollback, limitado aos aparelhos cadastrados na academia do aluno.
 - Agendas manual, do Personal e de IA coexistem; o aluno escolhe a sessão quando houver mais de uma.
 
 ### Painel do personal
@@ -46,7 +49,8 @@ atribuição ao openGym, os avisos de terceiros e o histórico da cópia indepen
 
 ### Painel Dev de IA
 
-- Segunda credencial protegendo `/dev` depois do login de uma conta administradora por passkey.
+- Área isolada em `/devadmin`, sem link nas Configurações e sem depender de conta ou sessão do app;
+  ela exige somente a credencial Dev própria configurada pelo operador.
 - Slots BYOK para OpenAI, Gemini e Anthropic, chave cifrada, teste de saída estruturada e somente um
   provedor/modelo ativo.
 - Métricas de 7/30 dias sem persistir prompt ou resposta completos. Não há fallback nem cobrança
@@ -108,11 +112,12 @@ proxy TLS externo
 web (nginx + React + proxy /api) ── first-media (somente leitura)
        │                                      ▲
        ▼                                      │
-api (Node + WebAuthn) ── first-data     inicializador de mídia
+api (Node + contas/WebAuthn) ── first-data     inicializador de mídia
 ```
 
 - `frontend/`: React 19, Vite, React Router e Zustand.
-- `api/`: API Node, passkeys, sessões, estado privado e domínio colaborativo.
+- `api/`: API Node, e-mail/senha, compatibilidade com passkeys, sessões, estado privado e domínio
+  colaborativo.
 - `collaboration.json`: papéis, conexões, alunos, programas, medidas, agenda e financeiro, com revisão.
 - `state-<uid>.json`: treinos e preferências privadas de cada perfil.
 - `docker-compose.yml`: serviços de produção e volumes persistentes.
@@ -139,7 +144,9 @@ Use [.env.example](.env.example) como base.
 | `FIRST_BASIC_AUTH_USERS` | Hash do Basic Auth opcional para bloquear o host inteiro durante bootstrap | obrigatório no template Compose |
 | `WEB_PORT` | Porta do override local | `8080` |
 
-Trocar `RP_ID` invalida as passkeys registradas para o hostname anterior.
+Contas por e-mail usam senha com pelo menos seis caracteres, armazenada somente como hash scrypt,
+e os endpoints de cadastro/login possuem limite de tentativas. Trocar `RP_ID` invalida as passkeys
+registradas para o hostname anterior, mas não as credenciais por e-mail.
 
 ## Exercícios e mídia
 
@@ -157,9 +164,10 @@ faz o deploy; veja [NOTICE.md](NOTICE.md).
 ## App móvel
 
 Os projetos Capacitor Android/iOS são mantidos para builds locais. No Android, o app aceita login
-por passkey associado ao domínio, sincroniza conta, programas e portal do personal quando está
-online e mantém o treino local disponível como fallback offline. O backup automático de dados do
-app pelo Android fica desativado. Build, 2.648 mídias offline, Digital Asset Links e instalação USB:
+por e-mail/senha e mantém compatibilidade com passkeys existentes associadas ao domínio. Quando
+está online, sincroniza conta, programas e portal do personal; sem rede, mantém o treino local como
+fallback. O backup automático de dados do app pelo Android fica desativado. Build, 2.648 mídias
+offline, Digital Asset Links e instalação USB:
 [docs/MOBILE.md](docs/MOBILE.md).
 
 ## Qualidade e documentação

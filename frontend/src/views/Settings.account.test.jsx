@@ -52,9 +52,12 @@ vi.mock('../components/ui.jsx', () => ({
   Segmented: () => <div />,
   Button: ({ children, ...props }) => <button {...props}>{children}</button>,
   TextField: props => <input {...props} />,
+  NumberField: ({ decimal, nullable, value, ...props }) => <input value={value ?? ''} {...props} />,
 }))
 
-import Settings from './Settings.jsx'
+import Settings, { ProfileEditor } from './Settings.jsx'
+
+const fieldTag = (markup, name) => markup.match(new RegExp(`<(?:input|select|textarea)\\b[^>]*\\bname="${name}"[^>]*>`))?.[0] || ''
 
 describe('Settings account boundary', () => {
   beforeEach(() => {
@@ -82,5 +85,32 @@ describe('Settings account boundary', () => {
     expect(markup).toContain('ana@example.com')
     expect(markup).not.toContain('Dev panel')
     expect(markup).not.toContain('Providers and AI models')
+  })
+
+  it('keeps email and password changes inside the protected profile editor', () => {
+    harness.user = { id: 'student-1', name: 'Ana Souza', email: 'ana@example.com' }
+
+    const markup = renderToStaticMarkup(<ProfileEditor close={() => {}} />)
+
+    expect(markup).toContain('name="profile-email"')
+    expect(markup).not.toMatch(/name="profile-email"[^>]*disabled/)
+    expect(markup).toContain('name="profile-current-password"')
+    expect(markup).toContain('name="profile-new-password"')
+    expect(fieldTag(markup, 'profile-email')).toContain('type="email"')
+    expect(fieldTag(markup, 'profile-email')).toContain('autoComplete="email"')
+    expect(fieldTag(markup, 'profile-email')).not.toContain('spellCheck="true"')
+    expect(fieldTag(markup, 'profile-weight')).toContain('autoComplete="off"')
+    expect(fieldTag(markup, 'profile-goal')).toContain('autoComplete="off"')
+    expect(markup).toContain('autoComplete="current-password"')
+    expect(markup).toContain('autoComplete="new-password"')
+  })
+
+  it('lets legacy passkey-only profiles edit body data without forcing an email first', () => {
+    harness.user = { id: 'student-1', name: 'Ana Souza' }
+
+    const markup = renderToStaticMarkup(<ProfileEditor close={() => {}} />)
+
+    expect(markup).toContain('name="profile-email"')
+    expect(fieldTag(markup, 'profile-email')).not.toContain('required')
   })
 })
