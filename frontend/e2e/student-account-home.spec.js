@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test'
 
-function accountFixtures({ omitRegisteredUser = false } = {}) {
+function accountFixtures({ omitRegisteredUser = false, rejectRegistrationSession = false } = {}) {
   let user = null
+  let sessionReady = false
   let profile = { weightKg: 82.4, targetWeightKg: 75, heightCm: 177, measurements: { waistCm: 91, armCm: 34 }, goal: 'both' }
   const calls = []
   const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
@@ -14,7 +15,7 @@ function accountFixtures({ omitRegisteredUser = false } = {}) {
       const body = method === 'GET' ? null : request.postDataJSON()
       if (method !== 'GET') calls.push({ pathname, body })
 
-      if (pathname === '/api/me') return user ? json(route, { user }) : json(route, { error: 'not signed in' }, 401)
+      if (pathname === '/api/me') return user && (!rejectRegistrationSession || sessionReady) ? json(route, { user }) : json(route, { error: 'not signed in' }, 401)
       if (pathname === '/api/config') return json(route, { invite_only: false })
       if (pathname === '/api/data' && method === 'GET') return json(route, { state: {
         lang: 'pt', theme: 'dark', accent: 'lime', unit: 'kg', bodyweight: [], workouts: [], routines: [], week: {}, sourceSchedules: {},
@@ -25,6 +26,10 @@ function accountFixtures({ omitRegisteredUser = false } = {}) {
         user = { id: 'student-home', name: body.fullName, email: body.email.toLowerCase(), admin: false }
         profile = { weightKg: body.weightKg, targetWeightKg: body.targetWeightKg, heightCm: body.heightCm, measurements: body.measurements, goal: body.goal }
         return json(route, omitRegisteredUser ? { ok: true } : { user, profile })
+      }
+      if (pathname === '/api/auth/login' && method === 'POST') {
+        sessionReady = true
+        return json(route, { user })
       }
       if (pathname === '/api/profile' && method === 'GET') return json(route, { user, profile })
       if (pathname === '/api/profile' && method === 'PUT') {
@@ -73,6 +78,7 @@ test('student Home invites login, registers profile data, gates AI and exposes p
   await page.locator('[name="fullName"]').fill('Beatriz Lima')
   await page.locator('[name="email"]').fill('beatriz@example.com')
   await page.locator('[name="password"]').fill('abc123')
+  await page.locator('[name="confirmPassword"]').fill('abc123')
   await expect(page.locator('[name="weightKg"]')).toHaveValue('82.4')
   await expect(page.locator('[name="targetWeightKg"]')).toHaveValue('75')
   await expect(page.locator('[name="heightM"]')).toHaveValue('1,77')
@@ -141,8 +147,8 @@ test('student Home invites login, registers profile data, gates AI and exposes p
   expect(errors.page).toEqual([])
 })
 
-test('a 2xx registration response without user never exposes an internal TypeError', async ({ page }) => {
-  const fixtures = accountFixtures({ omitRegisteredUser: true })
+test('a successful registration recovers its session without asking the student to confirm an account', async ({ page }) => {
+  const fixtures = accountFixtures({ omitRegisteredUser: true, rejectRegistrationSession: true })
   await page.route('**/api/**', route => fixtures.handle(route))
 
   await page.goto('/#/home')
@@ -151,14 +157,29 @@ test('a 2xx registration response without user never exposes an internal TypeErr
   await page.locator('[name="fullName"]').fill('Ana Teste')
   await page.locator('[name="email"]').fill('ana@example.com')
   await page.locator('[name="password"]').fill('abc123')
+  await page.locator('[name="confirmPassword"]').fill('abc123')
   await page.getByRole('button', { name: 'Criar minha conta' }).click()
 
-  await expect.poll(async () => {
-    const greeting = await page.locator('h1').first().textContent()
-    const message = await page.locator('[role="alert"]').allTextContents()
-    return greeting?.includes('Ana Teste') || message.join('').trim().length > 0
-  }).toBeTruthy()
-  await expect(page.locator('body')).not.toContainText(/Cannot read properties|undefined.*name/i)
+  await expect(page.getByRole('heading', { name: 'OlÃ¡, Ana Teste' })).toBeVisible()
+  await expect(page.locator('body')).not.toContainText(/confirmar a conta|Cannot read properties|undefined.*name/i)
+  expect(fixtures.calls.filter(call => call.pathname === '/api/auth/login')).toHaveLength(1)
+})
+
+test('registration blocks mismatched passwords before sending account data', async ({ page }) => {
+  const fixtures = accountFixtures()
+  await page.route('**/api/**', route => fixtures.handle(route))
+
+  await page.goto('/#/home')
+  await page.getByRole('button', { name: 'Fazer login' }).click()
+  await page.getByRole('button', { name: 'Cadastre-se' }).click()
+  await page.locator('[name="fullName"]').fill('Senha Diferente')
+  await page.locator('[name="email"]').fill('senhas@example.com')
+  await page.locator('[name="password"]').fill('abc123')
+  await page.locator('[name="confirmPassword"]').fill('abc124')
+  await page.getByRole('button', { name: 'Criar minha conta' }).click()
+
+  await expect(page.getByRole('alert')).toContainText('As senhas nÃ£o coincidem')
+  expect(fixtures.calls.filter(call => call.pathname === '/api/auth/register')).toHaveLength(0)
 })
 
 test('AI routine choice stays visible and blocks another choice while generation is running', async ({ page }) => {
@@ -172,6 +193,7 @@ test('AI routine choice stays visible and blocks another choice while generation
   await page.locator('[name="fullName"]').fill('Aluno Rotina')
   await page.locator('[name="email"]').fill('rotina@example.com')
   await page.locator('[name="password"]').fill('abc123')
+  await page.locator('[name="confirmPassword"]').fill('abc123')
   await page.getByRole('button', { name: 'Criar minha conta' }).click()
 
   await page.route('**/api/ai/routine', async route => {

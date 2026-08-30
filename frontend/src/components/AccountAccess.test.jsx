@@ -35,12 +35,14 @@ describe('AccountAccess', () => {
     const markup = renderToStaticMarkup(<AccountAccess mode="register" onModeChange={() => {}} onSubmit={() => {}} />)
 
     expect(fieldNames(markup)).toEqual([
-      'fullName', 'email', 'password', 'weightKg', 'targetWeightKg', 'heightM', 'waistCm', 'armCm',
+      'fullName', 'email', 'password', 'confirmPassword', 'weightKg', 'targetWeightKg', 'heightM', 'waistCm', 'armCm',
       'goal', 'goal', 'goal', 'goal',
     ])
     expect(fieldTag(markup, 'fullName')).toContain('required=""')
     expect(fieldTag(markup, 'email')).toContain('required=""')
     expect(fieldTag(markup, 'password')).toContain('required=""')
+    expect(fieldTag(markup, 'confirmPassword')).toContain('required=""')
+    expect(fieldTag(markup, 'confirmPassword')).toContain('autoComplete="new-password"')
     for (const name of ['weightKg', 'targetWeightKg', 'heightM', 'waistCm', 'armCm', 'goal']) {
       expect(fieldTag(markup, name)).not.toContain('required=""')
       expect(fieldTag(markup, name)).toContain('autoComplete="off"')

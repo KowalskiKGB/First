@@ -134,10 +134,40 @@ test('student registers with email/password and optional training profile withou
   assert.equal(persisted.includes('treino123'), false);
   assert.match(persisted, /scrypt:/);
   assert.equal(JSON.parse(persisted).users[0].email, 'aluna@example.com');
+  assert.equal(Number.isFinite(JSON.parse(persisted).users[0].lastAccessAt), true);
+  assert.equal(Number.isFinite(JSON.parse(persisted).users[0].lastLoginAt), true);
   const state = JSON.parse(readFileSync(path.join(dataDir, `state-${body.user.id}.json`), 'utf8'));
   assert.equal(state.bodyweight.at(-1).w, 72.4);
   assert.equal(state.targetW, 65);
   assert.equal(state.aiProfile.heightCm, 177);
+});
+
+test('admin sees registered accounts with durable last access and distinct online status', async t => {
+  const oldAccess = Date.now() - 10 * 60_000;
+  const { url } = await startServer(t, {
+    db: {
+      ...emptyDb(),
+      users: [
+        { id: 'admin-one', name: 'Admin', email: 'admin@example.com', admin: true, created: new Date().toISOString() },
+        { id: 'student-online', name: 'Online', email: 'online@example.com', created: new Date().toISOString() },
+        { id: 'student-offline', name: 'Offline', email: 'offline@example.com', created: new Date().toISOString(), lastAccessAt: oldAccess }
+      ]
+    }
+  });
+
+  const studentSession = await fetch(`${url}/api/me`, { headers: { Cookie: appCookie('student-online') } });
+  assert.equal(studentSession.status, 200);
+  const response = await fetch(`${url}/api/admin/users`, { headers: { Cookie: appCookie('admin-one') } });
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  const online = payload.users.find(user => user.id === 'student-online');
+  const offline = payload.users.find(user => user.id === 'student-offline');
+
+  assert.equal(online.email, 'online@example.com');
+  assert.equal(online.online, true);
+  assert.equal(Number.isFinite(online.lastAccessAt), true);
+  assert.equal(offline.online, false);
+  assert.equal(offline.lastAccessAt, oldAccess);
 });
 
 test('student can log in case-insensitively and duplicate email registration is rejected', async t => {

@@ -166,6 +166,17 @@ describe('Home schedule summary', () => {
     expect(markup).not.toMatch(/PPL|Push\s*\/\s*Pull\s*\/\s*Legs/i)
   })
 
+  it('keeps one compact week label without a progress fraction or duplicate heading', () => {
+    harness.state.workouts = []
+
+    const markup = renderToStaticMarkup(<Home />)
+
+    expect(markup.match(/Esta semana/g)).toHaveLength(1)
+    expect(markup).not.toContain('home-card-heading')
+    expect(markup).not.toMatch(/>\s*0\s*\/\s*1\s*</)
+    expect(markup).not.toContain('id="home-week-title"')
+  })
+
   it('uses one compact AI CTA and removes the generic training-rhythm copy', () => {
     harness.user = { id: 'student-1', name: 'Ana' }
     harness.state = { ...baseState(), routines: [], week: {} }
