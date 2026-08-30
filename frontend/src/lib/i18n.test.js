@@ -77,6 +77,29 @@ describe('Brazilian Portuguese defaults', () => {
     expect(aiWorkspaceKeys.map(key => pt[key]).join(' ')).not.toMatch(/Ã|Â|�/)
   })
 
+  it('translates every student account validation message', () => {
+    const accountValidationKeys = [
+      'unsupported fields',
+      'measurements must be an object',
+      'unsupported measurement',
+      'goal is invalid',
+      'weightKg is invalid',
+      'heightCm is invalid',
+      'waistCm is invalid',
+      'chestCm is invalid',
+      'hipCm is invalid',
+      'neckCm is invalid',
+      'armCm is invalid',
+      'thighCm is invalid',
+      'calfCm is invalid',
+      'bodyFatPct is invalid',
+      'set a password when adding an email',
+    ]
+
+    expect(accountValidationKeys.every(key => typeof pt[key] === 'string' && pt[key].trim() && pt[key] !== key)).toBe(true)
+    expect(accountValidationKeys.map(key => pt[key]).join(' ')).not.toMatch(/Ã|Â|�/)
+  })
+
   it('covers every equipment label used by the catalogue', () => {
     const equipment = [...new Set(EXDB.map(ex => ex.eq).filter(Boolean))]
 
