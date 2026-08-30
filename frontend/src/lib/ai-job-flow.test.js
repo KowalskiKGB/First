@@ -139,6 +139,42 @@ describe('AI job flow', () => {
     expect(next.sourceSchedules.ai[0].week).toEqual({ 2: 'mixed' })
   })
 
+  it('materializes legacy routines and object schedules without losing exercises or days', () => {
+    const legacyExercise = { id: '0043', sets: 4, reps: 8, weight: 22, note: 'Controle o movimento' }
+
+    const next = applyAiPlanToState({ week: {}, routines: [] }, {
+      id: 'legacy-plan', version: 1, appliedAt: '2026-08-29T12:00:00.000Z', justification: 'Plano preservado',
+      routines: [{ id: 'r1', name: 'Treino legado', ex: [legacyExercise] }],
+      schedule: { 1: 'r1' },
+    })
+
+    expect(next.routines[0].ex).toEqual([legacyExercise])
+    expect(next.aiSchedule).toEqual([{ day: 1, routineId: 'r1' }])
+    expect(next.sourceSchedules.ai[0].week).toEqual({ 1: 'r1' })
+  })
+
+  it('ignores malformed legacy entries instead of replacing valid local data', () => {
+    const state = { week: { 1: 'manual' }, routines: [{ id: 'manual', ex: [] }] }
+
+    expect(applyAiPlanToState(state, null)).toBe(state)
+
+    const next = applyAiPlanToState(state, {
+      id: 'legacy-safe', version: 1, appliedAt: '2026-08-29T12:00:00.000Z', justification: 'Seguro',
+      routines: [
+        null,
+        { name: 'Sem id', ex: [{ id: '0042' }] },
+        { id: 'r1', name: 'Valido', ex: [null, {}, { id: '0043', sets: 3, reps: 10 }] },
+        { id: 'r1', name: 'Duplicado', ex: [{ id: '0099' }] },
+      ],
+      schedule: { 2: ['missing', 'r1', 'r1'], 7: 'r1', invalid: 'r1' },
+    })
+
+    expect(next.routines.map(routine => routine.id)).toEqual(['manual', 'r1'])
+    expect(next.routines[1].ex).toEqual([{ id: '0043', sets: 3, reps: 10 }])
+    expect(next.aiSchedule).toEqual([{ day: 2, routineId: 'r1' }])
+    expect(next.sourceSchedules.ai[0].week).toEqual({ 2: 'r1' })
+  })
+
   it('surfaces a failed job public error without refreshing context', async () => {
     const calls = []
     const request = async path => {

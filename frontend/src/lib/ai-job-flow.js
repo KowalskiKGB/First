@@ -174,25 +174,68 @@ function frontendExercise(exercise) {
   }
 }
 
-export function applyAiPlanToState(state, plan) {
-  const manualRoutines = (state.routines || []).filter(routine => routine._aiGenerated !== true)
-  const aiRoutines = (plan.routines || []).map(routine => ({
-    ...routine,
-    ex: (routine.exercises || []).map(frontendExercise),
-    _aiGenerated: true,
-    _aiPlanId: plan.id,
-    _aiVersion: plan.version,
-    _aiGeneratedAt: plan.appliedAt
-  }))
-  const aiSchedule = structuredClone(plan.schedule || [])
+const record = value => value !== null && typeof value === 'object' && !Array.isArray(value)
+const nonEmptyId = value => typeof value === 'string' && value.trim().length > 0
+
+function materializedExercises(routine) {
+  const canonical = Array.isArray(routine.exercises)
+    ? routine.exercises.filter(exercise => record(exercise) && nonEmptyId(exercise.exerciseId)).map(frontendExercise)
+    : []
+  const legacy = Array.isArray(routine.ex)
+    ? routine.ex.filter(exercise => record(exercise) && nonEmptyId(exercise.id)).map(exercise => ({ ...exercise }))
+    : []
+  return canonical.length > 0 ? canonical : legacy
+}
+
+function materializedRoutines(plan) {
+  const seen = new Set()
+  return (Array.isArray(plan.routines) ? plan.routines : [])
+    .filter(routine => {
+      if (!record(routine) || !nonEmptyId(routine.id) || seen.has(routine.id)) return false
+      seen.add(routine.id)
+      return true
+    })
+    .map(routine => ({
+      ...routine,
+      ex: materializedExercises(routine),
+      _aiGenerated: true,
+      _aiPlanId: plan.id,
+      _aiVersion: plan.version,
+      _aiGeneratedAt: plan.appliedAt
+    }))
+}
+
+function materializedSchedule(schedule, routineIds) {
+  const entries = Array.isArray(schedule)
+    ? schedule
+    : record(schedule)
+      ? Object.entries(schedule).flatMap(([day, value]) => (Array.isArray(value) ? value : [value]).map(routineId => ({ day, routineId })))
+      : []
+  const seen = new Set()
+  return entries.flatMap(item => {
+    if (!record(item) || !['number', 'string'].includes(typeof item.day)) return []
+    const day = Number(item.day)
+    if (!Number.isInteger(day) || day < 0 || day > 6 || !nonEmptyId(item.routineId) || !routineIds.has(item.routineId)) return []
+    const key = `${day}\u0000${item.routineId}`
+    if (seen.has(key)) return []
+    seen.add(key)
+    return [{ day, routineId: item.routineId }]
+  })
+}
+
+export function applyAiPlanToState(state = {}, plan) {
+  if (!record(plan) || !nonEmptyId(plan.id)) return state
+  const manualRoutines = (Array.isArray(state.routines) ? state.routines : []).filter(routine => routine?._aiGenerated !== true)
+  const aiRoutines = materializedRoutines(plan)
+  const aiSchedule = materializedSchedule(plan.schedule, new Set(aiRoutines.map(routine => routine.id)))
   const week = aiSchedule.reduce((result, item) => {
     const current = result[item.day]
     const routines = current == null ? [] : Array.isArray(current) ? current : [current]
     const next = routines.includes(item.routineId) ? routines : [...routines, item.routineId]
     return { ...result, [item.day]: next.length === 1 ? next[0] : next }
   }, {})
-  const currentAi = state.sourceSchedules?.ai?.find(schedule => schedule.active !== false)
-  const priorHistory = [...(state.aiPlanHistory || [])]
+  const currentAi = (Array.isArray(state.sourceSchedules?.ai) ? state.sourceSchedules.ai : []).find(schedule => schedule.active !== false)
+  const priorHistory = [...(Array.isArray(state.aiPlanHistory) ? state.aiPlanHistory : [])]
   if (currentAi?.planId && !priorHistory.some(item => item.planId === currentAi.planId)) {
     priorHistory.push({ planId: currentAi.planId, version: currentAi.version, label: currentAi.label, appliedAt: currentAi.updatedAt || null })
   }
