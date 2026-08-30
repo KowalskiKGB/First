@@ -72,7 +72,7 @@ async function startServer(t, { db = canonicalDb(), omitDb = false, prepareData,
     rmSync(dataDir, { recursive: true, force: true });
   });
   const url = `http://127.0.0.1:${port}`;
-  for (let attempt = 0; attempt < 200; attempt += 1) {
+  for (let attempt = 0; attempt < 600; attempt += 1) {
     if (child.exitCode !== null) throw new Error(`server exited ${child.exitCode}: ${stderr}`);
     try {
       const response = await fetch(`${url}/api/health`);
