@@ -135,7 +135,7 @@ describe('Android hardware back button', () => {
     const closeSheet = vi.fn()
     const goBack = vi.fn()
     const cleanup = mobile.registerAndroidBackButton({
-      loadApp: async () => app,
+      loadApp: async () => ({ App: app }),
       getSheets: () => sheets,
       closeSheet,
       goBack,
@@ -210,7 +210,7 @@ describe('Android hardware back button', () => {
     })
 
     await cleanup()
-    resolveApp(app)
+    resolveApp({ App: app })
     await flush()
 
     expect(app.addListener).toHaveBeenCalledOnce()

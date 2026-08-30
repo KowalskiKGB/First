@@ -249,7 +249,7 @@ function StudentApp() {
   useEffect(() => {
     if (!MOBILE) return undefined
     return registerAndroidBackButton({
-      loadApp: async () => (await import('@capacitor/app')).App,
+      loadApp: () => import('@capacitor/app'),
       getSheets: () => useUI.getState().sheets,
       closeSheet: id => useUI.getState().closeSheet(id),
       goBack: () => window.history.back(),

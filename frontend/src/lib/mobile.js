@@ -34,7 +34,7 @@ export function registerAndroidBackButton({ loadApp, getSheets, closeSheet, goBa
 
   let loading
   try { loading = Promise.resolve(loadApp()) } catch { loading = Promise.reject() }
-  void loading.then(async app => {
+  void loading.then(async ({ App: app }) => {
     handle = await app.addListener('backButton', ({ canGoBack }) => {
       if (disposed) return
       const sheets = getSheets() || []
