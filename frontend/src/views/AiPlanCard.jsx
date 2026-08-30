@@ -91,7 +91,8 @@ export default function AiPlanCard({ openSignal = null }) {
     if (next.plan && !hasMaterializedPlan(useStore.getState().S, next.plan)) {
       replaceState(applyAiPlanToState(useStore.getState().S, next.plan), false)
       await useStore.getState().pushState()
-      localStorage.setItem(fingerprintKey(user.id), contextFingerprint(snapshot(next)))
+      const key = fingerprintKey(user.id)
+      if (!localStorage.getItem(key)) localStorage.setItem(key, contextFingerprint(snapshot(next)))
       return true
     }
     return false

@@ -91,6 +91,7 @@ function mergeRegistrationProfile(profile = {}, values = {}) {
 
 const localKg = (value, unit) => unit === 'lb' ? Number(value) / 2.2046226218 : Number(value)
 const oneDecimal = value => Math.round(Number(value) * 10) / 10
+const isPositiveNumber = value => Number.isFinite(Number(value)) && Number(value) > 0
 
 function registrationInitialValues(state = {}) {
   const bodyweight = Array.isArray(state.bodyweight) ? state.bodyweight : []
@@ -99,11 +100,11 @@ function registrationInitialValues(state = {}) {
   const measurements = profile.measurements || {}
   const goal = profile.goal === 'lose_weight' ? 'weight_loss' : profile.goal === 'gain_muscle' ? 'muscle_gain' : profile.goal || ''
   return {
-    ...(Number.isFinite(Number(latest?.w)) ? { weightKg: oneDecimal(localKg(latest.w, state.unit)) } : {}),
-    ...(Number.isFinite(Number(state.targetW)) ? { targetWeightKg: oneDecimal(localKg(state.targetW, state.unit)) } : {}),
-    ...(Number.isFinite(Number(profile.heightCm)) ? { heightCm: Number(profile.heightCm) } : {}),
-    ...(Number.isFinite(Number(measurements.waistCm)) ? { waistCm: Number(measurements.waistCm) } : {}),
-    ...(Number.isFinite(Number(measurements.armCm)) ? { armCm: Number(measurements.armCm) } : {}),
+    ...(isPositiveNumber(latest?.w) ? { weightKg: oneDecimal(localKg(latest.w, state.unit)) } : {}),
+    ...(isPositiveNumber(state.targetW) ? { targetWeightKg: oneDecimal(localKg(state.targetW, state.unit)) } : {}),
+    ...(isPositiveNumber(profile.heightCm) ? { heightCm: Number(profile.heightCm) } : {}),
+    ...(isPositiveNumber(measurements.waistCm) ? { waistCm: Number(measurements.waistCm) } : {}),
+    ...(isPositiveNumber(measurements.armCm) ? { armCm: Number(measurements.armCm) } : {}),
     ...(goal ? { goal } : {}),
   }
 }

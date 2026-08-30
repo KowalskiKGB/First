@@ -158,6 +158,8 @@ test('a successful registration recovers its session without asking the student 
   await page.goto('/#/home')
   await page.getByRole('button', { name: 'Fazer login' }).click()
   await page.getByRole('button', { name: 'Cadastre-se' }).click()
+  await expect(page.locator('[name="weightKg"]')).toHaveValue('')
+  await expect(page.locator('[name="targetWeightKg"]')).toHaveValue('')
   await page.locator('[name="fullName"]').fill('Ana Teste')
   await page.locator('[name="email"]').fill('ana@example.com')
   await page.locator('[name="password"]').fill('abc123')
@@ -166,6 +168,9 @@ test('a successful registration recovers its session without asking the student 
 
   await expect(page.getByRole('heading', { name: /Ana Teste$/ })).toBeVisible()
   await expect(page.locator('body')).not.toContainText(/confirmar a conta|Cannot read properties|undefined.*name/i)
+  const registrationRequest = fixtures.calls.find(call => call.pathname === '/api/auth/register').body
+  expect(registrationRequest).not.toHaveProperty('weightKg')
+  expect(registrationRequest).not.toHaveProperty('targetWeightKg')
   expect(fixtures.calls.filter(call => call.pathname === '/api/auth/login')).toHaveLength(1)
 })
 

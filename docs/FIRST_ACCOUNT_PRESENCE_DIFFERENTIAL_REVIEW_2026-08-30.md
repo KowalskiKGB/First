@@ -10,8 +10,8 @@ Escopo: cadastro do aluno, sessão, presença de conta, painel Admin e card sema
 | --- | ---: | ---: |
 | Crítico | 0 | 0 |
 | Alto | 0 | 0 |
-| Médio | 3 | 0 |
-| Baixo | 2 | 0 |
+| Médio | 4 | 0 |
+| Baixo | 3 | 0 |
 
 **Recomendação:** aprovar para a instância privada de uma única API após o smoke Android e o smoke do deploy. Os achados do diferencial foram corrigidos e possuem cobertura automatizada.
 
@@ -39,6 +39,10 @@ Desativar uma conta bloqueava a sessão enquanto `disabled=true`, mas reativá-l
 
 Registrar cada requisição autenticada diretamente no JSON ampliaria escrita em disco e contenção. A presença online é mantida em memória e `lastAccessAt` é persistido no máximo uma vez a cada cinco minutos por conta; login e cadastro continuam sendo persistidos imediatamente.
 
+### Médio — meta padrão zero tornava o cadastro mínimo inválido
+
+O estado inicial do app usa `targetW=0` para representar ausência de meta. O primeiro preenchimento automático interpretava esse zero como medida informada e o enviava ao cadastro, onde corretamente era rejeitado pelo limite corporal do servidor. Agora somente medidas positivas preexistentes são reaproveitadas; num perfil novo, todos os campos opcionais permanecem vazios e não entram no payload. O Playwright reproduziu a falha com `targetWeightKg="0"` antes da correção e confirma o cadastro mínimo depois dela.
+
 ### Baixo — tempo offline dependia do relógio do celular
 
 Um aparelho com hora incorreta exibiria um intervalo incorreto. A listagem e o detalhe Admin agora recebem `now` da API e o usam nos cálculos relativos.
@@ -46,6 +50,10 @@ Um aparelho com hora incorreta exibiria um intervalo incorreto. A listagem e o d
 ### Baixo — controle de copiar convite não era semântico
 
 O código de convite clicável era um `span`. Ele foi trocado por `button` com nome acessível, preservando cópia e feedback.
+
+### Baixo — reconciliação local apagava temporariamente o aviso de contexto desatualizado
+
+Ao recuperar no aparelho um plano IA ainda não materializado, o cliente substituía uma impressão de contexto já existente. Isso tornava o teste dependente de uma renderização transitória e podia ocultar "Seu treino pode ser atualizado". A reconciliação agora inicializa a impressão somente quando ela ainda não existe; uma geração concluída continua atualizando-a pelo fluxo próprio.
 
 ## Análise adversarial
 
