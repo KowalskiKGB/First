@@ -1,8 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 
+import { setLang } from './i18n.js'
 import { reminderNotifications } from './mobile.js'
 
 describe('reminderNotifications', () => {
+  beforeAll(() => setLang('pt'))
+
   it('uses the session count and workout selector destination when a weekday has multiple options', () => {
     const state = {
       routines: [
@@ -21,7 +24,7 @@ describe('reminderNotifications', () => {
     expect(notifications).toHaveLength(1)
     expect(notifications[0]).toMatchObject({
       id: 101,
-      body: 'Você tem 3 sessões disponíveis',
+      body: 'Você tem 3 sessões disponíveis.',
       extra: { url: '#/workout', optionCount: 3 },
       schedule: { on: { weekday: 2, hour: 8, minute: 30 }, allowWhileIdle: true },
     })

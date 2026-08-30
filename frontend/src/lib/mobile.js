@@ -40,7 +40,7 @@ export function reminderNotifications(S, hour, minute) {
       id: 100 + day,
       title: t('Workout day'),
       body: options.length > 1
-        ? `Você tem ${options.length} sessões disponíveis`
+        ? t('You have {0} sessions available.', options.length)
         : t('{0} is on the plan today — let’s go!', options[0].routine.name),
       extra: { url: '#/workout', optionCount: options.length },
       schedule: { on: { weekday: day + 1, hour, minute }, allowWhileIdle: true },

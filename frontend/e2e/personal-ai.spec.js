@@ -17,11 +17,15 @@ function personalAiFixtures({ conflictProfile = false } = {}) {
     finance: { expectedCents: 0, receivedCents: 0, openCents: 0, overdueCents: 0, months: [] },
     trainingProfile: {
       ageBand: 'adult', heightCm: 168, goal: 'Força', experience: 'intermediario', availableDays: [1, 3, 5],
-      minutesPerSession: 50, focusAreas: ['back'], favoriteExerciseIds: [], avoidedExerciseIds: [], limitations: '',
+      minutesPerSession: 50, focusAreas: ['back'], favoriteExerciseIds: ['0001'], avoidedExerciseIds: ['0002'], limitations: '',
       acuteRisk: false, medicalRestriction: false, consent: true, guardianConsent: null, updatedAt: '2026-08-27T12:00:00Z',
     },
     gymProfile: { name: 'Academia Centro', genericEquipment: ['dumbbell'], specificMachines: [], updatedAt: '2026-08-27T12:00:00Z' },
-    aiPlan: { id: 'plan-3', version: 3, provider: 'openai', model: 'gpt-5-mini', contextHash: 'ctx-safe', justification: 'Prioriza a força com supervisão.', appliedAt: '2026-08-29T12:00:00Z' },
+    aiPlan: {
+      id: 'plan-3', version: 3, provider: 'openai', model: 'gpt-5-mini', contextHash: 'ctx-safe', justification: 'Prioriza a força com supervisão.', appliedAt: '2026-08-29T12:00:00Z',
+      schedule: [{ day: 1, routineId: 'ai-routine-a' }],
+      routines: [{ id: 'ai-routine-a', name: 'Treino IA A', exercises: [{ id: 'ai-ex-1', exerciseId: '0001', mode: 'reps', sets: 3, repMin: 8, repMax: 12, restSeconds: 60, progression: 'Progredir com técnica.', note: 'Movimento controlado.' }] }],
+    },
   }
   const writes = []
   const measurements = [{ id: 'm-1', kind: 'weight', value: 64, unit: 'kg', observedAt: '2026-08-29' }]
@@ -85,9 +89,14 @@ for (const viewport of VIEWPORTS) test(`Personal edits the authorized AI profile
   await expect(page.getByRole('heading', { name: 'Plano de IA aplicado' })).toBeVisible()
   await expect(page.getByText('OpenAI · gpt-5-mini')).toBeVisible()
   await expect(page.getByText('64 kg')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Treino IA A' })).toBeVisible()
+  await expect(page.locator('.ai-plan-dossier .tt', { hasText: 'Abdominal 3/4' })).toBeVisible()
 
   const profileForm = page.getByRole('form', { name: 'Editar perfil de treino para IA' })
   await profileForm.locator('[name="personal-ai-goal"]').fill('Força e mobilidade')
+  await expect(profileForm.getByRole('button', { name: 'Remover Abdominal 3/4' })).toBeVisible()
+  await expect(profileForm.getByRole('button', { name: 'Remover Flexão lateral a 45°' })).toBeVisible()
+  await profileForm.getByRole('button', { name: 'Remover Abdominal 3/4' }).click()
   await profileForm.getByRole('button', { name: 'Salvar perfil de treino' }).click()
   await expect(profileForm.locator('[name="personal-ai-goal"]')).toHaveValue('Força e mobilidade')
 
@@ -99,7 +108,7 @@ for (const viewport of VIEWPORTS) test(`Personal edits the authorized AI profile
   await gymForm.locator('.exercise-preference-results button').first().click()
   await gymForm.getByRole('button', { name: 'Salvar academia' }).click()
 
-  expect(fixtures.writes.find(write => write.pathname === '/api/personal/training-profile').body).toMatchObject({ clientId: 'client-1', rev: 7, goal: 'Força e mobilidade' })
+  expect(fixtures.writes.find(write => write.pathname === '/api/personal/training-profile').body).toMatchObject({ clientId: 'client-1', rev: 7, goal: 'Força e mobilidade', favoriteExerciseIds: [], avoidedExerciseIds: ['0002'] })
   expect(fixtures.writes.find(write => write.pathname === '/api/personal/gym').body).toMatchObject({
     clientId: 'client-1', rev: 8,
     specificMachines: [{ name: 'Crossover duplo', category: 'Polia', exerciseIds: [expect.any(String)] }],

@@ -135,9 +135,17 @@ describe('professional Personal views SSR', () => {
         ...collaborationState.detail,
         client: {
           ...client,
-          trainingProfile: { ageBand: 'adult', heightCm: 170, goal: 'Força', experience: 'intermediario', availableDays: [1, 3, 5], minutesPerSession: 50, focusAreas: ['back'], favoriteExerciseIds: [], avoidedExerciseIds: [], limitations: '', acuteRisk: false, medicalRestriction: false, consent: true, guardianConsent: null },
+          trainingProfile: { ageBand: 'adult', heightCm: 170, goal: 'Força', experience: 'intermediario', availableDays: [1, 3, 5], minutesPerSession: 50, focusAreas: ['back'], favoriteExerciseIds: ['0001'], avoidedExerciseIds: ['0002'], limitations: '', acuteRisk: false, medicalRestriction: false, consent: true, guardianConsent: null },
           gymProfile: { name: 'Academia sigilosa', genericEquipment: ['dumbbell'], specificMachines: [{ name: 'Leg press 45', category: 'Pernas', exerciseIds: ['0003'] }] },
-          aiPlan: { id: 'plan-1', version: 3, provider: 'openai', model: 'gpt-5', contextHash: 'abc', justification: 'Justificativa sigilosa', appliedAt: '2026-08-29T12:00:00Z' },
+          aiPlan: {
+            id: 'plan-1', version: 3, provider: 'openai', model: 'gpt-5', contextHash: 'abc', justification: 'Justificativa sigilosa', appliedAt: '2026-08-29T12:00:00Z',
+            schedule: [{ day: 1, routineId: 'routine-a' }],
+            routines: [{
+              id: 'routine-a', name: 'Treino A', exercises: [
+                { id: 'ai-ex-1', exerciseId: '0001', mode: 'reps', sets: 3, repMin: 8, repMax: 12, restSeconds: 60, progression: 'Aumente repetições com boa técnica.', note: 'Controle o movimento.' },
+              ],
+            }],
+          },
         },
       },
     })
@@ -151,6 +159,17 @@ describe('professional Personal views SSR', () => {
     expect(markup).toContain('Leg press 45')
     expect(markup).toContain('Justificativa sigilosa')
     expect(markup).toContain('Version 3')
+    expect(markup).toContain('Weekly schedule')
+    expect(markup).toContain('Monday')
+    expect(markup).toContain('Treino A')
+    expect(markup).toContain('Abdominal 3/4')
+    expect(markup).toContain('3 × 8–12')
+    expect(markup).toContain('Aumente repetições com boa técnica.')
+    expect(markup).toContain('Controle o movimento.')
+    expect(markup).toContain('Favorite exercises')
+    expect(markup).toContain('Exercises to avoid')
+    expect(markup).toContain('Remove Abdominal 3/4')
+    expect(markup).toContain('Remove Flexão lateral a 45°')
   })
 
   it('renders only today plus next classes on the global schedule', () => {

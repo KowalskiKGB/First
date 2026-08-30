@@ -29,7 +29,7 @@ function devFixtures() {
       if (pathname === '/api/data' && method === 'GET') return json(route, { state: { lang: 'pt', theme: 'dark', accent: 'lime', routines: [], workouts: [], bodyweight: [] } })
       if (pathname === '/api/data' && method === 'PUT') return json(route, { ok: true })
       if (pathname === '/api/collaboration') return json(route, { rev: 1, profile: { userId: 'admin-1', roles: ['student'] }, connections: [], notifications: [], programs: [] })
-      if (pathname === '/api/dev/session') return json(route, { unlocked, username: 'first_dev_demo' })
+      if (pathname === '/api/dev/session') return json(route, { unlocked, ...(unlocked ? { username: 'first_dev_demo' } : {}) })
       if (pathname === '/api/dev/login' && method === 'POST') {
         unlocked = true
         return json(route, { ok: true })
@@ -83,7 +83,8 @@ for (const viewport of VIEWPORTS) test(`Dev configures, tests and activates one 
 
   await page.goto('/#/dev')
   await expect(page.getByRole('heading', { name: 'Credencial Dev' })).toBeVisible()
-  await expect(page.locator('[name="dev-username"]')).toHaveValue('first_dev_demo')
+  await expect(page.locator('[name="dev-username"]')).toHaveValue('')
+  await page.locator('[name="dev-username"]').fill('first_dev_demo')
   await page.locator('[name="dev-password"]').fill('temporary-demo-password')
   await page.getByRole('button', { name: 'Abrir Painel Dev' }).click()
 
@@ -92,7 +93,7 @@ for (const viewport of VIEWPORTS) test(`Dev configures, tests and activates one 
   const openai = page.locator('form[aria-labelledby="provider-openai"]')
   await openai.getByRole('button', { name: 'Carregar modelos' }).click()
   await openai.locator('[name="openai-model-search"]').fill('mini')
-  await openai.getByRole('option', { name: 'gpt-5-mini' }).click()
+  await openai.getByRole('button', { name: 'gpt-5-mini' }).click()
   await openai.getByRole('button', { name: 'Limpar busca' }).click()
   expect(fixtures.writes.filter(write => write.pathname === '/api/dev/ai/provider')).toHaveLength(0)
   await openai.locator('[name="openai-api-key"]').fill('test-provider-key-never-render-again')
@@ -130,6 +131,7 @@ test('Dev shows a sanitized Gemini model error without leaking upstream material
   await page.route('**/api/**', route => fixtures.handle(route))
 
   await page.goto('/#/dev')
+  await page.locator('[name="dev-username"]').fill('first_dev_demo')
   await page.locator('[name="dev-password"]').fill('temporary-demo-password')
   await page.getByRole('button', { name: 'Abrir Painel Dev' }).click()
   const gemini = page.locator('form[aria-labelledby="provider-gemini"]')

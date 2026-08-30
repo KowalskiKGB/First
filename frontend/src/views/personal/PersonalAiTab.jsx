@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { MachineEditor } from '../../components/AiPlanExperience.jsx'
 import Icon from '../../components/Icon.jsx'
-import { Button, NumberField, TextArea, TextField } from '../../components/ui.jsx'
+import { Button, NumberField, SearchField, TextArea, TextField } from '../../components/ui.jsx'
 import { AI_EQUIPMENT, AI_EXPERIENCE, AI_TARGET_AREAS } from '../../lib/ai-plan.js'
 import { providerDisplayName } from '../../lib/ai-product.js'
+import { EXDB } from '../../lib/exercises-data.js'
 import { DAYN, fmtDate } from '../../lib/format.js'
-import { dateLocale, t } from '../../lib/i18n.js'
+import { dateLocale, exerciseName, t } from '../../lib/i18n.js'
 import { measurementKindLabel } from '../../lib/personal-view.js'
 import { PersonalMutation, StatusBadge } from './components.jsx'
 
@@ -24,12 +25,32 @@ const gymDraft = gym => ({
   specificMachines: (gym?.specificMachines || []).map(machine => ({ ...machine, exerciseIds: [...(machine.exerciseIds || [])] })),
 })
 
+const EXERCISE_BY_ID = new Map(EXDB.map(exercise => [exercise.id, exercise]))
+
 function ToggleGrid({ label, values, options, onChange, className = '' }) {
   const toggle = value => onChange(values.includes(value) ? values.filter(item => item !== value) : [...values, value])
   return (
     <fieldset className={`ai-choice-group ${className}`}><legend>{label}</legend><div className="ai-toggle-grid">
       {options.map(([value, optionLabel]) => <button type="button" key={value} aria-pressed={values.includes(value)} onClick={() => toggle(value)}>{t(optionLabel)}</button>)}
     </div></fieldset>
+  )
+}
+
+function ExercisePreferenceEditor({ title, name, selected, onChange }) {
+  const [query, setQuery] = useState('')
+  const results = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase('pt-BR')
+    if (needle.length < 2) return []
+    return EXDB.filter(exercise => `${exerciseName(exercise)} ${exercise.n}`.toLocaleLowerCase('pt-BR').includes(needle)).slice(0, 12)
+  }, [query])
+  const chosen = selected.map(id => EXERCISE_BY_ID.get(id) || { id, n: id })
+  const toggle = id => onChange(selected.includes(id) ? selected.filter(value => value !== id) : [...selected, id])
+  return (
+    <div className="exercise-preference-picker">
+      <label><span>{title}</span><SearchField name={name} value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} clearLabel={t('Clear search')} autoComplete="off" placeholder={t('Search exercise…')} /></label>
+      {results.length ? <div className="exercise-preference-results" role="group" aria-label={title}>{results.map(exercise => <button type="button" key={exercise.id} aria-pressed={selected.includes(exercise.id)} onClick={() => toggle(exercise.id)}>{exerciseName(exercise)}</button>)}</div> : null}
+      {chosen.length ? <div className="exercise-preference-results" role="group" aria-label={t('{0} selected', chosen.length)}>{chosen.map(exercise => <button type="button" key={exercise.id} aria-pressed="true" aria-label={t('Remove {0}', exerciseName(exercise))} onClick={() => toggle(exercise.id)}>{exerciseName(exercise)} ×</button>)}</div> : null}
+    </div>
   )
 }
 
@@ -49,6 +70,10 @@ function ProfileEditor({ client, profile }) {
         </div>
         <fieldset className="ai-choice-group"><legend>{t('Available days')}</legend><div className="ai-days">{[1, 2, 3, 4, 5, 6, 0].map(day => <button type="button" key={day} aria-pressed={draft.availableDays.includes(day)} onClick={() => toggleDay(day)}>{t(DAYN[day])}</button>)}</div></fieldset>
         <ToggleGrid label={t('Training priorities')} values={draft.focusAreas} options={AI_TARGET_AREAS} onChange={focusAreas => setDraft({ ...draft, focusAreas })} />
+        <div className="exercise-picker-grid">
+          <ExercisePreferenceEditor title={t('Favorite exercises')} name="personal-ai-favorite-exercises" selected={draft.favoriteExerciseIds} onChange={favoriteExerciseIds => setDraft(value => ({ ...value, favoriteExerciseIds, avoidedExerciseIds: value.avoidedExerciseIds.filter(id => !favoriteExerciseIds.includes(id)) }))} />
+          <ExercisePreferenceEditor title={t('Exercises to avoid')} name="personal-ai-avoided-exercises" selected={draft.avoidedExerciseIds} onChange={avoidedExerciseIds => setDraft(value => ({ ...value, avoidedExerciseIds, favoriteExerciseIds: value.favoriteExerciseIds.filter(id => !avoidedExerciseIds.includes(id)) }))} />
+        </div>
         <label className="form-field"><span>{t('Limitations')}</span><TextArea name="personal-ai-limitations" autoComplete="off" value={draft.limitations} onChange={event => setDraft({ ...draft, limitations: event.target.value })} /></label>
         <div className="consent-checks">
           <label><input type="checkbox" name="personal-ai-consent" checked={draft.consent} onChange={event => setDraft({ ...draft, consent: event.target.checked })} />{t('Student consent confirmed')}</label>
@@ -77,6 +102,42 @@ function GymEditor({ client, gym }) {
   )
 }
 
+const scheduleEntries = plan => Array.isArray(plan?.schedule)
+  ? plan.schedule
+  : Object.entries(plan?.schedule || {}).map(([day, routineId]) => ({ day: Number(day), routineId }))
+
+const exercisePrescription = exercise => exercise.mode === 'time'
+  ? `${exercise.sets} × ${exercise.seconds} s`
+  : `${exercise.sets} × ${exercise.repMin}${exercise.repMax !== exercise.repMin ? `–${exercise.repMax}` : ''}`
+
+function PlanDetails({ plan }) {
+  const routines = Array.isArray(plan.routines) ? plan.routines : []
+  const routineById = new Map(routines.map(routine => [routine.id, routine]))
+  const schedule = scheduleEntries(plan).toSorted((a, b) => a.day - b.day)
+  if (!routines.length) return null
+  return (
+    <>
+      {schedule.length ? <div className="measurement-used"><span className="personal-eyebrow">{t('Weekly schedule')}</span><div>{schedule.map(entry => <span key={`${entry.day}-${entry.routineId}`}>{t(DAYN[entry.day])} <b>{routineById.get(entry.routineId)?.name || entry.routineId}</b></span>)}</div></div> : null}
+      <div className="plan-routine-heading"><h4 className="sec">{t('Routines')}</h4></div>
+      {routines.map((routine, routineIndex) => <section key={routine.id || routineIndex} aria-labelledby={`personal-ai-routine-${routineIndex}`}>
+        <h4 id={`personal-ai-routine-${routineIndex}`}>{routine.name}</h4>
+        <ol className="list">
+          {(routine.exercises || []).map((exercise, exerciseIndex) => {
+            const catalogueExercise = EXERCISE_BY_ID.get(exercise.exerciseId) || { id: exercise.exerciseId, n: exercise.exerciseId }
+            return <li className="item" key={exercise.id || `${exercise.exerciseId}-${exerciseIndex}`}>
+              <span className="lrow-i"><Icon name="barbell" /></span>
+              <div className="grow"><div className="tt">{exerciseName(catalogueExercise)}</div><div className="ss">{exercisePrescription(exercise)} · {t('Rest {0} s', exercise.restSeconds)}</div>
+                <p className="ss"><strong>{t('Progression')}:</strong> {exercise.progression}</p>
+                {exercise.note ? <p className="ss"><strong>{t('Note')}:</strong> {exercise.note}</p> : null}
+              </div>
+            </li>
+          })}
+        </ol>
+      </section>)}
+    </>
+  )
+}
+
 function PlanSummary({ plan, client }) {
   if (!plan) return <div className="empty personal-empty"><div className="ico"><Icon name="sparkles" /></div><strong>{t('No AI plan applied')}</strong><p>{t('The student has not applied an AI-generated plan yet.')}</p></div>
   const changedAt = [client.trainingProfile?.updatedAt, client.gymProfile?.updatedAt].filter(Boolean).sort().at(-1)
@@ -90,6 +151,7 @@ function PlanSummary({ plan, client }) {
         <div><dt>{t('Context')}</dt><dd><code translate="no">{String(plan.contextHash || '').slice(0, 16) || '—'}</code></dd></div>
       </dl>
       <p className="plan-rationale"><span>{t('Why this plan')}</span>{plan.justification}</p>
+      <PlanDetails plan={plan} />
     </div>
   )
 }

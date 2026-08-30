@@ -54,6 +54,13 @@ describe('Brazilian Portuguese defaults', () => {
       'Training profile and priorities',
       'Gym and equipment',
       'Applied AI plan',
+      'Limitations',
+      'Weekly schedule',
+      'Open training calendar',
+      'Could not load AI workout data.',
+      'Enter the machine name.',
+      'Choose at least one supported exercise.',
+      'Enter a valid optional measurement.',
       'Personal guidance:',
     ]
 

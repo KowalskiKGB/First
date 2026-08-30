@@ -11,6 +11,12 @@ import { useUI } from '../store/useUI.js'
 const number = value => new Intl.NumberFormat(dateLocale()).format(value || 0)
 const providerSlot = (providers, provider) => providers.find(item => item.provider === provider) || { provider, testStatus: 'untested' }
 
+export function ModelChoices({ models, selected, onSelect }) {
+  return <div className="model-results" role="group" aria-label={t('Available models')}>
+    {models.slice(0, 40).map(model => <button type="button" translate="no" aria-pressed={selected === model} style={selected === model ? { color: 'var(--acc)' } : undefined} key={model} onClick={() => onSelect(model)}>{model}</button>)}
+  </div>
+}
+
 export function DevLogin({ busy, values, onChange, onSubmit, error = '' }) {
   return (
     <form className="dev-card dev-login" onSubmit={onSubmit} aria-labelledby="dev-login-title">
@@ -107,9 +113,7 @@ function ProviderCard({ definition, slot, onChanged }) {
           <Button type="button" size="sm" icon="reset" onClick={loadModels} disabled={!!busy}>{modelState === 'loading' ? t('Loading…') : t('Load models')}</Button>
         </div>
         {modelState === 'empty' ? <p className="model-empty" role="status">{t('No compatible model was returned.')}</p> : null}
-        {visibleModels.length ? <div className="model-results" role="listbox" aria-label={t('Available models')}>
-          {visibleModels.slice(0, 40).map(model => <button type="button" role="option" translate="no" aria-selected={draft.selectedModel === model} key={model} onClick={() => setDraft({ ...draft, selectedModel: model })}>{model}</button>)}
-        </div> : null}
+        {visibleModels.length ? <ModelChoices models={visibleModels} selected={draft.selectedModel} onSelect={selectedModel => setDraft({ ...draft, selectedModel })} /> : null}
       </div>
       <label><span>{t('New API key')}</span><TextField name={`${definition.provider}-api-key`} value={draft.apiKey} onChange={event => setDraft({ ...draft, apiKey: event.target.value })} type="password" autoComplete="new-password" spellCheck={false} placeholder={slot.configured ? t('Key configured') : t('Paste a key to configure')} /></label>
       <p className="dev-secret-note"><Icon name="lock" />{t('The saved key is never displayed again.')}</p>

@@ -13,7 +13,7 @@ vi.mock('../components/ui.jsx', () => ({
 }))
 vi.mock('../lib/i18n.js', () => ({ dateLocale: () => 'pt-BR', t: value => value }))
 
-import { DevDashboard, DevLogin } from './DevPanel.jsx'
+import { DevDashboard, DevLogin, ModelChoices } from './DevPanel.jsx'
 
 describe('Dev AI panel UI contracts', () => {
   it('renders the second authentication layer and an explicit Dev logout', () => {
@@ -31,5 +31,14 @@ describe('Dev AI panel UI contracts', () => {
     expect(markup).toContain('Anthropic')
     expect(markup).toContain('sha256:abc')
     expect(markup).not.toContain('value="sha256:abc"')
+  })
+
+  it('uses ordinary keyboard-operable buttons instead of an incomplete ARIA listbox', () => {
+    const markup = renderToStaticMarkup(<ModelChoices models={['gpt-5', 'gpt-5-mini']} selected="gpt-5-mini" onSelect={() => {}} />)
+
+    expect(markup).toContain('role="group"')
+    expect(markup).toContain('aria-pressed="true"')
+    expect(markup).not.toContain('role="listbox"')
+    expect(markup).not.toContain('role="option"')
   })
 })

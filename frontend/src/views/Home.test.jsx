@@ -85,4 +85,13 @@ describe('Home schedule summary', () => {
     expect(markup).not.toContain('Rest day')
     expect(markup).toContain('class="dot ovr"')
   })
+
+  it('renders the calendar days, today session and history card as native buttons', () => {
+    const markup = renderToStaticMarkup(<Home />)
+
+    expect(markup.match(/<button[^>]*class="wday/g)).toHaveLength(7)
+    expect(markup).toMatch(/<button[^>]*class="today-row"/)
+    expect(markup).toMatch(/<button[^>]*class="card tappable"/)
+    expect(markup).toContain('aria-label="Open training calendar"')
+  })
 })
