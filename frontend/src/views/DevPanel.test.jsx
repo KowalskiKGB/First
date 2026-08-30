@@ -125,11 +125,51 @@ describe('Dev AI panel UI contracts', () => {
     expect(harness.api).toHaveBeenCalledWith('/api/dev/ai/provider', { method: 'PUT', body: JSON.stringify(draft) })
     expect(harness.api).toHaveBeenCalledWith('/api/dev/ai/provider/test', { method: 'POST', body: JSON.stringify({ provider: 'openai' }) })
     expect(harness.api).toHaveBeenCalledWith('/api/dev/ai/active', { method: 'PUT', body: JSON.stringify({ provider: 'openai' }) })
-    expect(onChanged).toHaveBeenCalledTimes(3)
+    expect(onChanged).toHaveBeenCalledTimes(4)
     expect(harness.setters[0]).toHaveBeenCalled()
     expect(harness.setters[1]).toHaveBeenCalledWith(['gpt-5-mini'])
     const clearKey = harness.setters[0].mock.calls.map(([value]) => value).find(value => typeof value === 'function')
     expect(clearKey({ ...draft, apiKey: 'old' })).toEqual({ ...draft, apiKey: '' })
+  })
+
+  it('keeps the model empty while loading models after a key paste', async () => {
+    const slot = { provider: 'openai', selectedModel: '', configured: false, testStatus: 'untested', active: false }
+    const draft = { provider: 'openai', selectedModel: '', apiKey: 'secret' }
+    harness.reset([draft, [], '', 'idle', '', ''])
+    harness.api
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ models: ['gpt-5-mini'] })
+    const dashboard = DevDashboard({ providers: [slot], usage: {}, window: '7d', onWindow: vi.fn(), onLogout: vi.fn(), onChanged: vi.fn() })
+    const provider = findElements(dashboard, element => element.props.definition?.provider === 'openai')[0]
+    const form = provider.type(provider.props)
+
+    expect(findElements(form, element => element.props.name === 'openai-model')[0].props.value).toBe('')
+    await findElements(form, element => element.props.children === 'Load models' && typeof element.props.onClick === 'function')[0].props.onClick()
+
+    expect(harness.api).toHaveBeenNthCalledWith(1, '/api/dev/ai/provider', {
+      method: 'PUT',
+      body: JSON.stringify({ provider: 'openai', selectedModel: '', apiKey: 'secret' }),
+    })
+    expect(harness.api).toHaveBeenNthCalledWith(2, '/api/dev/ai/models?provider=openai')
+    expect(harness.setters[1]).toHaveBeenCalledWith(['gpt-5-mini'])
+    expect(harness.setters[0]).not.toHaveBeenCalledWith(expect.objectContaining({ selectedModel: 'gpt-5-mini' }))
+  })
+
+  it('deactivates the active provider and refreshes with no global provider active', async () => {
+    const slot = { provider: 'openai', selectedModel: 'gpt-5', configured: true, keyFingerprint: '...A1', testedAt: '2026-08-29T12:00:00Z', testStatus: 'success', active: true }
+    const onChanged = vi.fn().mockResolvedValue(undefined)
+    harness.reset([{ provider: 'openai', selectedModel: 'gpt-5', apiKey: '' }, [], '', 'idle', '', ''])
+    harness.api.mockResolvedValue({ ok: true })
+    const dashboard = DevDashboard({ providers: [slot], usage: {}, window: '7d', onWindow: vi.fn(), onLogout: vi.fn(), onChanged })
+    const provider = findElements(dashboard, element => element.props.definition?.provider === 'openai')[0]
+    const form = provider.type(provider.props)
+    const deactivate = findElements(form, element => element.props.children === 'Deactivate globally' && typeof element.props.onClick === 'function')[0]
+
+    expect(deactivate).toBeTruthy()
+    await deactivate.props.onClick()
+
+    expect(harness.api).toHaveBeenCalledWith('/api/dev/ai/active', { method: 'PUT', body: JSON.stringify({ provider: null }) })
+    expect(onChanged).toHaveBeenCalledTimes(1)
   })
 
   it('sanitizes provider failures and renders loading, empty and active states', async () => {

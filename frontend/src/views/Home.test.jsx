@@ -29,6 +29,7 @@ vi.mock('../lib/i18n.js', () => ({
       'Hello!': 'Olá!',
       'Sign in': 'Faça login',
       'This week': 'Esta semana',
+      'Training rhythm': 'Ritmo de treino',
       'Build workout with AI': 'Montar treino com IA',
       'Create your week with AI': 'Montar treino com IA',
       'Set up my AI workout': 'Montar treino com IA',
@@ -163,6 +164,35 @@ describe('Home schedule summary', () => {
     expect(markup).toContain('Esta semana')
     expect(markup).toContain('Montar treino com IA')
     expect(markup).not.toMatch(/PPL|Push\s*\/\s*Pull\s*\/\s*Legs/i)
+  })
+
+  it('uses one compact AI CTA and removes the generic training-rhythm copy', () => {
+    harness.user = { id: 'student-1', name: 'Ana' }
+    harness.state = { ...baseState(), routines: [], week: {} }
+
+    const markup = renderToStaticMarkup(<Home />)
+
+    expect(markup).not.toContain('Ritmo de treino')
+    expect(markup.match(/Montar treino com IA/g)).toHaveLength(1)
+  })
+
+  it('renders the week as compact cards with accessible training states', () => {
+    harness.state.workouts = [{ id: 'done', d: '2026-09-01', entries: [] }]
+    harness.state.dayPlan = { '2026-09-02': 'rest' }
+
+    const tree = Home()
+    const days = findElements(tree, element => String(element.props.className || '').includes('home-week-day-card'))
+
+    expect(days).toHaveLength(7)
+    expect(days.map(day => day.props['aria-label'])).toEqual([
+      'Monday 31 August: planned workout Manual Monday',
+      'Tuesday 1 September: completed',
+      'Wednesday 2 September: rest day selected',
+      'Thursday 3 September: rest day',
+      'Friday 4 September: rest day',
+      'Saturday 5 September: rest day',
+      'Sunday 6 September: rest day',
+    ])
   })
 
   it('sends guests to authentication instead of allowing direct AI setup', () => {

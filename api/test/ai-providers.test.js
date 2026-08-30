@@ -73,6 +73,25 @@ test('provider updates preserve an omitted key, reject custom hosts, and reset t
   assert.throws(() => decryptProviderKey(masterKey, 'invalid'), /invalid encrypted/);
 });
 
+test('provider key can be saved before choosing a model but cannot test or activate yet', async () => {
+  let configured;
+  assert.doesNotThrow(() => {
+    configured = upsertProvider([], { provider: 'gemini', apiKey: 'key-b' }, masterKey, 'now');
+  });
+
+  assert.equal(configured.provider.configured, true);
+  assert.equal(configured.provider.selectedModel, '');
+  assert.equal(configured.provider.testStatus, 'untested');
+  await assert.rejects(
+    () => testProvider(configured.records, 'gemini', {
+      masterKey,
+      fetchImpl: async () => { throw new Error('fetch must not run without a model'); }
+    }),
+    /selectedModel required|model required/i
+  );
+  assert.throws(() => activateProvider(configured.records, 'gemini'), /successful test/);
+});
+
 test('Gemini uses camelCase structured output fields and keeps key only in header', () => {
   const request = buildProviderRequest('gemini', {
     apiKey: 'gemini-complete-key', model: 'gemini-test', prompt: 'return ok', schema
@@ -422,6 +441,23 @@ test('model listing follows Gemini and Anthropic pagination without keys in URLs
     fetchImpl: async () => new Response(JSON.stringify({ data: [{ id: 'gpt-b' }, { id: 'gpt-a' }] }), { status: 200 })
   }), ['gpt-a', 'gpt-b']);
   await assert.rejects(() => listProviderModels(null, { masterKey }), /not configured/);
+});
+
+test('Gemini model listing returns only generateContent models', async () => {
+  const slot = upsertProvider([], { provider: 'gemini', selectedModel: 'gemini-a', apiKey: 'gemini-key' }, masterKey, 'now').records[0];
+
+  const models = await listProviderModels(slot, {
+    masterKey,
+    fetchImpl: async () => new Response(JSON.stringify({
+      models: [
+        { name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] },
+        { name: 'models/text-embedding-004', supportedGenerationMethods: ['embedContent'] },
+        { name: 'models/imagen-3.0-generate-002', supportedGenerationMethods: ['predict'] }
+      ]
+    }), { status: 200 })
+  });
+
+  assert.deepEqual(models, ['gemini-2.5-flash']);
 });
 
 test('usage summaries enforce windows, cutoff old rows, and count failures', () => {

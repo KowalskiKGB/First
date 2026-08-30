@@ -6,12 +6,15 @@ import net from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { pathToFileURL } from 'node:url';
 
 import { hashDevPassword } from '../dev-auth.js';
+import { encryptProviderKey } from '../ai-providers.js';
 
 const API_DIR = path.resolve(import.meta.dirname, '..');
 const ORIGIN = 'https://first.example';
 const SECRET = 's'.repeat(64);
+const AI_MASTER_KEY = '11'.repeat(32);
 const DEV_SALT = Buffer.from('0123456789abcdef').toString('base64url');
 
 const emptyDb = () => ({
@@ -42,6 +45,7 @@ async function startServer(t, { db = emptyDb(), extraEnv = {} } = {}) {
       PORT: String(port),
       NODE_ENV: 'test',
       ORIGIN,
+      INVITE_ONLY: '0',
       ...extraEnv
     },
     stdio: ['ignore', 'pipe', 'pipe']
@@ -97,6 +101,8 @@ const completeStudent = {
   fullName: '  Maria da Silva  ',
   password: 'treino123',
   weightKg: 72.4,
+  targetWeightKg: 65,
+  heightCm: 177,
   measurements: { waistCm: 82, hipCm: 101, armCm: 31, thighCm: 58 },
   goal: 'both'
 };
@@ -116,6 +122,8 @@ test('student registers with email/password and optional training profile withou
   });
   assert.deepEqual(body.profile, {
     weightKg: 72.4,
+    targetWeightKg: 65,
+    heightCm: 177,
     measurements: { waistCm: 82, hipCm: 101, armCm: 31, thighCm: 58 },
     goal: 'both'
   });
@@ -126,6 +134,10 @@ test('student registers with email/password and optional training profile withou
   assert.equal(persisted.includes('treino123'), false);
   assert.match(persisted, /scrypt:/);
   assert.equal(JSON.parse(persisted).users[0].email, 'aluna@example.com');
+  const state = JSON.parse(readFileSync(path.join(dataDir, `state-${body.user.id}.json`), 'utf8'));
+  assert.equal(state.bodyweight.at(-1).w, 72.4);
+  assert.equal(state.targetW, 65);
+  assert.equal(state.aiProfile.heightCm, 177);
 });
 
 test('student can log in case-insensitively and duplicate email registration is rejected', async t => {
@@ -334,4 +346,82 @@ test('Dev authentication is isolated from app sessions and the Dev cookie alone 
   const providers = await fetch(`${url}/api/dev/ai/providers`, { headers: { Cookie: devCookie } });
   assert.equal(providers.status, 200);
   assert.equal(Array.isArray((await providers.json()).providers), true);
+});
+
+test('Dev can deactivate every AI provider with provider null', async t => {
+  const username = 'first_dev_fixture';
+  const password = 'fixture-password';
+  const { url } = await startServer(t, {
+    db: {
+      ...emptyDb(),
+      aiProviders: [{
+        provider: 'gemini',
+        selectedModel: 'gemini-2.5-flash',
+        apiKeyEnc: encryptProviderKey(AI_MASTER_KEY, 'key-b'),
+        keyFingerprint: 'sha256:test',
+        testedAt: '2026-08-30T00:00:00.000Z',
+        testStatus: 'success',
+        active: true
+      }]
+    },
+    extraEnv: {
+      AI_CONFIG_MASTER_KEY: AI_MASTER_KEY,
+      DEV_PANEL_USER: username,
+      DEV_PANEL_PASSWORD_HASH: hashDevPassword(password, DEV_SALT)
+    }
+  });
+  const login = await post(url, '/api/dev/login', { username, password });
+  const devCookie = cookieFrom(login, 'firstdev');
+
+  const disabled = await put(url, '/api/dev/ai/active', { provider: null }, { Cookie: devCookie });
+
+  assert.equal(disabled.status, 200);
+  assert.equal((await disabled.json()).provider, null);
+  const providers = await fetch(`${url}/api/dev/ai/providers`, { headers: { Cookie: devCookie } });
+  assert.equal((await providers.json()).providers.find(slot => slot.provider === 'gemini').active, false);
+});
+
+test('Dev Gemini model upstream failures become safe actionable responses', async t => {
+  const username = 'first_dev_fixture';
+  const password = 'fixture-password';
+  const mockDir = mkdtempSync(path.join(tmpdir(), 'first-gemini-fetch-'));
+  const mockFile = path.join(mockDir, 'mock-fetch.mjs');
+  writeFileSync(mockFile, `
+globalThis.fetch = async url => {
+  if (String(url).includes('generativelanguage.googleapis.com')) {
+    return new Response(JSON.stringify({ error: { message: 'SENTINEL_UPSTREAM_DETAIL' } }), { status: 403 });
+  }
+  throw new Error('unexpected fetch ' + url);
+};
+`);
+  t.after(() => rmSync(mockDir, { recursive: true, force: true }));
+  const { url } = await startServer(t, {
+    db: {
+      ...emptyDb(),
+      aiProviders: [{
+        provider: 'gemini',
+        selectedModel: 'gemini-2.5-flash',
+        apiKeyEnc: encryptProviderKey(AI_MASTER_KEY, 'key-b'),
+        keyFingerprint: 'sha256:redacted',
+        testedAt: null,
+        testStatus: 'untested',
+        active: false
+      }]
+    },
+    extraEnv: {
+      AI_CONFIG_MASTER_KEY: AI_MASTER_KEY,
+      NODE_OPTIONS: `--import=${pathToFileURL(mockFile).href}`,
+      DEV_PANEL_USER: username,
+      DEV_PANEL_PASSWORD_HASH: hashDevPassword(password, DEV_SALT)
+    }
+  });
+  const login = await post(url, '/api/dev/login', { username, password });
+  const devCookie = cookieFrom(login, 'firstdev');
+
+  const models = await fetch(`${url}/api/dev/ai/models?provider=gemini`, { headers: { Cookie: devCookie } });
+  const body = await models.json();
+
+  assert.equal(models.status, 502);
+  assert.match(body.error, /Gemini.*model/i);
+  assert.doesNotMatch(JSON.stringify(body), /SENTINEL_UPSTREAM_DETAIL|key|secret|stack/i);
 });

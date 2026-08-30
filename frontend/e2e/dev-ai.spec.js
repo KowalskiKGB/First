@@ -23,7 +23,7 @@ function devFixtures() {
       const { pathname, searchParams } = new URL(request.url())
       const method = request.method()
       const body = method === 'GET' ? null : request.postDataJSON()
-      if (method !== 'GET') writes.push({ pathname, body })
+      if (method !== 'GET') writes.push({ method, pathname, body })
 
       if (pathname === '/api/me') return json(route, { user: { id: 'admin-1', name: 'Administrador', admin: true } })
       if (pathname === '/api/data' && method === 'GET') return json(route, { state: { lang: 'pt', theme: 'dark', accent: 'lime', routines: [], workouts: [], bodyweight: [] } })
@@ -49,7 +49,7 @@ function devFixtures() {
       }
       if (pathname === '/api/dev/ai/provider' && method === 'PUT') {
         patchProvider(body.provider, {
-          selectedModel: body.selectedModel, configured: true, keyFingerprint: '…A1B2',
+          selectedModel: body.selectedModel ?? '', configured: true, keyFingerprint: '…A1B2',
           testStatus: 'untested', testedAt: null,
         })
         return json(route, { ok: true })
@@ -91,12 +91,13 @@ for (const viewport of VIEWPORTS) test(`Dev configures, tests and activates one 
   await expect(page.getByRole('heading', { name: 'Provedores de IA' })).toBeVisible()
   await expect(page.locator('.dev-provider-card')).toHaveCount(3)
   const openai = page.locator('form[aria-labelledby="provider-openai"]')
+  await openai.locator('[name="openai-api-key"]').fill('test-provider-key-never-render-again')
   await openai.getByRole('button', { name: 'Carregar modelos' }).click()
+  await expect(openai.locator('[name="openai-model"]')).toHaveValue('')
   await openai.locator('[name="openai-model-search"]').fill('mini')
   await openai.getByRole('button', { name: 'gpt-5-mini' }).click()
   await openai.getByRole('button', { name: 'Limpar busca' }).click()
-  expect(fixtures.writes.filter(write => write.pathname === '/api/dev/ai/provider')).toHaveLength(0)
-  await openai.locator('[name="openai-api-key"]').fill('test-provider-key-never-render-again')
+  expect(fixtures.writes.filter(write => write.pathname === '/api/dev/ai/provider')).toHaveLength(1)
   await openai.getByRole('button', { name: 'Salvar configuração' }).click()
 
   await expect(openai.locator('[name="openai-api-key"]')).toHaveValue('')
@@ -106,14 +107,23 @@ for (const viewport of VIEWPORTS) test(`Dev configures, tests and activates one 
   await expect(openai.getByText('Testado')).toBeVisible()
   await openai.getByRole('button', { name: 'Ativar globalmente' }).click()
   await expect(openai.getByText('Ativo', { exact: true })).toBeVisible()
+  await openai.getByRole('button', { name: /Desativar globalmente|Deactivate globally/ }).click()
+  await expect(openai.getByText('Ativo', { exact: true })).toHaveCount(0)
 
   await page.getByRole('button', { name: '30 dias' }).click()
   await expect(page.getByText('30').first()).toBeVisible()
   await expect(page.locator('#tabbar')).toHaveCount(0)
 
-  expect(fixtures.writes.find(write => write.pathname === '/api/dev/ai/provider').body).toEqual({ provider: 'openai', selectedModel: 'gpt-5-mini', apiKey: 'test-provider-key-never-render-again' })
+  expect(fixtures.writes.filter(write => write.pathname === '/api/dev/ai/provider').map(write => write.body)).toEqual([
+    { provider: 'openai', selectedModel: '', apiKey: 'test-provider-key-never-render-again' },
+    { provider: 'openai', selectedModel: 'gpt-5-mini' },
+  ])
   expect(fixtures.writes.find(write => write.pathname === '/api/dev/ai/provider/test').body).toEqual({ provider: 'openai' })
   expect(fixtures.writes.find(write => write.pathname === '/api/dev/ai/active').body).toEqual({ provider: 'openai' })
+  expect(fixtures.writes.filter(write => write.pathname === '/api/dev/ai/active').map(write => write.body)).toEqual([
+    { provider: 'openai' },
+    { provider: null },
+  ])
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1)
   await page.screenshot({ path: testInfo.outputPath(`dev-ai-${viewport.name}.png`), fullPage: true, animations: 'disabled', caret: 'hide' })
 

@@ -52,6 +52,7 @@ test('Dev session is four hours, HttpOnly, Strict, and Secure on HTTPS', () => {
   assert.equal(auth.authenticate('first_dev_fixture', 'fixture-password'), true);
   assert.equal(auth.authenticate('first_dev_fixture', 'wrong'), false);
   const cookie = auth.sessionCookie('first_dev_fixture');
+  assert.match(cookie, /Path=\/api\/dev/);
   assert.match(cookie, /Max-Age=14400/);
   assert.match(cookie, /HttpOnly/);
   assert.match(cookie, /SameSite=Strict/);
@@ -75,6 +76,7 @@ test('HTTP Dev cookies omit Secure and reject expired or tampered sessions', () 
   };
   const auth = createDevAuth({ env, signingSecret: 'test-signing-secret', origin: 'http://localhost:8080', now: () => time });
   const cookie = auth.sessionCookie('fixture');
+  assert.match(cookie, /Path=\/api\/dev/);
   assert.doesNotMatch(cookie, /Secure/);
   const token = /^firstdev=([^;]+)/.exec(cookie)[1];
   assert.equal(auth.readSession({ headers: { cookie: cookie.replace(token, `${token.slice(0, -1)}!`) } }), null);

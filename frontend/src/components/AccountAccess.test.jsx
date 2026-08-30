@@ -35,12 +35,13 @@ describe('AccountAccess', () => {
     const markup = renderToStaticMarkup(<AccountAccess mode="register" onModeChange={() => {}} onSubmit={() => {}} />)
 
     expect(fieldNames(markup)).toEqual([
-      'fullName', 'email', 'password', 'weightKg', 'heightCm', 'waistCm', 'armCm', 'goal',
+      'fullName', 'email', 'password', 'weightKg', 'targetWeightKg', 'heightM', 'waistCm', 'armCm',
+      'goal', 'goal', 'goal', 'goal',
     ])
     expect(fieldTag(markup, 'fullName')).toContain('required=""')
     expect(fieldTag(markup, 'email')).toContain('required=""')
     expect(fieldTag(markup, 'password')).toContain('required=""')
-    for (const name of ['weightKg', 'heightCm', 'waistCm', 'armCm', 'goal']) {
+    for (const name of ['weightKg', 'targetWeightKg', 'heightM', 'waistCm', 'armCm', 'goal']) {
       expect(fieldTag(markup, name)).not.toContain('required=""')
       expect(fieldTag(markup, name)).toContain('autoComplete="off"')
     }
@@ -48,6 +49,20 @@ describe('AccountAccess', () => {
     expect(markup).toContain('Gain muscle')
     expect(markup).toContain('Both')
     expect(markup).toContain('Already have an account')
+  })
+
+  it('prefills local weight, target and goal while presenting centimetres as metres', () => {
+    const markup = renderToStaticMarkup(<AccountAccess
+      mode="register"
+      initialValues={{ weightKg: 82.4, targetWeightKg: 75, heightCm: 177, goal: 'both' }}
+      onModeChange={() => {}}
+      onSubmit={() => {}}
+    />)
+
+    expect(fieldTag(markup, 'weightKg')).toContain('value="82.4"')
+    expect(fieldTag(markup, 'heightM')).toContain('value="1,77"')
+    expect(fieldTag(markup, 'targetWeightKg')).toContain('value="75"')
+    expect(markup).toMatch(/<input[^>]*(?:value="both"[^>]*checked=""|checked=""[^>]*value="both")[^>]*>/)
   })
 
   it('asks for an invite code only when the instance requires one', () => {

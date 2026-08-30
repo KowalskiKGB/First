@@ -16,10 +16,14 @@ const stateFixture = () => ({
 })
 const harness = vi.hoisted(() => ({
   state: null,
+  user: null,
   navigate: vi.fn(),
   update: vi.fn(),
   dayAssignSheet: vi.fn(),
   loadStarterPlan: vi.fn(),
+  generateAiRoutineSheet: vi.fn(),
+  api: vi.fn(),
+  dispatchEvent: vi.fn(),
 }))
 
 const findElement = (node, predicate) => {
@@ -37,12 +41,18 @@ vi.mock('react-router-dom', () => ({
   useLocation: () => ({ key: 'test', state: null }),
   useNavigate: () => harness.navigate,
 }))
-vi.mock('../store/useStore.js', () => ({ useStore: selector => selector({ S: harness.state, update: harness.update }) }))
-vi.mock('../sheets.jsx', () => ({ dayAssignSheet: harness.dayAssignSheet, loadStarterPlan: harness.loadStarterPlan, planToolsSheet: vi.fn() }))
+vi.mock('../store/useStore.js', () => ({ useStore: selector => selector({ S: harness.state, user: harness.user, update: harness.update }) }))
+vi.mock('../sheets.jsx', () => ({
+  dayAssignSheet: harness.dayAssignSheet,
+  generateAiRoutineSheet: harness.generateAiRoutineSheet,
+  loadStarterPlan: harness.loadStarterPlan,
+  planToolsSheet: vi.fn(),
+}))
 vi.mock('../components/Icon.jsx', () => ({ default: ({ name, ...props }) => <i data-icon={name} {...props} /> }))
 vi.mock('../components/ui.jsx', () => ({ Button: ({ children, ...props }) => <button {...props}>{children}</button> }))
 vi.mock('../lib/glyphs.js', () => ({ glyphOf: value => value, DEFAULT_GLYPH: 'dumbbell' }))
 vi.mock('../lib/format.js', () => ({ DAYN: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], exCount: String, uid: () => 'new' }))
+vi.mock('../lib/api.js', () => ({ api: harness.api }))
 vi.mock('../lib/i18n.js', () => ({
   t: (message, ...args) => {
     const pt = {
@@ -60,10 +70,18 @@ import Plan from './Plan.jsx'
 describe('Plan weekly schedule', () => {
   beforeEach(() => {
     harness.state = stateFixture()
+    harness.user = null
     harness.navigate.mockReset()
     harness.dayAssignSheet.mockReset()
+    harness.generateAiRoutineSheet.mockReset()
+    harness.api.mockReset()
     harness.loadStarterPlan.mockReset()
+    harness.dispatchEvent.mockReset()
     harness.update.mockReset().mockImplementation(recipe => recipe(harness.state))
+    vi.stubGlobal('window', { dispatchEvent: harness.dispatchEvent })
+    vi.stubGlobal('CustomEvent', class CustomEvent {
+      constructor(type, init) { this.type = type; this.detail = init?.detail }
+    })
   })
 
   it('shows manual, Personal and AI options on the same day', () => {
@@ -78,14 +96,95 @@ describe('Plan weekly schedule', () => {
     expect(monday).toContain('source-ai')
   })
 
-  it('creates a routine and opens it for editing', () => {
+  it('creates a manual routine only after choosing the manual option', () => {
+    const tree = Plan()
+    const button = findElement(tree, element => element.props.children === 'New' && typeof element.props.onClick === 'function')
+
+    button.props.onClick()
+    harness.generateAiRoutineSheet.mock.calls[0][0].onManual()
+
+    expect(harness.state.routines.at(-1)).toEqual({ id: 'new', name: 'New routine', emoji: 'dumbbell', ex: [] })
+    expect(harness.navigate).toHaveBeenCalledWith('/plan/r/new')
+  })
+
+  it('opens manual or AI choices before creating a new routine', () => {
     const tree = Plan()
     const button = findElement(tree, element => element.props.children === 'New' && typeof element.props.onClick === 'function')
 
     button.props.onClick()
 
-    expect(harness.state.routines.at(-1)).toEqual({ id: 'new', name: 'New routine', emoji: 'dumbbell', ex: [] })
-    expect(harness.navigate).toHaveBeenCalledWith('/plan/r/new')
+    expect(harness.state.routines).toHaveLength(3)
+    expect(harness.navigate).not.toHaveBeenCalled()
+    expect(harness.generateAiRoutineSheet).toHaveBeenCalledWith(expect.objectContaining({
+      onManual: expect.any(Function),
+      onAi: expect.any(Function),
+    }))
+  })
+
+  it('requires login before opening the AI routine flow', () => {
+    const tree = Plan()
+    const button = findElement(tree, element => element.props.children === 'New' && typeof element.props.onClick === 'function')
+
+    button.props.onClick()
+    harness.generateAiRoutineSheet.mock.calls[0][0].onAi({ focus: 'legs' })
+
+    expect(harness.dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'first:account',
+      detail: { mode: 'login' },
+    }))
+    expect(harness.state.routines).toHaveLength(3)
+  })
+
+  it('adds an AI-generated editable routine for the selected focus', async () => {
+    harness.user = { id: 'student-1', name: 'Ana' }
+    harness.api.mockResolvedValue({
+      routine: {
+        id: 'ai-suggested',
+        name: 'Pernas IA',
+        ex: [{ id: '0043', sets: 4, reps: 8 }],
+        _aiSuggested: true,
+        sourceType: 'ai',
+        readOnly: false,
+      },
+    })
+    const tree = Plan()
+    const button = findElement(tree, element => element.props.children === 'New' && typeof element.props.onClick === 'function')
+
+    button.props.onClick()
+    await harness.generateAiRoutineSheet.mock.calls[0][0].onAi({ focus: 'legs' })
+
+    expect(harness.state.routines.at(-1)).toEqual(expect.objectContaining({
+      id: 'ai-suggested',
+      name: 'Pernas IA',
+      _aiSuggested: true,
+      sourceType: 'ai',
+      readOnly: false,
+    }))
+    expect(harness.api).toHaveBeenCalledWith('/api/ai/routine', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ focus: 'legs' }),
+    }))
+    expect(harness.navigate).toHaveBeenCalledWith('/plan/r/ai-suggested')
+  })
+
+  it('translates legacy starter routine names when rendering existing data', () => {
+    harness.state = {
+      ...stateFixture(),
+      routines: [
+        { id: 'push', name: 'Push Day', emoji: 'barbell', ex: [] },
+        { id: 'pull', name: 'Pull Day', emoji: 'pullup', ex: [] },
+        { id: 'legs', name: 'Leg Day', emoji: 'legs', ex: [] },
+      ],
+      week: { 1: 'push' },
+      sourceSchedules: { personal: [], ai: [] },
+    }
+
+    const markup = renderToStaticMarkup(<Plan />)
+
+    expect(markup).toContain('Treino Push')
+    expect(markup).toContain('Treino Pull')
+    expect(markup).toContain('Treino de Pernas')
+    expect(markup).not.toMatch(/Push Day|Pull Day|Leg Day/i)
   })
 
   it('opens the selected weekday and offers AI setup instead of a PPL starter for an empty schedule', () => {

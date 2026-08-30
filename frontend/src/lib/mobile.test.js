@@ -16,7 +16,9 @@ vi.mock('@capacitor/local-notifications', () => ({ LocalNotifications: {
 vi.mock('@capacitor/share', () => ({ Share: { share: native.share } }))
 
 import { setLang } from './i18n.js'
-import { nativeLoad, nativeSave, reminderNotifications, shareExport, syncReminder } from './mobile.js'
+import * as mobile from './mobile.js'
+
+const { nativeLoad, nativeSave, reminderNotifications, shareExport, syncReminder } = mobile
 
 describe('reminderNotifications', () => {
   beforeAll(() => setLang('pt'))
@@ -110,5 +112,110 @@ describe('reminderNotifications', () => {
 
     expect(native.writeFile).toHaveBeenCalledWith({ path: 'first.json', directory: 'cache', data: '{"ok":true}', encoding: 'utf8' })
     expect(native.share).toHaveBeenCalledWith({ title: 'first.json', url: 'file:///cache/first.json' })
+  })
+})
+
+describe('Android hardware back button', () => {
+  const flush = async () => {
+    await Promise.resolve()
+    await Promise.resolve()
+  }
+
+  function setupBackButton(sheets = []) {
+    let listener
+    const remove = vi.fn().mockResolvedValue(undefined)
+    const app = {
+      addListener: vi.fn(async (eventName, callback) => {
+        listener = callback
+        expect(eventName).toBe('backButton')
+        return { remove }
+      }),
+      exitApp: vi.fn().mockResolvedValue(undefined),
+    }
+    const closeSheet = vi.fn()
+    const goBack = vi.fn()
+    const cleanup = mobile.registerAndroidBackButton({
+      loadApp: async () => app,
+      getSheets: () => sheets,
+      closeSheet,
+      goBack,
+    })
+    return {
+      app, closeSheet, goBack, remove, cleanup,
+      async press(canGoBack) {
+        await flush()
+        expect(app.addListener).toHaveBeenCalledOnce()
+        expect(listener).toEqual(expect.any(Function))
+        await listener({ canGoBack })
+      },
+    }
+  }
+
+  it('closes only the uppermost unlocked sheet before touching router history', async () => {
+    const back = setupBackButton([
+      { id: 'lower', locked: false },
+      { id: 'top', locked: false },
+    ])
+
+    await back.press(true)
+
+    expect(back.closeSheet).toHaveBeenCalledOnce()
+    expect(back.closeSheet).toHaveBeenCalledWith('top')
+    expect(back.goBack).not.toHaveBeenCalled()
+    expect(back.app.exitApp).not.toHaveBeenCalled()
+  })
+
+  it('consumes back while the uppermost sheet is locked', async () => {
+    const back = setupBackButton([{ id: 'required-weight', locked: true }])
+
+    await back.press(true)
+
+    expect(back.closeSheet).not.toHaveBeenCalled()
+    expect(back.goBack).not.toHaveBeenCalled()
+    expect(back.app.exitApp).not.toHaveBeenCalled()
+  })
+
+  it('uses browser history when the WebView reports a previous route', async () => {
+    const back = setupBackButton([])
+
+    await back.press(true)
+
+    expect(back.goBack).toHaveBeenCalledOnce()
+    expect(back.closeSheet).not.toHaveBeenCalled()
+    expect(back.app.exitApp).not.toHaveBeenCalled()
+  })
+
+  it('exits the Android app when there is no sheet or route to return to', async () => {
+    const back = setupBackButton([])
+
+    await back.press(false)
+
+    expect(back.app.exitApp).toHaveBeenCalledOnce()
+    expect(back.closeSheet).not.toHaveBeenCalled()
+    expect(back.goBack).not.toHaveBeenCalled()
+  })
+
+  it('removes a late native listener when React cleans up during registration', async () => {
+    let resolveApp
+    const remove = vi.fn().mockResolvedValue(undefined)
+    const app = {
+      addListener: vi.fn(async () => ({ remove })),
+      exitApp: vi.fn(),
+    }
+    const cleanup = mobile.registerAndroidBackButton({
+      loadApp: () => new Promise(resolve => { resolveApp = resolve }),
+      getSheets: () => [],
+      closeSheet: vi.fn(),
+      goBack: vi.fn(),
+    })
+
+    await cleanup()
+    resolveApp(app)
+    await flush()
+
+    expect(app.addListener).toHaveBeenCalledOnce()
+    expect(remove).toHaveBeenCalledOnce()
+    await cleanup()
+    expect(remove).toHaveBeenCalledOnce()
   })
 })

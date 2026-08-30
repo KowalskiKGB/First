@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test'
 
-function accountFixtures() {
+function accountFixtures({ omitRegisteredUser = false } = {}) {
   let user = null
-  let profile = { weightKg: 82.4, heightCm: 178, measurements: { waistCm: 91, armCm: 34 }, goal: 'both' }
+  let profile = { weightKg: 82.4, targetWeightKg: 75, heightCm: 177, measurements: { waistCm: 91, armCm: 34 }, goal: 'both' }
   const calls = []
   const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
   return {
@@ -23,8 +23,8 @@ function accountFixtures() {
       if (pathname === '/api/collaboration') return json(route, { rev: 1, profile: null, connections: [], notifications: [], programs: [] })
       if (pathname === '/api/auth/register' && method === 'POST') {
         user = { id: 'student-home', name: body.fullName, email: body.email.toLowerCase(), admin: false }
-        profile = { weightKg: body.weightKg, heightCm: body.heightCm, measurements: body.measurements, goal: body.goal }
-        return json(route, { user, profile })
+        profile = { weightKg: body.weightKg, targetWeightKg: body.targetWeightKg, heightCm: body.heightCm, measurements: body.measurements, goal: body.goal }
+        return json(route, omitRegisteredUser ? { ok: true } : { user, profile })
       }
       if (pathname === '/api/profile' && method === 'GET') return json(route, { user, profile })
       if (pathname === '/api/profile' && method === 'PUT') {
@@ -34,10 +34,10 @@ function accountFixtures() {
       }
       if (pathname === '/api/ai/context') return user ? json(route, {
         rev: 1,
-        profile: { ageBand: 'adult', heightCm: profile.heightCm, goal: profile.goal, availableDays: [1, 3, 5], minutesPerSession: 45, experience: 'intermediario', consent: false },
-        gym: { name: '', genericEquipment: [], specificMachines: [] },
-        measurements: { weight: { value: profile.weightKg, unit: 'kg', observedAt: '2026-08-30' } },
-        completeness: { eligible: false, missing: ['equipment'], blockers: [] },
+        profile: null,
+        gym: null,
+        measurements: {},
+        completeness: { eligible: false, missing: ['profile', 'gym', 'weight'], blockers: [] },
         plan: null,
         job: null,
         planHistory: [],
@@ -56,6 +56,11 @@ test('student Home invites login, registers profile data, gates AI and exposes p
   await page.setViewportSize({ width: 390, height: 844 })
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.route('**/api/**', route => fixtures.handle(route))
+  await page.addInitScript(() => localStorage.setItem('gym_state_v1', JSON.stringify({
+    unit: 'kg', bodyweight: [{ d: '2026-08-30', w: 82.4 }], targetW: 75,
+    aiProfile: { heightCm: 177, goal: 'both', measurements: {} },
+    workouts: [], routines: [], week: {}, dayPlan: {}, sourceSchedules: { ai: [], personal: [] },
+  })))
 
   await page.goto('/#/home')
   await expect(page.getByRole('heading', { name: 'Olá!' })).toBeVisible()
@@ -68,11 +73,12 @@ test('student Home invites login, registers profile data, gates AI and exposes p
   await page.locator('[name="fullName"]').fill('Beatriz Lima')
   await page.locator('[name="email"]').fill('beatriz@example.com')
   await page.locator('[name="password"]').fill('abc123')
-  await page.locator('[name="weightKg"]').fill('82.4')
-  await page.locator('[name="heightCm"]').fill('178')
+  await expect(page.locator('[name="weightKg"]')).toHaveValue('82.4')
+  await expect(page.locator('[name="targetWeightKg"]')).toHaveValue('75')
+  await expect(page.locator('[name="heightM"]')).toHaveValue('1,77')
+  await expect(page.getByRole('radio', { name: 'Ambos' })).toBeChecked()
   await page.locator('[name="waistCm"]').fill('91')
   await page.locator('[name="armCm"]').fill('34')
-  await page.locator('[name="goal"]').selectOption('both')
   await page.getByRole('button', { name: 'Criar minha conta' }).click()
 
   await expect(page.getByRole('heading', { name: 'Olá, Beatriz Lima' })).toBeVisible()
@@ -81,7 +87,8 @@ test('student Home invites login, registers profile data, gates AI and exposes p
     fullName: 'Beatriz Lima',
     password: 'abc123',
     weightKg: 82.4,
-    heightCm: 178,
+    targetWeightKg: 75,
+    heightCm: 177,
     measurements: { waistCm: 91, armCm: 34 },
     goal: 'both',
   })
@@ -90,6 +97,9 @@ test('student Home invites login, registers profile data, gates AI and exposes p
   await expect(page).toHaveURL(/#\/plan/)
   await expect(page.getByRole('heading', { name: 'Dados e medidas' })).toBeVisible()
   await expect(page.locator('#tabbar')).toBeHidden()
+  await expect(page.locator('[name="ai-weight"]')).toHaveValue('82.4')
+  await expect(page.locator('[name="ai-height"]')).toHaveValue('177')
+  await expect(page.locator('[name="ai-goal"]')).toHaveValue('both')
 
   await page.goto('/#/settings')
   await expect(page.getByRole('heading', { name: 'Perfil' })).toBeVisible()
@@ -117,4 +127,24 @@ test('student Home invites login, registers profile data, gates AI and exposes p
   await page.screenshot({ path: testInfo.outputPath('student-account-home-mobile.png'), fullPage: true, animations: 'disabled', caret: 'hide' })
   expect(errors.console).toEqual([])
   expect(errors.page).toEqual([])
+})
+
+test('a 2xx registration response without user never exposes an internal TypeError', async ({ page }) => {
+  const fixtures = accountFixtures({ omitRegisteredUser: true })
+  await page.route('**/api/**', route => fixtures.handle(route))
+
+  await page.goto('/#/home')
+  await page.getByRole('button', { name: 'Fazer login' }).click()
+  await page.getByRole('button', { name: 'Cadastre-se' }).click()
+  await page.locator('[name="fullName"]').fill('Ana Teste')
+  await page.locator('[name="email"]').fill('ana@example.com')
+  await page.locator('[name="password"]').fill('abc123')
+  await page.getByRole('button', { name: 'Criar minha conta' }).click()
+
+  await expect.poll(async () => {
+    const greeting = await page.locator('h1').first().textContent()
+    const message = await page.locator('[role="alert"]').allTextContents()
+    return greeting?.includes('Ana Teste') || message.join('').trim().length > 0
+  }).toBeTruthy()
+  await expect(page.locator('body')).not.toContainText(/Cannot read properties|undefined.*name/i)
 })
