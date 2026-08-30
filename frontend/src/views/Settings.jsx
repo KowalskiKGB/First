@@ -394,6 +394,7 @@ export function ProfileEditor({ close }) {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [invalidField, setInvalidField] = useState('')
 
   useEffect(() => {
     let mounted = true
@@ -408,20 +409,25 @@ export function ProfileEditor({ close }) {
   const save = async event => {
     event.preventDefault()
     setError('')
+    setInvalidField('')
+    const fail = (field, message) => {
+      setInvalidField(field)
+      setError(message)
+      event.currentTarget.elements.namedItem(field)?.focus()
+    }
     const fullName = draft.fullName.trim()
     const email = draft.email.trim().toLowerCase()
-    if (!fullName) { setError(t('Enter your full name.')); return }
-    if ((email || user?.email) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError(t('Enter a valid email.')); return }
-    if (draft.newPassword && draft.newPassword.length < 6) { setError(t('Use at least 6 characters.')); return }
+    if (!fullName) { fail('profile-full-name', t('Enter your full name.')); return }
+    if ((email || user?.email) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { fail('profile-email', t('Enter a valid email.')); return }
+    if (draft.newPassword && draft.newPassword.length < 6) { fail('profile-new-password', t('Use at least 6 characters.')); return }
     const changesCredentials = email !== (user?.email || '') || Boolean(draft.newPassword)
-    if (changesCredentials && user?.email && !draft.currentPassword) { setError(t('Enter your current password.')); return }
-    if (!user?.email && draft.newPassword && !email) { setError(t('Enter a valid email.')); return }
-    if (!user?.email && email && !draft.newPassword) { setError(t('Create a password to add an email.')); return }
-    if (!validOptional(draft.weightKg, 20, 350)) { setError(t('Enter a valid weight.')); return }
-    if (!validOptional(draft.heightCm, 80, 250)) { setError(t('Enter a valid height.')); return }
-    if (!validOptional(draft.waistCm, 10, 250) || !validOptional(draft.armCm, 10, 250)) {
-      setError(t('Enter valid body measurements.')); return
-    }
+    if (changesCredentials && user?.email && !draft.currentPassword) { fail('profile-current-password', t('Enter your current password.')); return }
+    if (!user?.email && draft.newPassword && !email) { fail('profile-email', t('Enter a valid email.')); return }
+    if (!user?.email && email && !draft.newPassword) { fail('profile-new-password', t('Create a password to add an email.')); return }
+    if (!validOptional(draft.weightKg, 20, 350)) { fail('profile-weight', t('Enter a valid weight.')); return }
+    if (!validOptional(draft.heightCm, 80, 250)) { fail('profile-height', t('Enter a valid height.')); return }
+    if (!validOptional(draft.waistCm, 10, 250)) { fail('profile-waist', t('Enter valid body measurements.')); return }
+    if (!validOptional(draft.armCm, 10, 250)) { fail('profile-arm', t('Enter valid body measurements.')); return }
 
     const measurements = { ...draft.measurements }
     if (draft.waistCm === '' || draft.waistCm == null) delete measurements.waistCm
@@ -469,23 +475,23 @@ export function ProfileEditor({ close }) {
   return <>
     <h3>{t('Edit profile')}</h3>
     <p className="sheet-intro">{t('Keep your measurements current so your progress and AI recommendations stay useful.')}</p>
-    {error ? <p className="form-error mutation-error" role="alert">{error}</p> : null}
+    {error ? <p id="profile-form-error" className="form-error mutation-error" role="alert">{error}</p> : null}
     {loading ? <p className="muted small" role="status">{t('Loading profile…')}</p> : null}
     <form className="personal-form" onSubmit={save} aria-label={t('Edit profile')} aria-busy={loading || busy}>
       <fieldset className="personal-fieldset" disabled={loading || busy}>
         <legend>{t('Account')}</legend>
-        <label className="form-field"><span>{t('Full name')}</span><TextField name="profile-full-name" autoComplete="name" maxLength={80} required value={draft.fullName} onChange={event => patch({ fullName: event.target.value })} /></label>
-        <label className="form-field"><span>{t('Email')}</span><TextField name="profile-email" type="email" autoComplete="email" spellCheck={false} maxLength={254} required={!!user?.email} value={draft.email} onChange={event => patch({ email: event.target.value })} /></label>
-        <label className="form-field"><span>{t('Current password')}</span><TextField name="profile-current-password" type="password" autoComplete="current-password" maxLength={128} value={draft.currentPassword} onChange={event => patch({ currentPassword: event.target.value })} /><small className="form-hint">{t('Required only to change email or password.')}</small></label>
-        <label className="form-field"><span>{t('New password')}</span><TextField name="profile-new-password" type="password" autoComplete="new-password" minLength={6} maxLength={128} value={draft.newPassword} onChange={event => patch({ newPassword: event.target.value })} /><small className="form-hint">{t('Leave blank to keep your current password.')}</small></label>
+        <label className="form-field"><span>{t('Full name')}</span><TextField name="profile-full-name" autoComplete="name" maxLength={80} required value={draft.fullName} onChange={event => patch({ fullName: event.target.value })} aria-invalid={invalidField === 'profile-full-name' || undefined} aria-describedby={invalidField === 'profile-full-name' ? 'profile-form-error' : undefined} /></label>
+        <label className="form-field"><span>{t('Email')}</span><TextField name="profile-email" type="email" autoComplete="email" spellCheck={false} maxLength={254} required={!!user?.email} value={draft.email} onChange={event => patch({ email: event.target.value })} aria-invalid={invalidField === 'profile-email' || undefined} aria-describedby={invalidField === 'profile-email' ? 'profile-form-error' : undefined} /></label>
+        <label className="form-field"><span>{t('Current password')}</span><TextField name="profile-current-password" type="password" autoComplete="current-password" maxLength={128} value={draft.currentPassword} onChange={event => patch({ currentPassword: event.target.value })} aria-invalid={invalidField === 'profile-current-password' || undefined} aria-describedby={invalidField === 'profile-current-password' ? 'profile-form-error' : undefined} /><small className="form-hint">{t('Required only to change email or password.')}</small></label>
+        <label className="form-field"><span>{t('New password')}</span><TextField name="profile-new-password" type="password" autoComplete="new-password" minLength={6} maxLength={128} value={draft.newPassword} onChange={event => patch({ newPassword: event.target.value })} aria-invalid={invalidField === 'profile-new-password' || undefined} aria-describedby={invalidField === 'profile-new-password' ? 'profile-form-error' : undefined} /><small className="form-hint">{t('Leave blank to keep your current password.')}</small></label>
       </fieldset>
       <fieldset className="personal-fieldset" disabled={loading || busy}>
         <legend>{t('Body and goal')}</legend>
         <div className="personal-form-grid compact">
-          <label className="form-field"><span>{t('Current weight')} (kg)</span><NumberField className="field" name="profile-weight" autoComplete="off" value={draft.weightKg} nullable onChange={weightKg => patch({ weightKg })} /></label>
-          <label className="form-field"><span>{t('Height (cm)')}</span><NumberField className="field" name="profile-height" autoComplete="off" value={draft.heightCm} decimal={false} nullable onChange={heightCm => patch({ heightCm })} /></label>
-          <label className="form-field"><span>{t('Waist')} (cm)</span><NumberField className="field" name="profile-waist" autoComplete="off" value={draft.waistCm} nullable onChange={waistCm => patch({ waistCm })} /></label>
-          <label className="form-field"><span>{t('Arm')} (cm)</span><NumberField className="field" name="profile-arm" autoComplete="off" value={draft.armCm} nullable onChange={armCm => patch({ armCm })} /></label>
+          <label className="form-field"><span>{t('Current weight')} (kg)</span><NumberField className="field" name="profile-weight" autoComplete="off" value={draft.weightKg} nullable onChange={weightKg => patch({ weightKg })} aria-invalid={invalidField === 'profile-weight' || undefined} aria-describedby={invalidField === 'profile-weight' ? 'profile-form-error' : undefined} /></label>
+          <label className="form-field"><span>{t('Height (cm)')}</span><NumberField className="field" name="profile-height" autoComplete="off" value={draft.heightCm} decimal={false} nullable onChange={heightCm => patch({ heightCm })} aria-invalid={invalidField === 'profile-height' || undefined} aria-describedby={invalidField === 'profile-height' ? 'profile-form-error' : undefined} /></label>
+          <label className="form-field"><span>{t('Waist')} (cm)</span><NumberField className="field" name="profile-waist" autoComplete="off" value={draft.waistCm} nullable onChange={waistCm => patch({ waistCm })} aria-invalid={invalidField === 'profile-waist' || undefined} aria-describedby={invalidField === 'profile-waist' ? 'profile-form-error' : undefined} /></label>
+          <label className="form-field"><span>{t('Arm')} (cm)</span><NumberField className="field" name="profile-arm" autoComplete="off" value={draft.armCm} nullable onChange={armCm => patch({ armCm })} aria-invalid={invalidField === 'profile-arm' || undefined} aria-describedby={invalidField === 'profile-arm' ? 'profile-form-error' : undefined} /></label>
         </div>
         <label className="form-field"><span>{t('Main goal')}</span><select className="field" name="profile-goal" autoComplete="off" value={draft.goal} onChange={event => patch({ goal: event.target.value })}><option value="">{t('Choose later')}</option>{PROFILE_GOALS.map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select></label>
       </fieldset>

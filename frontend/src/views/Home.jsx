@@ -49,13 +49,15 @@ export default function Home() {
     const done = doneDays.has(iso)
     if (done) selectedWeekDone += 1
     const dot = done ? ' done' : override && effective ? ' ovr' : effective ? ' plan' : ''
+    const dateLabel = date.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })
+    const dayStatus = done ? t('Completed') : override && effective ? t('Rescheduled') : effective ? t('Planned') : t('Rest day')
     strip.push(
       <button
         type="button"
         key={iso}
         className={`wday${iso === todayId ? ' today' : ''}`}
         onClick={() => dayOverrideSheet(iso)}
-        aria-label={date.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}
+        aria-label={`${dateLabel}: ${dayStatus}`}
       >
         <span className="lbl">{t(DAYS[date.getDay()])}</span>
         <span className="num">{date.getDate()}</span>

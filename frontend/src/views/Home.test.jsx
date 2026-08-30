@@ -117,7 +117,8 @@ describe('Home schedule summary', () => {
     const markup = renderToStaticMarkup(<Home />)
 
     expect(markup).toContain('AI Monday')
-    expect(markup).not.toContain('Rest day')
+    expect(markup).toContain('aria-label="Monday 31 August: Rescheduled"')
+    expect(markup).not.toContain('<div class="ttl">Rest day')
     expect(markup).toContain('class="dot ovr"')
   })
 
@@ -127,6 +128,7 @@ describe('Home schedule summary', () => {
     expect(markup.match(/<button[^>]*class="wday/g)).toHaveLength(7)
     expect(markup).toMatch(/<button[^>]*class="today-row"/)
     expect(markup).toMatch(/<button[^>]*class="card tappable"/)
+    expect(markup).toContain('aria-label="Monday 31 August: Planned"')
     expect(markup).toContain('aria-label="Open training calendar"')
   })
 

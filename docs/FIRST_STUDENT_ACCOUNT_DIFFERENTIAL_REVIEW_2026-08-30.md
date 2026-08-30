@@ -6,15 +6,15 @@
 |----------|-------|
 | Critical | 0 |
 | High | 0 |
-| Medium | 2 fixed |
-| Low | 0 |
+| Medium | 3 fixed |
+| Low | 1 fixed |
 
 **Overall risk:** Medium before the compatibility/proxy fixes, Low after verification.
 **Recommendation:** Approve; the fresh verification suite is green.
 
 ## What Changed
 
-Range reviewed: `5dada46..HEAD` plus the uncommitted follow-up changes on `feat/student-home-auth`.
+Range reviewed: `5dada46..HEAD`, including the final accessibility follow-ups on `main`.
 
 - Added e-mail/password student registration and login beside the existing passkey-compatible backend.
 - Moved account entry to Home and kept Settings for logged-in profile editing only.
@@ -46,6 +46,21 @@ The first e-mail/password and Dev login limiters keyed attempts by `req.socket.r
 
 **Coverage:** `api/test/student-auth-http.test.js` verifies two distinct `X-Real-IP` clients do not share the same throttle bucket; `scripts/deployment.test.mjs` verifies the nginx auth location includes the e-mail/password endpoints.
 
+### Medium - fixed: profile validation did not identify or focus the invalid field
+
+**File:** `frontend/src/views/Settings.jsx`
+**Risk:** Keyboard and screen-reader users received only a global error and could not efficiently locate the field that needed correction.
+
+**Fix applied:** validation now focuses the first invalid field and connects it to the translated error through `aria-invalid` and `aria-describedby`.
+
+**Coverage:** `frontend/e2e/student-account-home.spec.js` verifies focus, invalid state and the accessible error relationship in a real browser.
+
+### Low - fixed: weekly day controls exposed the date but not the workout state
+
+**File:** `frontend/src/views/Home.jsx`
+
+The accessible name for each weekly day now includes whether it is completed, rescheduled, planned or a rest day. `frontend/src/views/Home.test.jsx` covers planned and rescheduled states.
+
 ## Security Review
 
 - Dev APIs require the independent `firstdev` cookie; app `gymsid` sessions do not unlock provider configuration.
@@ -61,6 +76,7 @@ The first e-mail/password and Dev login limiters keyed attempts by `req.socket.r
 - API: student registration/login/profile security, Dev isolation, AI auth gate.
 - Unit frontend: `/devadmin` entry, Home CTA behavior, AccountAccess form contract, Settings profile boundary.
 - E2E: Dev provider configuration on mobile/tablet/desktop, AI wizard/apply/rollback, Personal workspace, schedule coexistence, and the new student Home account flow.
+- Final local run: 200 API tests, 495 frontend unit tests and 22 Playwright E2E scenarios passed; both production dependency audits reported zero vulnerabilities.
 
 ## Residual Risk
 
