@@ -29,6 +29,33 @@ const EXERCISE_FIELDS = new Set([
 const SCHEDULE_FIELDS = new Set(['day', 'routineRef']);
 const MODES = new Set(['reps', 'time', 'cardio']);
 const ABSOLUTE_LOAD_UNIT = /(?:^|[^\p{L}\p{N}_])\d{1,4}(?:[.,]\d{1,2})?\s*(?:kg|kgs|quilogramas?|quilos?|lb|lbs|libras?|pounds?|ounces?)(?=$|[^\p{L}\p{N}_])/iu;
+const FORBIDDEN_INTENSITY_PATTERNS = [
+  /\b\d{1,3}(?:[.,]\d+)?\s*%\s*(?:d[aeo]s?|of)?[^.;!?\n]{0,24}\b(?:carga|peso|load|1\s*rm|maxim[oa]s?|maximum|max)\b/gu,
+  /\b(?:carga|peso|load|maximum load|max load)\b[^.;!?\n]{0,24}\b\d{1,3}(?:[.,]\d+)?\s*%/gu,
+  /\b(?:\d{1,3}(?:[.,]\d+)?\s*)?(?:por cento|percent(?:age)?)\b[^.;!?\n]{0,30}\b(?:carga|peso|load|1\s*rm|maxim[oa]s?|maximum|max)\b/gu,
+  /\b(?:percentual|percentage)\s+(?:d[aeo]|of)\s+(?:carga|peso|load|maxim[oa]|maximum|max)\b/gu,
+  /\b(?:\d{1,2}\s*)?rms?\b/gu,
+  /\bone[\s-]rep(?:etition)?\s+max(?:imum)?\b/gu,
+  /\b(?:teste?s?|test(?:ing)?)\b[^.;!?\n]{0,30}\b(?:maxim[oa]s?|maximal|maximum|max)\b/gu,
+  /\b(?:maxim[oa]s?|maximal|maximum|max)\s+(?:teste?s?|test(?:ing)?)\b/gu,
+  /\b(?:ate\s+(?:a\s+)?falha(?:\s+muscular)?|ate\s+falhar|falha\s+muscular)\b/gu,
+  /\b(?:trein(?:e|ar)|leve|va|chegue|continue)\b[^.;!?\n]{0,35}\ba\s+falha\b/gu,
+  /\b(?:to|until)\s+(?:muscular\s+)?failure\b/gu,
+  /\buntil\s+(?:you\s+)?fail\b/gu
+];
+const SAFETY_WARNING_PREFIXES = [
+  /\b(?:nao|nunca|jamais)\s+(?:faca|realize|execute|use|utilize|prescreva|teste|testar|treine|treinar|va|chegue|leve|trabalhe|tente)\b[^,.;!?\n]{0,50}$/u,
+  /\bevite(?:\s+(?:fazer|realizar|executar|usar|testar|treinar|chegar|ir))?\b[^.;!?\n]{0,60}$/u,
+  /\b(?:sem\s+(?:treino|treinar|series?|repeticoes?|chegar|ir)\b[^,.;!?\n]{0,25}|sem\s*)$/u,
+  /\bproibid[oa]s?\b[^,.;!?\n]{0,35}$/u,
+  /\b(?:do not|dont|never)\s+(?:perform|do|use|test|train|go|reach|attempt)\b[^,.;!?\n]{0,50}$/u,
+  /\bavoid(?:\s+(?:performing|doing|using|testing|training|going|reaching))?\b[^.;!?\n]{0,60}$/u,
+  /\b(?:without\s+(?:training|testing|going|reaching)\b[^,.;!?\n]{0,25}|without\s*)$/u
+];
+const DIRECT_NEGATED_ACTION = /\b(?:nao|nunca|jamais)\s*$/u;
+const PRESCRIPTION_ACTION = /^(?:trein(?:e|ar)|leve|va|chegue|continue)\b/u;
+const STOP_BEFORE_INTENSITY = /\b(?:pare|interrompa|stop)\b[^.;!?\n]{0,40}\b(?:antes d[aeo]|before)\b[^.;!?\n]{0,20}$/u;
+const SAFETY_WARNING_SUFFIX = /^\s+(?:nao\s+(?:e|sao)|is\s+not|are\s+not)\s+(?:permitid[oa]s?|recomendad[oa]s?|allowed|recommended)\b/u;
 const FUNDAMENTAL_TARGETS = new Set(['pectorals', 'lats', 'quads', 'hamstrings', 'glutes', 'delts', 'abs']);
 
 const nullableInteger = (minimum, maximum) => ({
@@ -364,6 +391,25 @@ function stableId(prefix, seed, used = new Set()) {
   return id;
 }
 
+function hasForbiddenIntensityPrescription(value) {
+  const text = String(value || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/[’']/g, '').toLowerCase();
+  const clauseBefore = index => {
+    const prefix = text.slice(Math.max(0, index - 100), index);
+    const boundary = Math.max(prefix.lastIndexOf('.'), prefix.lastIndexOf(';'), prefix.lastIndexOf('!'), prefix.lastIndexOf('?'), prefix.lastIndexOf('\n'));
+    return prefix.slice(boundary + 1);
+  };
+  const isSafetyWarning = match => {
+    const before = clauseBefore(match.index);
+    if (DIRECT_NEGATED_ACTION.test(before) && PRESCRIPTION_ACTION.test(match[0])) return true;
+    if (SAFETY_WARNING_PREFIXES.some(pattern => pattern.test(before))) return true;
+    if (STOP_BEFORE_INTENSITY.test(before)) return true;
+    const after = text.slice(match.index + match[0].length, match.index + match[0].length + 55);
+    return SAFETY_WARNING_SUFFIX.test(after);
+  };
+  return FORBIDDEN_INTENSITY_PATTERNS.some(pattern =>
+    [...text.matchAll(pattern)].some(match => !isSafetyWarning(match)));
+}
+
 function validateMode(exercise, ageBand) {
   if (!MODES.has(exercise.mode)) throw fail('modo inválido');
   const limits = ageBand === 'under14'
@@ -391,6 +437,9 @@ function validateMode(exercise, ageBand) {
   if (typeof exercise.note !== 'string' || exercise.note.length > 300) throw fail('nota inválida');
   if (ABSOLUTE_LOAD_UNIT.test(exercise.progression) || ABSOLUTE_LOAD_UNIT.test(exercise.note)) {
     throw fail('prescrição de carga absoluta não é permitida');
+  }
+  if (hasForbiddenIntensityPrescription(exercise.progression) || hasForbiddenIntensityPrescription(exercise.note)) {
+    throw fail('O plano contém uma prescrição de intensidade não permitida.');
   }
 }
 

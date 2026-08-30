@@ -255,9 +255,11 @@ test('validator rejects load percentages, max tests and training to failure with
     { progression: 'Work at 80% of your max load.' },
     { note: 'Faça um teste máximo mensal.' },
     { progression: 'Encontre seu 5RM antes de progredir.' },
+    { progression: 'Use RM para definir a progressão.' },
     { note: 'Perform a one-rep max test.' },
     { progression: 'Leve a última série até a falha.' },
-    { note: 'Train each set to failure.' }
+    { note: 'Train each set to failure.' },
+    { note: 'Não mude a técnica, faça séries até a falha.' }
   ];
 
   for (const patch of forbidden) {
@@ -271,11 +273,13 @@ test('validator rejects load percentages, max tests and training to failure with
     { note: 'Evite testes máximos e 1RM.' },
     { progression: 'Do not train to failure; stop at 2 RIR.' },
     { note: 'Never perform a one-rep max test.' },
+    { progression: 'Treinar até a falha não é recomendado.' },
+    { note: 'Max testing is not allowed.' },
     { progression: 'Mantenha pelo menos 85% das repetições tecnicamente limpas.' }
   ]) {
     const response = validResponse();
     Object.assign(response.routines[0].exercises[0], patch);
-    assert.doesNotThrow(() => validateAiWorkoutPlan(response, options));
+    assert.doesNotThrow(() => validateAiWorkoutPlan(response, options), undefined, JSON.stringify(patch));
   }
 });
 
