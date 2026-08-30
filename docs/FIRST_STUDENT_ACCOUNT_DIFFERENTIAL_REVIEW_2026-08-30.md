@@ -31,9 +31,9 @@ Range reviewed: `5dada46..HEAD` plus the uncommitted follow-up changes on `feat/
 
 The first profile editor version made `profile-email` required and validated it on every save. Existing passkey-only users with no e-mail would be unable to update weight, measures, goal or other profile data without adding e-mail/password immediately.
 
-**Fix applied:** e-mail remains required for e-mail accounts, but is optional for legacy passkey-only profiles. The payload omits `email` when a legacy profile leaves it blank, matching the backend's existing optional contract.
+**Fix applied:** e-mail remains required for e-mail accounts, but is optional for legacy passkey-only profiles. The payload omits `email` when a legacy profile leaves it blank, and the backend rejects direct attempts to add a password without also adding an e-mail.
 
-**Coverage:** `frontend/src/views/Settings.account.test.jsx` now covers the passkey-only case.
+**Coverage:** `frontend/src/views/Settings.account.test.jsx` covers the passkey-only UI case, and `api/test/student-auth-http.test.js` covers direct API mutation.
 
 ### Medium - fixed: API auth rate limit could become global behind nginx
 
