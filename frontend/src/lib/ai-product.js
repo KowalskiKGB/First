@@ -1,3 +1,5 @@
+import { EXDB } from './exercises-data.js'
+
 const MEASUREMENT_FIELDS = Object.freeze({
   weight: 'weight', waist: 'waistCm', chest: 'chestCm', hip: 'hipCm',
   arm: 'armCm', thigh: 'thighCm', calf: 'calfCm',
@@ -29,33 +31,79 @@ export function draftFromAiContext(context = {}) {
   }
 }
 
-const required = (errors, field, condition, message) => condition ? errors : { ...errors, [field]: message }
+const required = (errors, field, condition, message) => condition || errors[field] ? errors : { ...errors, [field]: message }
 
-export function validateWizardStep(draft, step) {
+const EXERCISE_IDS = new Set(EXDB.map(exercise => exercise.id))
+const EQUIPMENT_IDS = new Set(EXDB.map(exercise => exercise.eq).filter(Boolean))
+const OPTIONAL_MEASUREMENTS = ['waistCm', 'chestCm', 'hipCm', 'armCm', 'thighCm', 'calfCm']
+
+const validStringList = (value, maxItems, maxLength, allowed) => Array.isArray(value)
+  && value.length <= maxItems
+  && value.every(item => typeof item === 'string' && item.trim() && item.length <= maxLength && (!allowed || allowed.has(item)))
+
+const validOptionalMeasurement = value => value === '' || value == null
+  || (Number.isFinite(Number(value)) && Number(value) >= 10 && Number(value) <= 250)
+
+export function validateWizardStep(draft = {}, step, unit = 'kg') {
   let errors = {}
   if (step === 1) {
     errors = required(errors, 'ageBand', ['under14', '14to17', 'adult'].includes(draft.ageBand), 'Enter the age range.')
-    errors = required(errors, 'heightCm', Number(draft.heightCm) >= 80 && Number(draft.heightCm) <= 250, 'Enter a valid height.')
-    errors = required(errors, 'weight', Number(draft.weight) > 0 && Number(draft.weight) <= 500, 'Enter a valid weight.')
+    const height = Number(draft.heightCm)
+    errors = required(errors, 'heightCm', Number.isInteger(height) && height >= 80 && height <= 250, 'Enter a valid height.')
+    const weightKg = Number(draft.weight) * (unit === 'lb' ? 0.45359237 : 1)
+    errors = required(errors, 'weight', Number.isFinite(weightKg) && weightKg >= 20 && weightKg <= 350, 'Enter a valid weight.')
+    OPTIONAL_MEASUREMENTS.forEach(field => {
+      errors = required(errors, field, validOptionalMeasurement(draft[field]), 'Enter a valid optional measurement.')
+    })
   }
   if (step === 2) {
-    errors = required(errors, 'goal', String(draft.goal || '').trim().length > 0, 'Enter the primary goal.')
+    const goal = typeof draft.goal === 'string' ? draft.goal.trim() : ''
+    errors = required(errors, 'goal', goal.length > 0, 'Enter the primary goal.')
+    errors = required(errors, 'goal', goal.length <= 160, 'Keep the goal within 160 characters.')
     errors = required(errors, 'experience', ['iniciante', 'intermediario', 'avancado'].includes(draft.experience), 'Enter the experience level.')
-    errors = required(errors, 'availableDays', Array.isArray(draft.availableDays) && draft.availableDays.length > 0, 'Choose at least one day.')
-    errors = required(errors, 'minutesPerSession', Number(draft.minutesPerSession) >= 15 && Number(draft.minutesPerSession) <= 180, 'Enter a duration between 15 and 180 minutes.')
+    const days = draft.availableDays
+    errors = required(errors, 'availableDays', Array.isArray(days) && days.length > 0, 'Choose at least one day.')
+    errors = required(errors, 'availableDays', Array.isArray(days) && days.length <= 7 && days.every(day => Number.isInteger(day) && day >= 0 && day <= 6), 'Choose valid available days.')
+    const minutes = Number(draft.minutesPerSession)
+    errors = required(errors, 'minutesPerSession', Number.isInteger(minutes) && minutes >= 15 && minutes <= 180, 'Enter a duration between 15 and 180 minutes.')
+    errors = required(errors, 'focusAreas', validStringList(draft.focusAreas, 12, 60), 'Choose up to 12 training priorities.')
   }
   if (step === 3) {
-    errors = required(errors, 'gymName', String(draft.gymName || '').trim().length > 0, 'Enter the gym.')
-    const hasSpecific = draft.specificMachines?.some(machine => machine.exerciseIds?.length)
-    errors = required(errors, 'genericEquipment', draft.genericEquipment?.length > 0 || hasSpecific, 'Choose at least one available equipment item.')
+    const gymName = typeof draft.gymName === 'string' ? draft.gymName.trim() : ''
+    errors = required(errors, 'gymName', gymName.length > 0 && gymName.length <= 120, 'Enter the gym.')
+    const machines = Array.isArray(draft.specificMachines) ? draft.specificMachines : []
+    errors = required(errors, 'specificMachines', Array.isArray(draft.specificMachines) && machines.length <= 40, 'Add no more than 40 specific machines.')
+    machines.forEach((machine, index) => {
+      const name = typeof machine?.name === 'string' ? machine.name.trim() : ''
+      const category = machine?.category == null ? '' : machine.category
+      errors = required(errors, `specificMachineName${index}`, name.length > 0 && name.length <= 100, 'Enter the machine name.')
+      errors = required(errors, `specificMachineCategory${index}`, typeof category === 'string' && category.length <= 80, 'Enter a valid machine category.')
+      errors = required(errors, `specificMachineExercises${index}`, validStringList(machine?.exerciseIds, 60, 100, EXERCISE_IDS) && machine.exerciseIds.length > 0, 'Choose at least one supported exercise.')
+    })
+    const validEquipment = validStringList(draft.genericEquipment, 60, 100, EQUIPMENT_IDS)
+    errors = required(errors, 'genericEquipment', validEquipment, 'Choose valid available equipment.')
+    const hasSpecific = machines.some(machine => String(machine?.name || '').trim() && validStringList(machine?.exerciseIds, 60, 100, EXERCISE_IDS) && machine.exerciseIds.length)
+    errors = required(errors, 'genericEquipment', (validEquipment && draft.genericEquipment.length > 0) || hasSpecific, 'Choose at least one available equipment item.')
+    errors = required(errors, 'favoriteExerciseIds', validStringList(draft.favoriteExerciseIds, 60, 100, EXERCISE_IDS), 'Choose up to 60 supported exercises.')
+    errors = required(errors, 'avoidedExerciseIds', validStringList(draft.avoidedExerciseIds, 60, 100, EXERCISE_IDS), 'Choose up to 60 supported exercises.')
+    errors = required(errors, 'limitations', typeof draft.limitations === 'string' && draft.limitations.length <= 1000, 'Enter up to 1,000 characters.')
   }
   if (step === 4) {
     errors = required(errors, 'consent', draft.consent === true, 'Confirm data use to generate the workout.')
     if (draft.ageBand === 'under14' || draft.ageBand === '14to17') {
       errors = required(errors, 'guardianConsent', draft.guardianConsent === true, 'Confirm guardian authorization.')
     }
+    errors = required(errors, 'health', draft.acuteRisk !== true && draft.medicalRestriction !== true, 'Generation is blocked while an acute risk or medical restriction is active.')
   }
   return errors
+}
+
+export function validateWizardDraft(draft, unit = 'kg') {
+  for (let step = 1; step <= 4; step += 1) {
+    const errors = validateWizardStep(draft, step, unit)
+    if (Object.keys(errors).length) return { step, errors }
+  }
+  return { step: null, errors: {} }
 }
 
 function stable(value) {
@@ -119,7 +167,9 @@ export function canonicalDraftPayloads(draft, rev, observedAt, unit = 'kg') {
     },
     gym: {
       name: String(draft.gymName || '').trim(), genericEquipment: [...draft.genericEquipment],
-      specificMachines: draft.specificMachines.map(machine => ({ ...machine, exerciseIds: [...machine.exerciseIds] })),
+      specificMachines: draft.specificMachines.map(machine => ({
+        ...machine, name: String(machine.name || '').trim(), category: String(machine.category || ''), exerciseIds: [...machine.exerciseIds],
+      })),
     },
     measurements: [
       ['weight', draft.weight, unit === 'lb' ? 'lb' : 'kg'], ['waist', draft.waistCm, 'cm'], ['chest', draft.chestCm, 'cm'],

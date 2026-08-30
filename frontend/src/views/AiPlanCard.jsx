@@ -4,7 +4,7 @@ import { AiPlanOverview, AiWizard } from '../components/AiPlanExperience.jsx'
 import { api } from '../lib/api.js'
 import { applyAiPlanToState, persistAiWizardContext, pollExistingAiJob } from '../lib/ai-job-flow.js'
 import { aiProfile, latestBodyWeight } from '../lib/ai-plan.js'
-import { contextFingerprint, draftFromAiContext, generationSubmission, isAiContextStale } from '../lib/ai-product.js'
+import { contextFingerprint, draftFromAiContext, generationSubmission, isAiContextStale, validateWizardDraft } from '../lib/ai-product.js'
 import { uid } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
 import { copyPersonalRoutine } from '../lib/personal-forms.js'
@@ -48,6 +48,7 @@ export default function AiPlanCard() {
   const toast = useUI(store => store.toast)
   const [context, setContext] = useState(null)
   const [status, setStatus] = useState(null)
+  const [loadError, setLoadError] = useState(null)
   const [job, setJob] = useState(null)
   const [draft, setDraft] = useState(() => legacyDraft(state))
   const [wizard, setWizard] = useState(false)
@@ -68,19 +69,21 @@ export default function AiPlanCard() {
   const load = async () => {
     if (!user) return
     const [nextContext, nextStatus] = await Promise.all([api('/api/ai/context'), api('/api/ai/status')])
-    setContext(nextContext); setStatus(nextStatus); setJob(nextContext.job || null)
-    setDraft(draftFromAiContext(nextContext))
+    setStatus(nextStatus)
+    await applyContext(nextContext)
+    setLoadError(null)
     return nextContext
   }
   useEffect(() => {
     let current = true
     if (!ready) return undefined
-    if (!user) { setStatus({ configured: false }); return undefined }
+    if (!user) { setStatus({ configured: false }); setLoadError(null); return undefined }
     Promise.all([api('/api/ai/context'), api('/api/ai/status')]).then(async ([nextContext, nextStatus]) => {
       if (!current) return
       setStatus(nextStatus)
       await applyContext(nextContext, () => current)
-    }).catch(() => current && setStatus({ configured: false }))
+      if (current) setLoadError(null)
+    }).catch(() => current && setLoadError('Could not load AI workout data.'))
     return () => { current = false; pollController.current?.abort() }
   }, [ready, user?.id])
 
@@ -110,6 +113,8 @@ export default function AiPlanCard() {
 
   const generate = async completedDraft => {
     if (!user) { toast(t('Sign in to generate a workout with AI.')); return }
+    const validation = validateWizardDraft(completedDraft, state.unit)
+    if (validation.step) { toast(t(Object.values(validation.errors)[0])); return }
     setBusy(true)
     try {
       await useStore.getState().pushState()
@@ -151,7 +156,7 @@ export default function AiPlanCard() {
     setBusy(true)
     try {
       await api('/api/ai/plan/rollback', { method: 'POST', body: JSON.stringify({ planId: priorPlan.id }) })
-      const nextContext = await load(); await applyContext(nextContext)
+      await load()
       toast(t('Previous AI version restored.'))
     } catch (error) { toast(t(error.message || 'The previous version could not be restored.')) }
     finally { setBusy(false) }
@@ -160,8 +165,10 @@ export default function AiPlanCard() {
   const storedFingerprint = user && globalThis.localStorage ? globalThis.localStorage.getItem(fingerprintKey(user.id)) : null
   const stale = isAiContextStale(context, storedFingerprint)
 
-  return wizard ? <AiWizard draft={draft} onDraft={setDraft} onClose={() => setWizard(false)} onSubmit={generate} busy={busy} /> : <AiPlanOverview
+  const retryLoad = async () => { try { await load() } catch { setLoadError('Could not load AI workout data.') } }
+
+  return wizard ? <AiWizard draft={draft} onDraft={setDraft} onClose={() => setWizard(false)} onSubmit={generate} busy={busy} unit={state.unit} /> : <AiPlanOverview
     plan={context?.plan} status={status} job={job} stale={stale} onOpen={() => setWizard(true)}
-    onRollback={rollback} onCopy={copy} canRollback={!!priorPlan}
+    error={loadError} onRetry={retryLoad} onRollback={rollback} onCopy={copy} canRollback={!!priorPlan}
   />
 }

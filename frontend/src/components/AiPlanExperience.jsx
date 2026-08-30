@@ -30,7 +30,7 @@ function ToggleGrid({ legend, values, options, onChange, error }) {
   )
 }
 
-function ExercisePicker({ title, name, selected, onChange }) {
+function ExercisePicker({ title, name, selected, onChange, error }) {
   const [query, setQuery] = useState('')
   const results = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase('pt-BR')
@@ -40,25 +40,33 @@ function ExercisePicker({ title, name, selected, onChange }) {
   const toggle = id => onChange(selected.includes(id) ? selected.filter(value => value !== id) : [...selected, id])
   return (
     <div className="exercise-preference-picker">
-      <label><span>{title}</span><SearchField name={name} value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} clearLabel={t('Clear search')} autoComplete="off" placeholder={t('Search exercise…')} /></label>
+      <label><span>{title}</span><SearchField name={name} value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} clearLabel={t('Clear search')} autoComplete="off" placeholder={t('Search exercise…')} aria-invalid={!!error} aria-describedby={error ? `ai-error-${error.name}` : undefined} />{error ? <FieldError errors={{ [error.name]: error.message }} name={error.name} /> : null}</label>
       {results.length ? <div className="exercise-preference-results">{results.map(exercise => <button type="button" key={exercise.id} aria-pressed={selected.includes(exercise.id)} onClick={() => toggle(exercise.id)}>{exerciseName(exercise)}</button>)}</div> : null}
       {selected.length ? <p>{t('{0} selected', selected.length)}</p> : null}
     </div>
   )
 }
 
-export function MachineEditor({ machines, onChange }) {
+export function MachineEditor({ machines, onChange, errors = {} }) {
   const add = () => onChange([...machines, { name: '', category: '', exerciseIds: [] }])
   const patch = (index, value) => onChange(machines.map((machine, current) => current === index ? { ...machine, ...value } : machine))
   return (
-    <section className="machine-editor" aria-labelledby="machine-editor-title">
+    <section className="machine-editor" aria-labelledby="machine-editor-title" aria-describedby={errors.specificMachines ? 'ai-error-specificMachines' : undefined}>
       <div className="row between"><div><span className="personal-eyebrow">{t('Optional')}</span><h3 id="machine-editor-title">{t('Specific machines')}</h3></div><Button type="button" size="sm" icon="plus" onClick={add}>{t('Add machine')}</Button></div>
-      {machines.map((machine, index) => <div className="machine-row" key={index}>
-        <label><span>{t('Machine name')}</span><TextField name={`specific-machine-name-${index}`} autoComplete="off" value={machine.name} onChange={event => patch(index, { name: event.target.value })} /></label>
-        <label><span>{t('Category')}</span><TextField name={`specific-machine-category-${index}`} autoComplete="off" value={machine.category} onChange={event => patch(index, { category: event.target.value })} /></label>
-        <ExercisePicker name={`specific-machine-exercises-${index}`} title={t('Supported exercises')} selected={machine.exerciseIds} onChange={exerciseIds => patch(index, { exerciseIds })} />
-        <button type="button" className="text-action" onClick={() => onChange(machines.filter((_, current) => current !== index))}>{t('Remove machine')}</button>
-      </div>)}
+      <FieldError errors={errors} name="specificMachines" />
+      {machines.map((machine, index) => {
+        const nameError = errors[`specificMachineName${index}`]
+        const categoryError = errors[`specificMachineCategory${index}`]
+        const exerciseError = errors[`specificMachineExercises${index}`]
+        return (
+          <div className="machine-row" key={index}>
+            <label><span>{t('Machine name')}</span><TextField name={`specific-machine-name-${index}`} autoComplete="off" value={machine.name} onChange={event => patch(index, { name: event.target.value })} aria-invalid={!!nameError} aria-describedby={nameError ? `ai-error-specificMachineName${index}` : undefined} /><FieldError errors={errors} name={`specificMachineName${index}`} /></label>
+            <label><span>{t('Category')}</span><TextField name={`specific-machine-category-${index}`} autoComplete="off" value={machine.category} onChange={event => patch(index, { category: event.target.value })} aria-invalid={!!categoryError} aria-describedby={categoryError ? `ai-error-specificMachineCategory${index}` : undefined} /><FieldError errors={errors} name={`specificMachineCategory${index}`} /></label>
+            <ExercisePicker name={`specific-machine-exercises-${index}`} title={t('Supported exercises')} selected={machine.exerciseIds} onChange={exerciseIds => patch(index, { exerciseIds })} error={exerciseError ? { name: `specificMachineExercises${index}`, message: exerciseError } : null} />
+            <button type="button" className="text-action" onClick={() => onChange(machines.filter((_, current) => current !== index))}>{t('Remove machine')}</button>
+          </div>
+        )
+      })}
     </section>
   )
 }
@@ -72,7 +80,7 @@ function StepOne({ draft, onDraft, errors }) {
     <div className="ai-form-grid">
       <label><span>{t('Height (cm)')}</span><NumberField name="ai-height" autoComplete="off" value={draft.heightCm} decimal={false} onChange={heightCm => onDraft({ heightCm })} aria-invalid={!!errors.heightCm} aria-describedby={errors.heightCm ? 'ai-error-heightCm' : undefined} /><FieldError errors={errors} name="heightCm" /></label>
       <label><span>{t('Current weight')}</span><NumberField name="ai-weight" autoComplete="off" value={draft.weight} onChange={weight => onDraft({ weight })} aria-invalid={!!errors.weight} aria-describedby={errors.weight ? 'ai-error-weight' : undefined} /><FieldError errors={errors} name="weight" /></label>
-      {measures.map(([field, label]) => <label key={field}><span>{t(label)} (cm)</span><NumberField name={`ai-${field}`} autoComplete="off" value={draft[field]} nullable onChange={value => onDraft({ [field]: value || '' })} /></label>)}
+      {measures.map(([field, label]) => <label key={field}><span>{t(label)} (cm)</span><NumberField name={`ai-${field}`} autoComplete="off" value={draft[field]} nullable onChange={value => onDraft({ [field]: value || '' })} aria-invalid={!!errors[field]} aria-describedby={errors[field] ? `ai-error-${field}` : undefined} /><FieldError errors={errors} name={field} /></label>)}
     </div>
   </div>
 }
@@ -84,7 +92,7 @@ function StepTwo({ draft, onDraft, errors }) {
     <fieldset className="ai-choice-group" aria-describedby={errors.experience ? 'ai-error-experience' : undefined}><legend>{t('Experience')}</legend><Segmented value={draft.experience} onChange={experience => onDraft({ experience })} options={AI_EXPERIENCE.map(([value, label]) => ({ value, label: t(label) }))} /><FieldError errors={errors} name="experience" /></fieldset>
     <fieldset className="ai-choice-group" aria-describedby={errors.availableDays ? 'ai-error-availableDays' : undefined}><legend>{t('Available days')}</legend><div className="ai-days">{[1, 2, 3, 4, 5, 6, 0].map(day => <button type="button" key={day} aria-pressed={draft.availableDays.includes(day)} onClick={() => toggleDay(day)}>{t(DAYN[day])}</button>)}</div><FieldError errors={errors} name="availableDays" /></fieldset>
     <label><span>{t('Minutes per session')}</span><NumberField name="ai-minutes" autoComplete="off" value={draft.minutesPerSession} decimal={false} onChange={minutesPerSession => onDraft({ minutesPerSession })} aria-invalid={!!errors.minutesPerSession} aria-describedby={errors.minutesPerSession ? 'ai-error-minutesPerSession' : undefined} /><FieldError errors={errors} name="minutesPerSession" /></label>
-    <ToggleGrid legend={t('Training priorities')} values={draft.focusAreas} options={AI_TARGET_AREAS} onChange={focusAreas => onDraft({ focusAreas })} />
+    <ToggleGrid legend={t('Training priorities')} values={draft.focusAreas} options={AI_TARGET_AREAS} onChange={focusAreas => onDraft({ focusAreas })} error={errors.focusAreas ? { name: 'focusAreas', message: errors.focusAreas } : null} />
   </div>
 }
 
@@ -92,9 +100,9 @@ function StepThree({ draft, onDraft, errors }) {
   return <div className="ai-wizard-fields">
     <label><span>{t('Gym')}</span><TextField name="ai-gym-name" autoComplete="off" value={draft.gymName} onChange={event => onDraft({ gymName: event.target.value })} aria-invalid={!!errors.gymName} aria-describedby={errors.gymName ? 'ai-error-gymName' : undefined} /><FieldError errors={errors} name="gymName" /></label>
     <ToggleGrid legend={t('Available equipment')} values={draft.genericEquipment} options={AI_EQUIPMENT.map(([value, label]) => [value, label])} onChange={genericEquipment => onDraft({ genericEquipment })} error={errors.genericEquipment ? { name: 'genericEquipment', message: errors.genericEquipment } : null} />
-    <MachineEditor machines={draft.specificMachines} onChange={specificMachines => onDraft({ specificMachines })} />
-    <div className="exercise-picker-grid"><ExercisePicker name="ai-favorite-exercises" title={t('Favorite exercises')} selected={draft.favoriteExerciseIds} onChange={favoriteExerciseIds => onDraft({ favoriteExerciseIds })} /><ExercisePicker name="ai-avoided-exercises" title={t('Exercises to avoid')} selected={draft.avoidedExerciseIds} onChange={avoidedExerciseIds => onDraft({ avoidedExerciseIds })} /></div>
-    <label><span>{t('Limitations and observations')}</span><TextArea name="ai-limitations" autoComplete="off" value={draft.limitations} onChange={event => onDraft({ limitations: event.target.value })} /></label>
+    <MachineEditor machines={draft.specificMachines} onChange={specificMachines => onDraft({ specificMachines })} errors={errors} />
+    <div className="exercise-picker-grid"><ExercisePicker name="ai-favorite-exercises" title={t('Favorite exercises')} selected={draft.favoriteExerciseIds} onChange={favoriteExerciseIds => onDraft({ favoriteExerciseIds })} error={errors.favoriteExerciseIds ? { name: 'favoriteExerciseIds', message: errors.favoriteExerciseIds } : null} /><ExercisePicker name="ai-avoided-exercises" title={t('Exercises to avoid')} selected={draft.avoidedExerciseIds} onChange={avoidedExerciseIds => onDraft({ avoidedExerciseIds })} error={errors.avoidedExerciseIds ? { name: 'avoidedExerciseIds', message: errors.avoidedExerciseIds } : null} /></div>
+    <label><span>{t('Limitations and observations')}</span><TextArea name="ai-limitations" autoComplete="off" value={draft.limitations} onChange={event => onDraft({ limitations: event.target.value })} aria-invalid={!!errors.limitations} aria-describedby={errors.limitations ? 'ai-error-limitations' : undefined} /><FieldError errors={errors} name="limitations" /></label>
   </div>
 }
 
@@ -109,7 +117,7 @@ function StepFour({ draft, onDraft, errors }) {
   </div>
 }
 
-export function AiWizard({ draft, onDraft, onClose, onSubmit, busy }) {
+export function AiWizard({ draft, onDraft, onClose, onSubmit, busy, unit = 'kg' }) {
   const [step, setStep] = useState(1)
   const [errors, setErrors] = useState({})
   const heading = useRef(null)
@@ -122,7 +130,7 @@ export function AiWizard({ draft, onDraft, onClose, onSubmit, busy }) {
     else heading.current?.focus()
   })
   const validate = target => {
-    const next = validateWizardStep(draft, target); setErrors(next)
+    const next = validateWizardStep(draft, target, unit); setErrors(next)
     if (Object.keys(next).length) focusFirstInvalid()
     return Object.keys(next).length === 0
   }
@@ -130,7 +138,7 @@ export function AiWizard({ draft, onDraft, onClose, onSubmit, busy }) {
   const submit = event => {
     event.preventDefault()
     for (let target = 1; target <= 4; target += 1) {
-      const nextErrors = validateWizardStep(draft, target)
+      const nextErrors = validateWizardStep(draft, target, unit)
       if (Object.keys(nextErrors).length) { setStep(target); setErrors(nextErrors); focusFirstInvalid(); return }
     }
     if (!draft.acuteRisk && !draft.medicalRestriction) onSubmit(draft)
@@ -148,12 +156,13 @@ export function AiWizard({ draft, onDraft, onClose, onSubmit, busy }) {
   )
 }
 
-export function AiPlanOverview({ plan, status, job, stale, onOpen, onRollback, onCopy, canRollback }) {
+export function AiPlanOverview({ plan, status, job, stale, error, onRetry, onOpen, onRollback, onCopy, canRollback }) {
   const jobState = job ? jobPresentation(job) : null
   const configured = status?.configured === true
   return (
     <section className="ai-plan-overview" aria-labelledby="ai-overview-title">
       <div className="ai-card-head"><span className="ai-icon"><Icon name="sparkles" /></span><div className="grow"><span className="personal-eyebrow">{t('Adaptive weekly plan')}</span><h2 id="ai-overview-title">{t('Weekly workout with AI')}</h2><p>{t('Your goals, measurements and available equipment define the week.')}</p></div><span className={`plan-source-badge source-ai`}>IA</span></div>
+      {error ? <div className="form-error-summary" role="alert"><strong>{t(error)}</strong><Button type="button" onClick={onRetry}>{t('Try again')}</Button></div> : null}
       {jobState?.active ? <div className="ai-job-state" role="status" aria-live="polite"><span className="ai-job-pulse" aria-hidden="true" /><div><strong>{t(jobState.labelKey)}</strong><span>{t('You can leave this screen; generation continues on the server.')}</span></div></div> : null}
       {job?.status === 'failed' ? <p className="form-error" role="alert">{job.publicError || t('Generation failed. Your previous plan is still active.')}</p> : null}
       {stale ? <div className="ai-stale-notice"><Icon name="info" /><div><strong>{t('Your workout can be updated')}</strong><span>{t('Your measurements, gym or preferences changed. Generate only when you choose.')}</span></div></div> : null}
@@ -161,8 +170,8 @@ export function AiPlanOverview({ plan, status, job, stale, onOpen, onRollback, o
         <div className="ai-plan-result-head"><div><span>{t('Version {0}', plan.version)}</span><strong translate="no">{providerDisplayName(plan.provider)} · {plan.model}</strong></div><time dateTime={plan.appliedAt}>{plan.appliedAt ? new Date(plan.appliedAt).toLocaleDateString(dateLocale()) : ''}</time></div>
         <p><span>{t('Why this plan')}</span>{plan.justification}</p>
         <div className="ai-managed-actions"><Button onClick={onCopy} icon="clipboard">{t('Copy and customize')}</Button>{canRollback ? <Button onClick={onRollback} icon="reset">{t('Undo generation')}</Button> : null}</div>
-      </div> : <p className="ai-empty-copy">{configured ? t('Complete four short steps to generate and apply your first AI week.') : t('AI generation will be available after a provider is configured by the administrator.')}</p>}
-      <Button variant="primary" icon="sparkles" onClick={onOpen} disabled={!configured || jobState?.active}>{plan ? t('Review data and generate again') : t('Set up my AI workout')}</Button>
+      </div> : !error && status != null ? <p className="ai-empty-copy">{configured ? t('Complete four short steps to generate and apply your first AI week.') : t('AI generation will be available after a provider is configured by the administrator.')}</p> : null}
+      {!error && status != null ? <Button variant="primary" icon="sparkles" onClick={onOpen} disabled={!configured || jobState?.active}>{plan ? t('Review data and generate again') : t('Set up my AI workout')}</Button> : null}
     </section>
   )
 }

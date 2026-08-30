@@ -1,5 +1,5 @@
 import { api } from './api.js'
-import { canonicalDraftPayloads } from './ai-product.js'
+import { canonicalDraftPayloads, validateWizardDraft } from './ai-product.js'
 
 const ACTIVE = new Set(['queued', 'running'])
 const waitFor = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
@@ -19,6 +19,17 @@ export function canonicalAiMissingFields({ profile = {}, weight }) {
 }
 
 const jsonBody = value => JSON.stringify(value)
+
+function wizardValidationError(step, errors) {
+  return Object.assign(new Error(Object.values(errors)[0]), { name: 'AiWizardValidationError', step, errors })
+}
+
+function validObservedAt(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return false
+  const [year, month, day] = value.split('-').map(Number)
+  return new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10) === value
+    && value <= new Date().toISOString().slice(0, 10)
+}
 
 function canonicalProfile(profile, rev) {
   return {
@@ -130,6 +141,9 @@ export async function pollExistingAiJob({
 export async function persistAiWizardContext({
   request = api, draft, rev, observedAt = new Date().toISOString().slice(0, 10), unit = 'kg',
 }) {
+  const validation = validateWizardDraft(draft, unit)
+  if (validation.step) throw wizardValidationError(validation.step, validation.errors)
+  if (!validObservedAt(observedAt)) throw wizardValidationError(1, { observedAt: 'Enter a valid measurement date.' })
   const payloads = canonicalDraftPayloads(draft, rev, observedAt, unit)
   const savedProfile = await request('/api/ai/profile', { method: 'PUT', body: JSON.stringify(payloads.profile) })
   const savedGym = await request('/api/ai/gym', { method: 'PUT', body: JSON.stringify({ ...payloads.gym, rev: savedProfile.rev }) })
