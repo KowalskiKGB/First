@@ -117,6 +117,10 @@ test('the deployment template is complete and builds only this repository', () =
     nginx,
     /location \^~ \/media\/ \{[\s\S]*auth_request \/_internal\/media-auth;[\s\S]*Cache-Control "private, no-store"/,
   )
+  assert.match(
+    nginx,
+    /location = \/sw\.js \{[\s\S]*Cache-Control "no-store, no-cache, must-revalidate, max-age=0"/,
+  )
 
   const serviceWorker = read('frontend/public/sw.js')
   assert.match(serviceWorker, /const CACHE = 'first-rt-v2'/)
