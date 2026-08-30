@@ -101,6 +101,7 @@ export function Segmented({ options, value, onChange, className = '' }) {
       {i >= 0 ? <span className="seg-sel" aria-hidden="true" /> : null}
       {options.map(o => (
         <button
+          type="button"
           key={o.value}
           className={o.value === value ? 'on' : ''}
           aria-pressed={o.value === value}

@@ -34,7 +34,7 @@ vi.mock('./components/Icon.jsx', () => ({
 import { calendarSheet, dayAssignSheet, dayOverrideSheet, SessionPicker } from './sheets.jsx'
 
 const managedRestState = () => ({
-  routines: [{ id: 'ai-monday', name: 'AI Monday', emoji: 'sparkles', ex: [] }],
+  routines: [{ id: 'ai-monday', name: 'AI Monday', emoji: 'sparkles', ex: [], _aiGenerated: true }],
   week: {},
   dayPlan: { '2026-08-31': 'rest' },
   sourceSchedules: {
@@ -71,7 +71,7 @@ describe('schedule sheets with rest preference and managed availability', () => 
 
     const markup = openedMarkup()
     expect(markup).not.toContain('<div class="item"')
-    expect(markup.match(/<button class="item"/g)).toHaveLength(3)
+    expect(markup.match(/<button[^>]*class="item"/g)).toHaveLength(3)
   })
 
   it('uses native buttons for weekly rest and routine choices', () => {
@@ -80,7 +80,7 @@ describe('schedule sheets with rest preference and managed availability', () => 
 
     const markup = openedMarkup()
     expect(markup).not.toContain('<div class="item"')
-    expect(markup.match(/<button class="item"/g)).toHaveLength(2)
+    expect(markup.match(/<button[^>]*class="item"/g)).toHaveLength(2)
   })
 
   it('marks the managed availability as rescheduled in the calendar', () => {

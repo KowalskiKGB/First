@@ -102,8 +102,8 @@ function StepFour({ draft, onDraft, errors }) {
   return <div className="ai-wizard-fields">
     <div className="ai-review-grid"><div><span>{t('Goal')}</span><strong>{draft.goal}</strong></div><div><span>{t('Schedule')}</span><strong>{t('{0} days · {1} min', draft.availableDays.length, draft.minutesPerSession)}</strong></div><div><span>{t('Gym')}</span><strong>{draft.gymName}</strong></div><div><span>{t('Equipment')}</span><strong>{t('{0} categories', draft.genericEquipment.length)}</strong></div></div>
     <div className="ai-safety-note"><Icon name="shield" /><p>{draft.ageBand === 'under14' ? t('The plan will prioritize technique, supervision and conservative loads.') : t('The model never defines absolute loads; progression uses your training history.')}</p></div>
-    <label className="consent-row"><input type="checkbox" name="ai-consent" checked={draft.consent} onChange={event => onDraft({ consent: event.target.checked })} /><span><strong>{t('I authorize these data to be used for this generation.')}</strong><small>{t('Name, contact, finances and private Personal notes are not sent.')}</small></span></label><FieldError errors={errors} name="consent" />
-    {draft.ageBand !== 'adult' ? <><label className="consent-row"><input type="checkbox" name="ai-guardian-consent" checked={draft.guardianConsent === true} onChange={event => onDraft({ guardianConsent: event.target.checked })} /><span><strong>{t('Guardian confirmation')}</strong><small>{t('A responsible adult confirmed this training request.')}</small></span></label><FieldError errors={errors} name="guardianConsent" /></> : null}
+    <label className="consent-row"><input type="checkbox" name="ai-consent" checked={draft.consent} onChange={event => onDraft({ consent: event.target.checked })} aria-invalid={!!errors.consent} aria-describedby={errors.consent ? 'ai-error-consent' : undefined} /><span><strong>{t('I authorize these data to be used for this generation.')}</strong><small>{t('Name, contact, finances and private Personal notes are not sent.')}</small></span></label><FieldError errors={errors} name="consent" />
+    {draft.ageBand !== 'adult' ? <><label className="consent-row"><input type="checkbox" name="ai-guardian-consent" checked={draft.guardianConsent === true} onChange={event => onDraft({ guardianConsent: event.target.checked })} aria-invalid={!!errors.guardianConsent} aria-describedby={errors.guardianConsent ? 'ai-error-guardianConsent' : undefined} /><span><strong>{t('Guardian confirmation')}</strong><small>{t('A responsible adult confirmed this training request.')}</small></span></label><FieldError errors={errors} name="guardianConsent" /></> : null}
     <div className="health-flags"><label><input type="checkbox" name="ai-acute-risk" checked={draft.acuteRisk} onChange={event => onDraft({ acuteRisk: event.target.checked })} />{t('Acute pain or risk now')}</label><label><input type="checkbox" name="ai-medical-restriction" checked={draft.medicalRestriction} onChange={event => onDraft({ medicalRestriction: event.target.checked })} />{t('Medical restriction awaiting clearance')}</label></div>
     {draft.acuteRisk || draft.medicalRestriction ? <p className="form-error" role="alert">{t('Generation is blocked while an acute risk or medical restriction is active.')}</p> : null}
   </div>
@@ -116,9 +116,14 @@ export function AiWizard({ draft, onDraft, onClose, onSubmit, busy }) {
   const form = useRef(null)
   useEffect(() => { heading.current?.focus() }, [step])
   const patch = value => onDraft({ ...draft, ...value })
+  const focusFirstInvalid = () => requestAnimationFrame(() => {
+    const invalid = form.current?.querySelector('[aria-invalid="true"], fieldset[aria-describedby^="ai-error-"] button, fieldset[aria-describedby^="ai-error-"] input, input:invalid')
+    if (invalid) invalid.focus()
+    else heading.current?.focus()
+  })
   const validate = target => {
     const next = validateWizardStep(draft, target); setErrors(next)
-    if (Object.keys(next).length) requestAnimationFrame(() => form.current?.querySelector('[aria-invalid="true"], input:invalid')?.focus() || heading.current?.focus())
+    if (Object.keys(next).length) focusFirstInvalid()
     return Object.keys(next).length === 0
   }
   const next = () => { if (validate(step)) setStep(value => Math.min(4, value + 1)) }
@@ -126,7 +131,7 @@ export function AiWizard({ draft, onDraft, onClose, onSubmit, busy }) {
     event.preventDefault()
     for (let target = 1; target <= 4; target += 1) {
       const nextErrors = validateWizardStep(draft, target)
-      if (Object.keys(nextErrors).length) { setStep(target); setErrors(nextErrors); return }
+      if (Object.keys(nextErrors).length) { setStep(target); setErrors(nextErrors); focusFirstInvalid(); return }
     }
     if (!draft.acuteRisk && !draft.medicalRestriction) onSubmit(draft)
   }

@@ -48,7 +48,7 @@ describe('Workout accessibility', () => {
   it('uses a native button for every item under Other routines', () => {
     const markup = renderToStaticMarkup(<Workout />)
 
-    expect(markup).toContain('<button class="item"')
+    expect(markup).toMatch(/<button[^>]*class="item"/)
     expect(markup).not.toContain('<div class="item"')
   })
 

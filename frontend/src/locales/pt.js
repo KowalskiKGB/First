@@ -990,6 +990,7 @@ export default {
   'Read only': 'Somente leitura',
   'AI-managed workout': 'Treino gerenciado pela IA',
   'Prescribed workout': 'Treino prescrito',
+  'Personal guidance:': 'Orientação do Personal:',
   'Copy to My workout': 'Copiar para Meu treino',
   'Move up': 'Mover para cima',
   'Move down': 'Mover para baixo',

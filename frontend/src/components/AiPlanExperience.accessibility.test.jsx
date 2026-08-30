@@ -77,9 +77,13 @@ describe('AiWizard accessibility', () => {
 
   it('associates consent errors with the corresponding checkboxes', () => {
     const markup = renderToStaticMarkup(<AiWizard draft={draft} onDraft={() => {}} onClose={() => {}} onSubmit={() => {}} busy={false} />)
+    const consent = markup.match(/<input[^>]*name="ai-consent"[^>]*>/)?.[0]
+    const guardianConsent = markup.match(/<input[^>]*name="ai-guardian-consent"[^>]*>/)?.[0]
 
-    expect(markup).toMatch(/name="ai-consent"[^>]*aria-invalid="true"[^>]*aria-describedby="ai-error-consent"/)
-    expect(markup).toMatch(/name="ai-guardian-consent"[^>]*aria-invalid="true"[^>]*aria-describedby="ai-error-guardianConsent"/)
+    expect(consent).toContain('aria-invalid="true"')
+    expect(consent).toContain('aria-describedby="ai-error-consent"')
+    expect(guardianConsent).toContain('aria-invalid="true"')
+    expect(guardianConsent).toContain('aria-describedby="ai-error-guardianConsent"')
   })
 
   it('moves focus to the first invalid field after final validation changes step', () => {
