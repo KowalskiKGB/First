@@ -324,11 +324,37 @@ function verifySig(token) {
 // signing out the whole instance. Cookies minted before `sv` existed have no third field and are
 // read as version 0, matching a user who has never bumped — they stay valid until they expire.
 const sessionVersion = user => user.sv || 0;
+const ACCOUNT_ONLINE_TTL = 5 * 60000;
+const LAST_ACCESS_WRITE_INTERVAL = 5 * 60000;
+const accountPresence = new Map(); // uid -> most recent authenticated request (epoch ms)
+
+function recordAccountAccess(user, { login = false } = {}) {
+  const now = Date.now();
+  accountPresence.set(user.id, now);
+  const lastAccessAt = Number.isFinite(user.lastAccessAt) ? user.lastAccessAt : 0;
+  if (!login && now - lastAccessAt < LAST_ACCESS_WRITE_INTERVAL) return user;
+  const nextUser = { ...user, lastAccessAt: now, ...(login ? { lastLoginAt: now } : {}) };
+  db = { ...db, users: db.users.map(item => item.id === user.id ? nextUser : item) };
+  saveDb();
+  return nextUser;
+}
+
+function accountStatus(user, now = Date.now()) {
+  const activeAt = accountPresence.get(user.id);
+  if (activeAt && now - activeAt > ACCOUNT_ONLINE_TTL) accountPresence.delete(user.id);
+  const recentAt = activeAt && now - activeAt <= ACCOUNT_ONLINE_TTL ? activeAt : null;
+  const durableAt = Number.isFinite(user.lastAccessAt) ? user.lastAccessAt : null;
+  return {
+    online: !user.disabled && recentAt !== null,
+    lastAccessAt: recentAt === null ? durableAt : Math.max(recentAt, durableAt || 0)
+  };
+}
+
 function makeSession(user) {
   const exp = Date.now() + SESSION_DAYS * 86400000;
   return sign(user.id + ':' + exp + ':' + sessionVersion(user));
 }
-function readSession(req) {
+function readSession(req, { trackAccess = true } = {}) {
   const cookies = Object.fromEntries((req.headers.cookie || '').split(';').map(c => {
     const i = c.indexOf('='); return i < 0 ? ['', ''] : [c.slice(0, i).trim(), c.slice(i + 1).trim()];
   }));
@@ -345,7 +371,7 @@ function readSession(req) {
   // payload (it still had to pass the HMAC, so this is belt-and-braces) and is refused outright.
   const claimed = ver === undefined ? 0 : Number(ver);
   if (!Number.isInteger(claimed) || claimed !== sessionVersion(user)) return null;
-  return user;
+  return trackAccess ? recordAccountAccess(user) : user;
 }
 // Guard for /api/admin/* — resolves the caller and 401/403s if they aren't an admin.
 function requireAdmin(req, res) {
@@ -596,13 +622,16 @@ const routes = {
     if (INVITE_ONLY && !invite) return json(res, 403, { error: 'a valid invite code is required' });
 
     const profile = profileFields(body);
-    const created = new Date().toISOString();
+    const accessedAt = Date.now();
+    const created = new Date(accessedAt).toISOString();
     const user = {
       id: crypto.randomBytes(12).toString('base64url'),
       name,
       email,
       passwordHash: hashDevPassword(password),
       created,
+      lastAccessAt: accessedAt,
+      lastLoginAt: accessedAt,
       ...(Object.keys(profile).length ? { profile } : {}),
       ...(invite ? { invitedBy: invite.code } : {})
     };
@@ -617,6 +646,7 @@ const routes = {
         : db.invites
     };
     saveDb();
+    accountPresence.set(user.id, accessedAt);
     json(res, 200, { user: publicUser(user), profile }, { 'Set-Cookie': sessionCookie(user) });
   },
 
@@ -635,7 +665,8 @@ const routes = {
     if (!user || !authenticated) return json(res, 401, { error: 'invalid email or password' });
     if (user.disabled) return json(res, 403, { error: 'this account has been disabled' });
     studentLoginAttempts.delete(attemptKey);
-    json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
+    const activeUser = recordAccountAccess(user, { login: true });
+    json(res, 200, { user: publicUser(activeUser) }, { 'Set-Cookie': sessionCookie(activeUser) });
   },
 
   'GET /api/me': async (req, res) => {
@@ -737,16 +768,34 @@ const routes = {
       invite = db.invites.find(i => i.code === c.code && !i.usedBy && !i.revoked);
       if (!invite) return json(res, 403, { error: 'invite code is no longer valid — ask for a new one' });
     }
-    const user = { id: c.uid, name: c.name, created: new Date().toISOString() };
-    if (invite) { user.invitedBy = invite.code; invite.usedBy = user.id; invite.usedAt = user.created; }
-    db.users.push(user);
-    db.creds.push({
+    const accessedAt = Date.now();
+    const created = new Date(accessedAt).toISOString();
+    const user = {
+      id: c.uid,
+      name: c.name,
+      created,
+      lastAccessAt: accessedAt,
+      lastLoginAt: accessedAt,
+      ...(invite ? { invitedBy: invite.code } : {})
+    };
+    const storedCredential = {
       id: credential.id, userId: user.id,
       publicKey: Buffer.from(credential.publicKey).toString('base64url'),
       counter: credential.counter || 0,
       transports: body.credential?.response?.transports || []
-    });
+    };
+    db = {
+      ...db,
+      users: [...db.users, user],
+      creds: [...db.creds, storedCredential],
+      invites: invite
+        ? db.invites.map(item => item.code === invite.code
+          ? { ...item, usedBy: user.id, usedAt: created }
+          : item)
+        : db.invites
+    };
     saveDb();
+    accountPresence.set(user.id, accessedAt);
     json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
   },
 
@@ -781,24 +830,45 @@ const routes = {
       });
     } catch (e) { return json(res, 400, { error: 'verification failed: ' + e.message }); }
     if (!verification.verified) return json(res, 400, { error: 'not verified' });
-    cred.counter = verification.authenticationInfo.newCounter;
-    saveDb();
     const user = db.users.find(u => u.id === cred.userId);
     if (!user) return json(res, 500, { error: 'user missing' });
     if (user.disabled) return json(res, 403, { error: 'this account has been disabled' });
-    json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
+    db = {
+      ...db,
+      creds: db.creds.map(item => item.id === cred.id
+        ? { ...item, counter: verification.authenticationInfo.newCounter }
+        : item)
+    };
+    const activeUser = recordAccountAccess(user, { login: true });
+    json(res, 200, { user: publicUser(activeUser) }, { 'Set-Cookie': sessionCookie(activeUser) });
   },
 
-  'POST /api/logout': async (req, res) => json(res, 200, { ok: true }, { 'Set-Cookie': clearCookie }),
+  'POST /api/logout': async (req, res) => {
+    const user = readSession(req, { trackAccess: false });
+    if (user) {
+      const lastAccessAt = Date.now();
+      db = {
+        ...db,
+        users: db.users.map(item => item.id === user.id ? { ...item, lastAccessAt } : item)
+      };
+      accountPresence.delete(user.id);
+      presence.delete(user.id);
+      saveDb();
+    }
+    json(res, 200, { ok: true }, { 'Set-Cookie': clearCookie });
+  },
 
   // "Sign out everywhere" — bumps this user's session version, which invalidates every cookie
   // ever issued for the account, on every device, including a copy someone else walked off with.
   // The caller's own cookie is cleared here too, so the browser doing it doesn't sit on a token
   // it no longer accepts. Passkeys are untouched: signing back in works immediately.
   'POST /api/logout/all': async (req, res) => {
-    const user = readSession(req);
+    const user = readSession(req, { trackAccess: false });
     if (!user) return json(res, 401, { error: 'not signed in' });
-    user.sv = sessionVersion(user) + 1;
+    const nextUser = { ...user, sv: sessionVersion(user) + 1, lastAccessAt: Date.now() };
+    db = { ...db, users: db.users.map(item => item.id === user.id ? nextUser : item) };
+    accountPresence.delete(user.id);
+    presence.delete(user.id);
     saveDb();
     json(res, 200, { ok: true }, { 'Set-Cookie': clearCookie });
   },
@@ -1018,13 +1088,18 @@ const routes = {
   // One row per user, cheap enough for a personal instance (reads each state file once).
   'GET /api/admin/users': async (req, res) => {
     if (!requireAdmin(req, res)) return;
+    const now = Date.now();
     const users = db.users.map(u => {
       const S = readState(u.id) || {};
       const workouts = S.workouts || [];
       const last = workouts[workouts.length - 1];
+      const status = accountStatus(u, now);
       return {
-        id: u.id, name: u.name, created: u.created || null,
+        id: u.id, name: u.name, email: u.email || null, created: u.created || null,
         disabled: !!u.disabled, admin: isAdmin(u), invitedBy: u.invitedBy || null,
+        online: status.online,
+        lastAccessAt: status.lastAccessAt,
+        lastLoginAt: Number.isFinite(u.lastLoginAt) ? u.lastLoginAt : null,
         workouts: workouts.length,
         lastWorkout: last ? last.d : null,
         lastSync: S._ts || null,
@@ -1032,7 +1107,7 @@ const routes = {
         live: livePresence(u.id)
       };
     });
-    json(res, 200, { users, invite_only: INVITE_ONLY, now: Date.now() });
+    json(res, 200, { users, invite_only: INVITE_ONLY, now });
   },
 
   // Drill-down: full workout history + body-weight log for one user.
@@ -1042,8 +1117,15 @@ const routes = {
     const u = db.users.find(x => x.id === id);
     if (!u) return json(res, 404, { error: 'no such user' });
     const S = readState(u.id) || {};
+    const status = accountStatus(u);
     json(res, 200, {
-      user: { id: u.id, name: u.name, created: u.created || null, disabled: !!u.disabled, admin: isAdmin(u), invitedBy: u.invitedBy || null },
+      user: {
+        id: u.id, name: u.name, email: u.email || null, created: u.created || null,
+        disabled: !!u.disabled, admin: isAdmin(u), invitedBy: u.invitedBy || null,
+        online: status.online,
+        lastAccessAt: status.lastAccessAt,
+        lastLoginAt: Number.isFinite(u.lastLoginAt) ? u.lastLoginAt : null
+      },
       unit: S.unit || 'kg',
       lastSync: S._ts || null,
       routines: (S.routines || []).map(r => ({ id: r.id, name: r.name, emoji: r.emoji, count: (r.ex || []).length })),
@@ -1058,10 +1140,15 @@ const routes = {
     const u = db.users.find(x => x.id === body.id);
     if (!u) return json(res, 404, { error: 'no such user' });
     if (isAdmin(u)) return json(res, 400, { error: 'cannot disable an admin' });
-    u.disabled = !!body.disabled;
-    if (u.disabled) presence.delete(u.id);   // drop them off "training now" at once
+    const disabled = !!body.disabled;
+    const nextUser = { ...u, disabled };
+    db = { ...db, users: db.users.map(item => item.id === u.id ? nextUser : item) };
+    if (disabled) {
+      accountPresence.delete(u.id);
+      presence.delete(u.id);
+    }
     saveDb();
-    json(res, 200, { ok: true, id: u.id, disabled: u.disabled });
+    json(res, 200, { ok: true, id: u.id, disabled });
   },
 
   'GET /api/admin/invites': async (req, res) => {

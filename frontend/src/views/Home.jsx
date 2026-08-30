@@ -6,10 +6,10 @@ import LineChart from '../components/LineChart.jsx'
 import { Button } from '../components/ui.jsx'
 import { effectiveRoutineId, lastBW, streakWeeks, trainedDates } from '../lib/history.js'
 import { aiProfile } from '../lib/ai-plan.js'
-import { DAYS, fmtDate, fmtNum, isoOf, todayISO, weekKey } from '../lib/format.js'
+import { DAYS, fmtDate, fmtNum, isoOf, todayISO } from '../lib/format.js'
 import { glyphOf } from '../lib/glyphs.js'
 import { dateLocale, t } from '../lib/i18n.js'
-import { scheduledRoutineOptions, scheduledRoutineOptionsForWeekday } from '../lib/schedule.js'
+import { scheduledRoutineOptions } from '../lib/schedule.js'
 import { bwDeltaColor, bwSheet, calendarSheet, dayOverrideSheet, goalSheet, startFlow } from '../sheets.jsx'
 import { useStore } from '../store/useStore.js'
 
@@ -39,7 +39,6 @@ export default function Home() {
   monday.setDate(today.getDate() - ((today.getDay() + 6) % 7) + weekOffset * 7)
   const doneDays = trainedDates(S.workouts)
   const strip = []
-  let selectedWeekDone = 0
   for (let index = 0; index < 7; index += 1) {
     const date = new Date(monday)
     date.setDate(monday.getDate() + index)
@@ -47,7 +46,6 @@ export default function Home() {
     const dayRoutine = scheduledRoutineOptions(S, iso)[0]?.routine || S.routines.find(item => item.id === effectiveRoutineId(S, iso))
     const override = S.dayPlan[iso] !== undefined
     const done = doneDays.has(iso)
-    if (done) selectedWeekDone += 1
     const dot = done ? ' done' : override && dayRoutine ? ' ovr' : dayRoutine ? ' plan' : ''
     const dateLabel = date.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })
     const routineName = dayRoutine ? t(dayRoutine.name) : ''
@@ -65,6 +63,7 @@ export default function Home() {
         className={`wday home-week-day home-week-day-card${stateClass}${iso === todayId ? ' today' : ''}`}
         onClick={() => dayOverrideSheet(iso)}
         aria-label={`${dateLabel}: ${dayStatus}`}
+        aria-current={iso === todayId ? 'date' : undefined}
       >
         <span className="lbl">{t(DAYS[date.getDay()])}</span>
         <span className="num">{date.getDate()}</span>
@@ -79,8 +78,6 @@ export default function Home() {
   const weekLabel = weekOffset === 0
     ? t('This week')
     : `${monday.getDate()} ${monday.toLocaleDateString(dateLocale(), { month: 'short' })} – ${sunday.getDate()} ${sunday.toLocaleDateString(dateLocale(), { month: 'short' })}`
-  const completedThisWeek = [...doneDays].filter(date => weekKey(date) === weekKey(todayId)).length
-  const plannedPerWeek = Array.from({ length: 7 }, (_, day) => scheduledRoutineOptionsForWeekday(S, day).length > 0).filter(Boolean).length
   const bwPoints = S.bodyweight.slice(-30).map(entry => ({ t: entry.t || new Date(entry.d).getTime(), y: entry.w, d: entry.d }))
   const readiness = [
     [t('Current weight'), Boolean(bw?.w)],
@@ -115,16 +112,10 @@ export default function Home() {
       </div>
     </header>
 
-    <section className="card home-week-card" aria-labelledby="home-week-title">
-      <div className="home-card-heading">
-        <div>
-          <h2 id="home-week-title">{t('This week')}</h2>
-        </div>
-        <strong>{selectedWeekDone}{plannedPerWeek ? ` / ${plannedPerWeek}` : ''}</strong>
-      </div>
+    <section className="card home-week-card" aria-labelledby="home-week-label">
       <div className="home-week-nav">
         <button className="iconbtn" onClick={() => setWeekOffset(value => value - 1)} aria-label={t('Previous week')}><Icon name="chevronLeft" /></button>
-        <span>{weekLabel}</span>
+        <span id="home-week-label">{weekLabel}</span>
         <button className="iconbtn" onClick={() => setWeekOffset(value => value + 1)} aria-label={t('Next week')}><Icon name="chevronRight" /></button>
       </div>
       <div className="week home-week-rail">{strip}</div>
@@ -193,7 +184,7 @@ export default function Home() {
     <button type="button" className="card tappable" onClick={() => calendarSheet()} aria-label={t('Open training calendar')}>
       <div>
         <div className="home-streak"><Icon name="flame" />{t('{0} week streak', streakWeeks(S))}</div>
-        <div className="muted small">{completedThisWeek}{plannedPerWeek ? ` / ${plannedPerWeek}` : ''} {t('this week')} · {t(S.workouts.length === 1 ? '{0} workout total' : '{0} workouts total', S.workouts.length)}</div>
+        <div className="muted small">{t(S.workouts.length === 1 ? '{0} workout total' : '{0} workouts total', S.workouts.length)}</div>
       </div>
       <Icon name="calendar" className="chev" />
     </button>

@@ -92,7 +92,8 @@ test('student Home invites login, registers profile data, gates AI and exposes p
   await page.getByRole('button', { name: 'Criar minha conta' }).click()
 
   await expect(page.getByRole('heading', { name: 'Olá, Beatriz Lima' })).toBeVisible()
-  expect(fixtures.calls.find(call => call.pathname === '/api/auth/register').body).toMatchObject({
+  const registrationRequest = fixtures.calls.find(call => call.pathname === '/api/auth/register').body
+  expect(registrationRequest).toMatchObject({
     email: 'beatriz@example.com',
     fullName: 'Beatriz Lima',
     password: 'abc123',
@@ -102,6 +103,7 @@ test('student Home invites login, registers profile data, gates AI and exposes p
     measurements: { waistCm: 91, armCm: 34 },
     goal: 'both',
   })
+  expect(registrationRequest).not.toHaveProperty('confirmPassword')
 
   await page.getByRole('button', { name: 'Montar treino com IA' }).first().click()
   await expect(page).toHaveURL(/#\/plan/)
@@ -160,7 +162,7 @@ test('a successful registration recovers its session without asking the student 
   await page.locator('[name="confirmPassword"]').fill('abc123')
   await page.getByRole('button', { name: 'Criar minha conta' }).click()
 
-  await expect(page.getByRole('heading', { name: 'OlÃ¡, Ana Teste' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Ana Teste$/ })).toBeVisible()
   await expect(page.locator('body')).not.toContainText(/confirmar a conta|Cannot read properties|undefined.*name/i)
   expect(fixtures.calls.filter(call => call.pathname === '/api/auth/login')).toHaveLength(1)
 })
@@ -178,7 +180,7 @@ test('registration blocks mismatched passwords before sending account data', asy
   await page.locator('[name="confirmPassword"]').fill('abc124')
   await page.getByRole('button', { name: 'Criar minha conta' }).click()
 
-  await expect(page.getByRole('alert')).toContainText('As senhas nÃ£o coincidem')
+  await expect(page.getByRole('alert')).toContainText(/senhas n.o coincidem/i)
   expect(fixtures.calls.filter(call => call.pathname === '/api/auth/register')).toHaveLength(0)
 })
 

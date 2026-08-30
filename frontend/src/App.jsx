@@ -135,14 +135,24 @@ function AccountSheet({ initialMode, close }) {
         body: JSON.stringify(registering ? registrationBody(values) : { email: values.email, password: values.password }),
       })
       let authenticatedUser = response?.user
-      if (!validAuthUser(authenticatedUser)) {
+      if (registering && !validAuthUser(authenticatedUser)) {
+        try {
+          authenticatedUser = (await api('/api/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ email: values.email, password: values.password }),
+          }))?.user
+        } catch { authenticatedUser = null }
+      }
+      if (!registering && !validAuthUser(authenticatedUser)) {
         try { authenticatedUser = (await api('/api/me'))?.user } catch { authenticatedUser = null }
       }
-      if (!validAuthUser(authenticatedUser)) throw new Error('The account response could not be confirmed. Please sign in again.')
+      if (!validAuthUser(authenticatedUser)) throw new Error(registering
+        ? 'Your account was created, but automatic sign-in failed. Sign in with your email and password.'
+        : 'Sign-in failed')
       const store = useStore.getState()
       store.setUser(authenticatedUser)
       if (registering) {
-        mergeRegistrationProfile(response.profile, values)
+        mergeRegistrationProfile(response?.profile, values)
         await useStore.getState().pushState()
         useUI.getState().toast(t(hadLocalData ? 'Profile created — data from this device moved into it' : 'Welcome, {0}', authenticatedUser.name))
       } else {
@@ -195,6 +205,22 @@ function Shell() {
   useEffect(() => { document.documentElement.lang = S.lang || DEFAULT_LANG }, [langV, S.lang])
   useEffect(() => { loadCollaboration(useStore.getState().user) }, [loadCollaboration, user?.id, isGuest])
   useEffect(() => { if (Array.isArray(programs)) syncPersonalPrograms(programs) }, [programs, syncPersonalPrograms])
+  useEffect(() => {
+    if (!user?.id || isGuest) return undefined
+    const heartbeat = () => {
+      if (document.visibilityState !== 'visible') return
+      void api('/api/me').catch(error => {
+        if (error?.status === 401 && useStore.getState().user?.id === user.id) useStore.getState().setUser(null)
+      })
+    }
+    heartbeat()
+    const interval = window.setInterval(heartbeat, 60_000)
+    document.addEventListener('visibilitychange', heartbeat)
+    return () => {
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', heartbeat)
+    }
+  }, [user?.id, isGuest])
   // every tab/route change starts at the top of the page
   useEffect(() => { window.scrollTo(0, 0) }, [loc.pathname])
   // bound to the workout, not to the route — checking Stats mid-session keeps the screen on

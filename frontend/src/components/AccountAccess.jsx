@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 
 import { t } from '../lib/i18n.js'
 import Icon from './Icon.jsx'
@@ -8,6 +8,7 @@ const EMPTY_VALUES = {
   fullName: '',
   email: '',
   password: '',
+  confirmPassword: '',
   inviteCode: '',
   weightKg: '',
   targetWeightKg: '',
@@ -75,6 +76,8 @@ export function AccountAccess({
 }) {
   const prefix = useId()
   const [values, setValues] = useState(() => accessDraft(initialValues))
+  const [validationError, setValidationError] = useState('')
+  const confirmPasswordRef = useRef(null)
   const register = mode === 'register'
   const field = name => ({
     value: values[name] ?? '',
@@ -86,6 +89,12 @@ export function AccountAccess({
   })
   const submit = event => {
     event.preventDefault()
+    if (register && values.password !== values.confirmPassword) {
+      setValidationError(t('Passwords do not match.'))
+      confirmPasswordRef.current?.focus()
+      return
+    }
+    setValidationError('')
     const credentials = { email: values.email.trim(), password: values.password }
     onSubmit?.(register ? registrationPayload(values) : credentials)
   }
@@ -101,7 +110,7 @@ export function AccountAccess({
           : 'Sign in to sync your workouts and build a weekly plan with AI.')}</p>
       </div>
 
-      {error ? <p className="form-error" role="alert">{error}</p> : null}
+      {error || validationError ? <p id={`${prefix}-form-error`} className="form-error" role="alert">{validationError || error}</p> : null}
 
       <form className="account-access-form" onSubmit={submit}>
         <fieldset className="account-access-section" disabled={busy}>
@@ -123,6 +132,30 @@ export function AccountAccess({
             <TextField id={`${prefix}-password`} name="password" type="password" autoComplete={register ? 'new-password' : 'current-password'} minLength={6} maxLength={128} required {...field('password')} />
             {register ? <small>{t('Use at least 6 characters.')}</small> : null}
           </label>
+
+          {register ? (
+            <label htmlFor={`${prefix}-confirmPassword`}>
+              <span>{t('Confirm password')}</span>
+              <TextField
+                ref={confirmPasswordRef}
+                id={`${prefix}-confirmPassword`}
+                name="confirmPassword"
+                type="password"
+                autoComplete="new-password"
+                minLength={6}
+                maxLength={128}
+                required
+                aria-invalid={validationError ? true : undefined}
+                aria-describedby={validationError ? `${prefix}-form-error` : undefined}
+                value={values.confirmPassword}
+                onChange={event => {
+                  const confirmPassword = event.target.value
+                  setValues(current => ({ ...current, confirmPassword }))
+                  if (validationError && confirmPassword === values.password) setValidationError('')
+                }}
+              />
+            </label>
+          ) : null}
 
           {register && inviteOnly ? (
             <label htmlFor={`${prefix}-inviteCode`}>
@@ -182,7 +215,10 @@ export function AccountAccess({
       <button
         type="button"
         className="account-access-switch"
-        onClick={() => onModeChange?.(register ? 'login' : 'register')}
+        onClick={() => {
+          setValidationError('')
+          onModeChange?.(register ? 'login' : 'register')
+        }}
         disabled={busy}
       >
         {t(register ? 'Already have an account' : 'Create account')}

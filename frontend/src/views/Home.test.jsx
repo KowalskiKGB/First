@@ -90,7 +90,7 @@ describe('Home schedule summary', () => {
   afterAll(() => vi.useRealTimers())
   afterEach(() => vi.unstubAllGlobals())
 
-  it('counts a date once in weekly adherence when two sessions were completed that day', () => {
+  it('keeps two same-day sessions in the total without restoring a weekly fraction', () => {
     harness.state.workouts = [
       { id: 'manual-session', d: '2026-08-31', entries: [] },
       { id: 'ai-session', d: '2026-08-31', sourceType: 'ai', entries: [] },
@@ -98,8 +98,8 @@ describe('Home schedule summary', () => {
 
     const markup = renderToStaticMarkup(<Home />)
 
-    expect(markup).toContain('>1 / 1 this week')
     expect(markup).toContain('2 workouts total')
+    expect(markup).not.toMatch(/>\s*1\s*\/\s*1\s*this week/)
   })
 
   it('shows a real managed option even when rest is stored as the day preference', () => {
