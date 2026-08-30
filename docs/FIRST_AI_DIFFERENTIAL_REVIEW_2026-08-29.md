@@ -4,11 +4,11 @@ Data: 2026-08-29
 
 Baseline: `2658eb57a1d8c44b64e0498e7f8f270d49591e79`
 
-Revisado até: `0ebfa58a1032a400a10f9a0720c084fd31f069ef`
+Revisado até: `e1736c21f7a0a98b47cf06fadee152b46fb90f72`
 
 ## Resumo executivo
 
-**Aprovado para o deploy privado de instância única, sem achados críticos ou altos abertos.** O diferencial tem 100 arquivos, 9.827 adições e 998 remoções. A revisão foi classificada como alta criticidade por alterar autenticação Dev, criptografia de chaves, chamadas externas, autorização entre aluno e Personal, aplicação automática de planos e recuperação do volume.
+**Aprovado para o deploy privado de instância única, sem achados críticos ou altos abertos.** O diferencial tem 100 arquivos, 9.977 adições e 998 remoções. A revisão foi classificada como alta criticidade por alterar autenticação Dev, criptografia de chaves, chamadas externas, autorização entre aluno e Personal, aplicação automática de planos e recuperação do volume.
 
 O protótipo inseguro que persistia `initialPassword` foi removido. A configuração atual exige credencial Dev via ambiente, guarda somente hash scrypt, criptografa chaves comerciais com AES-256-GCM e só ativa uma combinação provedor/modelo depois de teste estruturado real.
 
@@ -20,7 +20,7 @@ O protótipo inseguro que persistia `initialPassword` foi removido. A configura�
 - Fila persistida e idempotente, validação semântica antes da aplicação, recuperação conservadora após reinício e rollback (`api/ai-jobs.js:111-325`).
 - Perfis, academia, medidas, permissões `trainingProfileWrite`/`aiPlanRead`, planos e uso migrados para o armazenamento colaborativo (`api/domain/schema.js:1-277`, `api/personal.js`).
 - Agendas manual, Personal e IA coexistem, com origem e versão no histórico; o frontend recebeu wizard, estados de job, Painel Dev e aba IA do Personal.
-- Backup/restore agora param e confirmam o único writer, copiam a origem para um inode 0600 sem pathname e mantido por descritor de leitura, rejeitam links/tipos especiais antes da troca, verificam falhas de traversal, mantêm recovery e só fazem rollback após nova confirmação de parada; o gerador Dev publica por link exclusivo e mantém descritores dos inodes próprios durante toda a transação, sem remover substituições externas (`scripts/backup-first-data.sh`, `scripts/restore-first-data.sh`, `scripts/generate-release-credentials.mjs`).
+- Backup/restore agora param e confirmam o único writer, copiam a origem para um inode 0600 sem pathname mantido por descritor de leitura em `TMPDIR` canônico privado, rejeitam links/tipos especiais antes da troca, verificam falhas de traversal, mantêm recovery e só fazem rollback após nova confirmação de parada. O gerador Dev publica por link exclusivo a partir de diretórios 0700 e, em falha, limpa os inodes próprios pelos descritores sem remover pathnames finais ou substituições externas (`scripts/backup-first-data.sh`, `scripts/restore-first-data.sh`, `scripts/generate-release-credentials.mjs`).
 
 ## Análise por superfície
 
@@ -86,13 +86,13 @@ Os módulos críticos possuem unitários e integração, e os fluxos principais 
 - Playwright: 11/11, incluindo wizard/aplicação/rollback, remount de job, Dev sem vazamento de chave, Personal e seletor de sessões em mobile/desktop.
 - `npm audit` completo e produção: zero vulnerabilidades em API e frontend.
 - Build Vite, build das imagens `first-api`/`first-web`, Compose config e APK debug passaram.
-- Release operacional: 24/24 testes comportamentais/contratuais em Windows/Git Bash e Alpine 3.22, deployment 2/2 e sintaxe Bash dos dois scripts validada nos dois ambientes. Os casos cobrem troca da origem e do pathname antigo de snapshot, substituição de inode publicado, falha de `find` com stdout vazio, API ainda ativa após `stop`, links, FIFO e device.
+- Release operacional: 26/26 testes comportamentais/contratuais em Windows/Git Bash e Alpine 3.22, deployment 2/2 e sintaxe Bash dos dois scripts validada nos dois ambientes. Os casos cobrem `TMPDIR` canônico, diretório 0700 inacessível a `nobody`, snapshot real 0600 removido após vincular o FD, troca da origem, placeholder vazio, substituição após a checagem de inode, falha de `find` com stdout vazio, API ainda ativa após `stop`, links, FIFO e device.
 
 ## Blast radius e histórico
 
 - Estratégia focada para repositório médio: todos os 100 arquivos alterados foram triados; auth, crypto, chamadas externas, job, schema, autorização e recovery tiveram leitura profunda.
 - Ocorrências por arquivo: `createDevAuth` 3, `isTrustedMutation` 3, `encryptProviderKey` 2, `runStructuredOutput` 4, `createAiJobService` 3, `saveTrainingProfile` 2, `saveGymProfile` 2 e `buildAiContext` 2.
-- O histórico mostra a remoção explícita de `initialPassword`, geração automática em `/data`, fallback para qualquer provedor configurado, retenção excessiva de uso e restore destrutivo. Os commits de endurecimento relevantes incluem `bef5b4d`, `7db2f1f`, `c72737d`, `4671d35`, `b33fe54`, `e1dd575`, `60babb2`, `1007c28`, `4232e78`, `c5dafb7`, `0389e3c`, `bf3dae8`, `a944ee6`, `f50f5d0` e `0ebfa58`.
+- O histórico mostra a remoção explícita de `initialPassword`, geração automática em `/data`, fallback para qualquer provedor configurado, retenção excessiva de uso e restore destrutivo. Os commits de endurecimento relevantes incluem `bef5b4d`, `7db2f1f`, `c72737d`, `4671d35`, `b33fe54`, `e1dd575`, `60babb2`, `1007c28`, `4232e78`, `c5dafb7`, `0389e3c`, `bf3dae8`, `a944ee6`, `f50f5d0`, `0ebfa58`, `7f24175`, `2f78055` e `e1736c2`.
 - Nenhum acesso removido de um commit de segurança foi encontrado sem controle substituto.
 
 ## Limitações e confiança

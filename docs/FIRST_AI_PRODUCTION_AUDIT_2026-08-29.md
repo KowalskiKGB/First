@@ -28,7 +28,7 @@ Nenhum bloqueador de código foi encontrado. Antes de liberar o host, o operador
 - `docker compose config --quiet`: concluído com fixtures não produtivas.
 - Imagens `first-api` e `first-web`: construídas sem chave de IA.
 - Health em `NODE_ENV=production` sem provedor/master key: HTTP 200 e `{"ok":true}`.
-- Operações de release: 24/24 testes comportamentais/contratuais em Windows/Git Bash e Alpine 3.22, deployment 2/2 e sintaxe Bash validada nos dois ambientes. O restore usa inode privado 0600 sem pathname e descritor estável, falhas de `find` abortam explicitamente, e o gerador mantém descritores próprios para não remover substituições externas; nenhum segredo real foi gerado neste ciclo de auditoria.
+- Operações de release: 26/26 testes comportamentais/contratuais em Windows/Git Bash e Alpine 3.22, deployment 2/2 e sintaxe Bash validada nos dois ambientes. O restore usa `TMPDIR` canônico externo, diretório 0700 e inode privado 0600 sem pathname com descritor estável; falhas de `find` abortam explicitamente. O gerador mantém temporários em diretórios 0700 e, em falha, trunca e sincroniza somente os inodes próprios pelos FDs, deixando placeholder vazio sem apagar uma substituição externa; nenhum segredo real foi gerado neste ciclo de auditoria.
 - Capacitor: build web móvel, cópia de 1.324 JPG/1.324 GIF e sync Android/iOS concluídos.
 - Android: `assembleDebug` concluído; APK em `frontend/android/app/build/outputs/apk/debug/app-debug.apk`, 146.281.079 bytes, SHA-256 `B6DD25C92DE82C98BE88335D2F3C5BC6A5F1A95775F84E5B8B6FDD4B8F3F6CB5`.
 - Scan local de arquivos rastreados: nenhuma private key, chave OpenAI/Anthropic/Google ou atribuição de segredo conhecida; nenhum artefato de build rastreado.
