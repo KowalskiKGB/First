@@ -113,7 +113,7 @@ const exercisePrescription = exercise => exercise.mode === 'time'
 function PlanDetails({ plan }) {
   const routines = Array.isArray(plan.routines) ? plan.routines : []
   const routineById = new Map(routines.map(routine => [routine.id, routine]))
-  const schedule = scheduleEntries(plan).toSorted((a, b) => a.day - b.day)
+  const schedule = [...scheduleEntries(plan)].sort((a, b) => (a.day || 7) - (b.day || 7))
   if (!routines.length) return null
   return (
     <>

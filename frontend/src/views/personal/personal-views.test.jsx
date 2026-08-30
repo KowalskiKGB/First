@@ -172,6 +172,33 @@ describe('professional Personal views SSR', () => {
     expect(markup).toContain('Remove Flexão lateral a 45°')
   })
 
+  it('orders the read-only AI schedule from Monday through Sunday', () => {
+    useCollaboration.setState({
+      connections: [{
+        id: 'connection-1', trainerId: 'trainer-1', studentId: 'student-1', status: 'active',
+        grants: { trainingProfileWrite: false, aiPlanRead: true },
+      }],
+      detail: {
+        ...collaborationState.detail,
+        client: {
+          ...client,
+          aiPlan: {
+            id: 'plan-order', version: 1, provider: 'openai', model: 'gpt-5', contextHash: 'order', justification: 'Ordem semanal', appliedAt: '2026-08-29T12:00:00Z',
+            schedule: [{ day: 0, routineId: 'sunday' }, { day: 1, routineId: 'monday' }],
+            routines: [{ id: 'sunday', name: 'Sessão domingo', exercises: [] }, { id: 'monday', name: 'Sessão segunda', exercises: [] }],
+          },
+        },
+      },
+    })
+
+    const markup = render(
+      <Routes><Route path="/personal/alunos/:id/:tab?" element={<StudentDetail />} /></Routes>,
+      ['/personal/alunos/client-1/ia'],
+    )
+
+    expect(markup.indexOf('Sessão segunda')).toBeLessThan(markup.indexOf('Sessão domingo'))
+  })
+
   it('renders only today plus next classes on the global schedule', () => {
     const markup = render(<Agenda />)
     expect(markup).toContain('Today timeline')

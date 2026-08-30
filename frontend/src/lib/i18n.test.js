@@ -61,6 +61,15 @@ describe('Brazilian Portuguese defaults', () => {
       'Enter the machine name.',
       'Choose at least one supported exercise.',
       'Enter a valid optional measurement.',
+      'Keep the goal within 160 characters.',
+      'Choose valid available days.',
+      'Choose up to 12 training priorities.',
+      'Choose up to 60 supported exercises.',
+      'Enter up to 1,000 characters.',
+      'Enter a valid machine category.',
+      'Choose valid available equipment.',
+      'Add no more than 40 specific machines.',
+      'Enter a valid measurement date.',
       'Personal guidance:',
     ]
 
