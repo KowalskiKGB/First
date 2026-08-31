@@ -1,4 +1,4 @@
-import { MACAPA_GYM_SEED, MACAPA_GYM_SEED_VERSION } from './data/macapa-gyms.js';
+import { MACAPA_GYM_REVIEW_SEED, MACAPA_GYM_SEED, MACAPA_GYM_SEED_VERSION } from './data/macapa-gyms.js';
 
 const GYM_STATUSES = new Set(['unverified', 'verified', 'partner', 'closed', 'archived']);
 const VISIBILITIES = new Set(['public', 'hidden']);
@@ -165,9 +165,15 @@ export function applyGymSeed(value) {
   const known = new Set(directory.map(item => item.id));
   const blocked = new Set(tombstones);
   const additions = MACAPA_GYM_SEED.filter(item => !known.has(item.id) && !blocked.has(item.id)).map(item => structuredClone(item));
+  const reviews = Array.isArray(collaboration.gymReviews) ? collaboration.gymReviews : [];
+  const knownReviews = new Set(reviews.map(item => item?.id));
+  const availableGyms = new Set([...directory, ...additions].map(item => item.id));
+  const reviewAdditions = MACAPA_GYM_REVIEW_SEED
+    .filter(item => availableGyms.has(item.gymId) && !knownReviews.has(item.id)).map(item => structuredClone(item));
   return {
     ...structuredClone(collaboration),
     gymDirectory: [...directory, ...additions],
+    gymReviews: [...structuredClone(reviews), ...reviewAdditions],
     gymSeedTombstones: tombstones,
     gymSeedVersion: MACAPA_GYM_SEED_VERSION
   };

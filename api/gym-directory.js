@@ -108,7 +108,8 @@ function reviewPayload(value) {
 function publicReview(review, users) {
   const author = users.find(user => user.id === review.userId);
   const parts = clean(author?.name, 160).split(/\s+/).filter(Boolean);
-  const displayName = parts.length > 1 ? `${parts[0]} ${parts.at(-1)[0]}.` : parts[0] || 'Aluno';
+  const displayName = review.demo ? 'Perfil de demonstração'
+    : parts.length > 1 ? `${parts[0]} ${parts.at(-1)[0]}.` : parts[0] || 'Aluno';
   return {
     id: review.id, gymId: review.gymId, rating: review.rating, comment: review.comment,
     ...(review.demo ? { demo: true } : {}), displayName, createdAt: review.createdAt, updatedAt: review.updatedAt

@@ -41,7 +41,7 @@ const node = id => ({ url: osmUrl('node', id), confidence: 'high' });
 const way = id => ({ url: osmUrl('way', id), confidence: 'medium' });
 const cadastral = url => ({ provider: 'Econodata CNPJ', url, confidence: 'medium' });
 
-export const MACAPA_GYM_SEED_VERSION = 'macapa-2026-09-02';
+export const MACAPA_GYM_SEED_VERSION = 'macapa-2026-09-02-social-1';
 export const MACAPA_GYM_SEED = Object.freeze([
   gym({ id: 'gym-macapa-smart-fit', name: 'Smart Fit Macapá', networkName: 'Smart Fit', address: 'Rua Leopoldo Machado, 2334', neighborhood: 'Central', latitude: 0.0310698, longitude: -51.0627507, reference: node(5879406675) }),
   gym({ id: 'gym-macapa-maioral-tucuju', name: 'Maioral Tucuju Academia', address: 'Rua Tancredo Neves, 224', neighborhood: 'São Lázaro', latitude: 0.0737488, longitude: -51.0554312, reference: way(296270887) }),
@@ -63,4 +63,25 @@ export const MACAPA_GYM_SEED = Object.freeze([
   }),
   gym({ id: 'gym-macapa-iron-men', name: 'Academia Iron Men', address: 'Avenida Tupiniquins, 84', neighborhood: 'Beirol', latitude: 0.0184874, longitude: -51.0633551, reference: way(162971757) }),
   gym({ id: 'gym-macapa-shape-fitness', name: 'Academia Shape Fitness', address: 'Rua São Paulo, 723', neighborhood: 'Pacoval', latitude: 0.0597096, longitude: -51.0535042, reference: way(162923254) })
+]);
+
+const demoReview = (id, gymId, rating, comment) => ({
+  id,
+  gymId,
+  userId: `demo-first-community-${id.slice(-2)}`,
+  rating,
+  comment: `Demonstração — exemplo fictício: ${comment}`,
+  status: 'published',
+  demo: true,
+  createdAt: VERIFIED_AT,
+  updatedAt: VERIFIED_AT
+});
+
+export const MACAPA_GYM_REVIEW_SEED = Object.freeze([
+  demoReview('gym-demo-review-01', 'gym-macapa-smart-fit', 5, 'boa variedade para montar treinos diferentes.'),
+  demoReview('gym-demo-review-02', 'gym-macapa-maioral-tucuju', 4, 'ambiente organizado para acompanhar a rotina.'),
+  demoReview('gym-demo-review-03', 'gym-macapa-energy-zona-norte', 4, 'opções práticas para um treino completo.'),
+  demoReview('gym-demo-review-04', 'gym-macapa-box-cross', 5, 'espaço interessante para treinos funcionais.'),
+  demoReview('gym-demo-review-05', 'gym-macapa-life-fit', 4, 'experiência simples de descobrir e avaliar a academia.'),
+  demoReview('gym-demo-review-06', 'gym-macapa-shape-fitness', 3, 'comentário criado somente para testar a comunidade.')
 ]);

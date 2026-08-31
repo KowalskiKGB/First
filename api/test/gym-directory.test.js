@@ -339,6 +339,33 @@ test('public directory enriches gyms without exposing reviewer identity and a si
   assert.deepEqual(f.store.read().gymFavorites, []);
 });
 
+test('public gym detail labels demo reviews without counting them as community ratings', async () => {
+  const demoReview = {
+    id: 'review-demo', gymId: 'gym-fortaleza-centro', userId: 'demo-first-community-01', rating: 5,
+    comment: 'Demonstração — exemplo de comentário.', status: 'published', demo: true, createdAt: NOW, updatedAt: NOW
+  };
+  const f = await fixture(source({ gymReviews: [demoReview] }));
+
+  const detail = await invoke(f.routes, 'GET /api/gym', { url: '/api/gym?id=gym-fortaleza-centro' });
+
+  assert.equal(detail.status, 200);
+  assert.deepEqual({ averageRating: detail.body.gym.averageRating, reviewCount: detail.body.gym.reviewCount }, {
+    averageRating: null,
+    reviewCount: 0
+  });
+  assert.deepEqual(detail.body.reviews, [{
+    id: demoReview.id,
+    gymId: demoReview.gymId,
+    rating: 5,
+    comment: demoReview.comment,
+    demo: true,
+    displayName: 'Perfil de demonstração',
+    createdAt: NOW,
+    updatedAt: NOW
+  }]);
+  assert.equal(JSON.stringify(detail.body).includes(demoReview.userId), false);
+});
+
 test('public directory never ranks a gym by distance until both coordinates were supplied', async () => {
   const f = await fixture(source({ gymDirectory: [gym({ latitude: 0.03, longitude: -51.07 })] }));
   const response = await invoke(f.routes, 'GET /api/gyms');

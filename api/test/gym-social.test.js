@@ -16,7 +16,7 @@ import {
   toggleGymFavorite,
   upsertGymReview
 } from '../gym-social.js';
-import { MACAPA_GYM_SEED, MACAPA_GYM_SEED_VERSION } from '../data/macapa-gyms.js';
+import { MACAPA_GYM_REVIEW_SEED, MACAPA_GYM_SEED, MACAPA_GYM_SEED_VERSION } from '../data/macapa-gyms.js';
 import { createCollaborationStore } from '../personal.js';
 
 const NOW = '2026-08-31T12:00:00.000Z';
@@ -175,6 +175,31 @@ test('Macapá seed has verified metadata and applies once per version without re
   assert.equal(staleBest.gymDirectory[0].coordinateVerification.provider, 'Google Maps center');
 });
 
+test('Macapá social seed adds labeled demo reviews once and never revives a removed review', () => {
+  assert.ok(MACAPA_GYM_REVIEW_SEED.length >= 3);
+  assert.equal(MACAPA_GYM_REVIEW_SEED.every(item => item.demo === true && item.status === 'published'), true);
+  assert.equal(MACAPA_GYM_REVIEW_SEED.every(item => item.userId.startsWith('demo-first-')), true);
+  assert.equal(MACAPA_GYM_REVIEW_SEED.every(item => item.comment.startsWith('Demonstração —')), true);
+  assert.equal(MACAPA_GYM_REVIEW_SEED.every(item => MACAPA_GYM_SEED.some(gym => gym.id === item.gymId)), true);
+
+  const seeded = applyGymSeed({ gymDirectory: [], gymReviews: [] });
+  assert.deepEqual(seeded.gymReviews, MACAPA_GYM_REVIEW_SEED);
+  assert.deepEqual(applyGymSeed(seeded), seeded);
+
+  const tombstonedGymId = MACAPA_GYM_REVIEW_SEED[0].gymId;
+  const withoutTombstonedGym = applyGymSeed({ gymDirectory: [], gymReviews: [], gymSeedTombstones: [tombstonedGymId] });
+  assert.equal(withoutTombstonedGym.gymReviews.some(item => item.gymId === tombstonedGymId), false);
+
+  const removed = { ...seeded.gymReviews[0], status: 'removed', moderationReason: 'Removida pelo Dev' };
+  const reseeded = applyGymSeed({
+    ...seeded,
+    gymSeedVersion: 'macapa-legacy',
+    gymReviews: [removed, ...seeded.gymReviews.slice(1)]
+  });
+  assert.equal(reseeded.gymReviews.filter(item => item.id === removed.id).length, 1);
+  assert.equal(reseeded.gymReviews.find(item => item.id === removed.id).status, 'removed');
+});
+
 test('Macapá seed is applied by the production collaboration store exactly once', t => {
   const directory = mkdtempSync(path.join(tmpdir(), 'first-gym-social-'));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
@@ -184,7 +209,9 @@ test('Macapá seed is applied by the production collaboration store exactly once
 
   assert.equal(first.gymSeedVersion, MACAPA_GYM_SEED_VERSION);
   assert.equal(first.gymDirectory.length, MACAPA_GYM_SEED.length);
+  assert.deepEqual(first.gymReviews, MACAPA_GYM_REVIEW_SEED);
   assert.deepEqual(reopened.gymDirectory, first.gymDirectory);
+  assert.deepEqual(reopened.gymReviews, first.gymReviews);
 });
 
 test('gym social calculates Haversine distance and immutable favorite/review changes', () => {
