@@ -33,7 +33,7 @@ vi.mock('../lib/i18n.js', () => ({
   t: (value, ...args) => args.reduce((text, arg, index) => text.replaceAll(`{${index}}`, arg), value),
 }))
 
-import DevPanel, { DevDashboard, DevLogin, GymConsole, ModelChoices, presenceCopy } from './DevPanel.jsx'
+import DevPanel, { contributionComparison, DevDashboard, DevLogin, GymConsole, ModelChoices, presenceCopy } from './DevPanel.jsx'
 
 function findElements(node, predicate, found = []) {
   if (!React.isValidElement(node)) return found
@@ -396,8 +396,11 @@ describe('Dev operations console contracts', () => {
   it('describes how long an account has been offline', () => {
     const now = Date.parse('2026-08-30T12:00:00Z')
     expect(presenceCopy({ online: true }, now)).toBe('Online now')
+    expect(presenceCopy({ online: false, lastAccessAt: now - 5 * 60_000 }, now)).toBe('Offline for 5 min')
     expect(presenceCopy({ online: false, lastAccessAt: now - 90 * 60_000 }, now)).toBe('Offline for 1 h')
+    expect(presenceCopy({ online: false, lastAccessAt: now - 72 * 60 * 60_000 }, now)).toBe('Offline for 3 d')
     expect(presenceCopy({ online: false, lastAccessAt: null }, now)).toBe('Never online')
+    expect(presenceCopy({ online: false, lastAccessAt: 'invalid' }, now)).toBe('Never online')
   })
 
   it('organizes the console into APIs, gyms and users tabs', () => {
@@ -469,6 +472,50 @@ describe('Dev operations console contracts', () => {
     expect(onPrepareAction).toHaveBeenCalledWith({ type: 'request', id: 'request-correction', action: 'approve' })
   })
 
+  it('builds compact comparisons for every contribution kind', () => {
+    expect(contributionComparison({ kind: 'gym', payload: { name: 'Nova academia', state: 'AP', openingHours: [], exerciseIds: ['1'] } })).toEqual([
+      { field: 'name', before: 'Not in directory', after: 'Nova academia' },
+      { field: 'state', before: 'Not in directory', after: 'AP' },
+      { field: 'openingHours', before: 'Not in directory', after: '0 items' },
+      { field: 'exerciseIds', before: 'Not in directory', after: '1 items' },
+    ])
+    expect(contributionComparison({ kind: 'equipment', payload: { exerciseIds: ['2', '3'] } }, { exerciseIds: ['1', '2'] })).toEqual([
+      { field: 'exerciseIds', before: '2 items', after: '3 items' },
+    ])
+    expect(contributionComparison({ kind: 'closure', payload: { note: 'Fechou' } }, { status: 'partner' })).toEqual([
+      { field: 'status', before: 'Partner', after: 'Approved report; directory stays unchanged' },
+    ])
+    expect(contributionComparison({ kind: 'correction', payload: { note: 'Fonte', neighborhood: '', address: null } }, {})).toEqual([
+      { field: 'neighborhood', before: 'Not informed', after: 'Not informed' },
+      { field: 'address', before: 'Not informed', after: 'Not informed' },
+    ])
+    expect(contributionComparison()).toEqual([])
+  })
+
+  it('renders reviewed and unknown moderation states with safe fallbacks', () => {
+    const requests = [
+      { id: 'approved', kind: 'custom', status: 'approved', payload: { customField: 'Novo valor' } },
+      { id: 'rejected', kind: 'closure', status: 'rejected', payload: { note: 'Fechou' } },
+      { id: 'unknown', kind: 'gym', status: 'unknown', payload: {} },
+    ]
+    const contributions = GymConsole({ view: 'contributions', requests, selectedRequestId: 'approved' })
+    const contributionMarkup = renderToStaticMarkup(contributions)
+    expect(contributionMarkup).toContain('Approved')
+    expect(contributionMarkup).toContain('Rejected')
+    expect(contributionMarkup).toContain('Contribution')
+    expect(contributionMarkup).toContain('customField')
+
+    const unknownGym = { id: 'gym-x', name: 'Academia X', city: 'Macapá', state: 'AP', address: '', status: 'custom', exerciseIds: [] }
+    expect(renderToStaticMarkup(GymConsole({ view: 'directory', gyms: [unknownGym] }))).toContain('custom')
+    const unknownReview = { id: 'review-x', gymId: 'missing', rating: 0, status: 'custom', comment: '' }
+    expect(renderToStaticMarkup(GymConsole({ view: 'reviews', reviews: [unknownReview] }))).toContain('Unknown gym')
+
+    const fallbackConfirm = GymConsole({
+      view: 'directory', gyms: [unknownGym], reason: 'Motivo.', pendingAction: { type: 'gym', id: 'gym-x', action: 'custom' },
+    })
+    expect(renderToStaticMarkup(fallbackConfirm)).toContain('Confirm action')
+  })
+
   it('inspects directory sources and confirms archive, restore and review moderation actions', () => {
     const onPrepareAction = vi.fn()
     const gym = {
@@ -493,6 +540,14 @@ describe('Dev operations console contracts', () => {
       pendingAction: { type: 'gym', id: gym.id, action: 'archive' }, onConfirmAction: vi.fn(), onCancelAction: vi.fn(),
     })
     expect(renderToStaticMarkup(confirm)).toContain('Confirm archive')
+    const confirmDirectory = byTypeName(confirm, 'DirectoryConsole')
+    const confirmContent = confirmDirectory.type(confirmDirectory.props)
+    const confirmActions = byTypeName(confirmContent, 'ModerationActions')
+    const confirmation = confirmActions.type(confirmActions.props)
+    findElements(confirmation, element => element.props.children === 'Confirm archive')[0].props.onClick()
+    findElements(confirmation, element => element.props.children === 'Cancel')[0].props.onClick()
+    expect(confirmActions.props.onConfirmAction).toHaveBeenCalledOnce()
+    expect(confirmActions.props.onCancelAction).toHaveBeenCalledOnce()
 
     const review = {
       id: 'review-1', gymId: gym.id, rating: 2, comment: 'Contato em texto removido.', status: 'removed',
@@ -508,6 +563,130 @@ describe('Dev operations console contracts', () => {
     const reviewActions = byTypeName(reviewsContent, 'ModerationActions')
     findElements(reviewActions.type(reviewActions.props), element => element.props.children === 'Restore')[0].props.onClick()
     expect(onPrepareAction).toHaveBeenCalledWith({ type: 'review', id: review.id, action: 'restore' })
+  })
+
+  it('filters directory and review lists while preserving empty and status-specific actions', () => {
+    const onSearch = vi.fn()
+    const onSelectGym = vi.fn()
+    const onPrepareAction = vi.fn()
+    const gyms = [
+      { id: 'gym-public', name: 'Academia Pública', city: 'Macapá', state: 'AP', address: 'Rua 1', status: 'verified', exerciseIds: [] },
+      { id: 'gym-archived', name: 'Academia Arquivada', city: 'Santana', state: 'AP', address: 'Rua 2', status: 'archived', archivedStatus: 'partner', exerciseIds: [] },
+    ]
+    const console = GymConsole({
+      view: 'directory', gyms, selectedGymId: 'gym-archived', reason: 'Fonte conferida.', onSearch, onSelectGym, onPrepareAction,
+      message: 'Action completed.', error: 'Visible error',
+    })
+    expect(renderToStaticMarkup(console)).toContain('Action completed.')
+    expect(renderToStaticMarkup(console)).toContain('Visible error')
+    const directoryPanel = byTypeName(console, 'DirectoryConsole')
+    const directory = directoryPanel.type(directoryPanel.props)
+    const search = byTypeName(directory, 'SearchField')
+    search.props.onChange({ target: { value: 'Santana' } })
+    search.props.onClear()
+    findElements(directory, element => element.type === 'button' && element.props.children?.[0]?.props?.className === 'client-row-main')[0].props.onClick()
+    const actions = byTypeName(directory, 'ModerationActions')
+    findElements(actions.type(actions.props), element => element.props.children === 'Restore')[0].props.onClick()
+    expect(onSearch.mock.calls).toEqual([['Santana'], ['']])
+    expect(onSelectGym).toHaveBeenCalledWith('gym-public')
+    expect(onPrepareAction).toHaveBeenCalledWith({ type: 'gym', id: 'gym-archived', action: 'restore' })
+    expect(renderToStaticMarkup(GymConsole({ view: 'directory', gyms, search: 'inexistente' }))).toContain('No gyms match this search.')
+
+    const onReviewFilter = vi.fn()
+    const onSelectReview = vi.fn()
+    const reviews = [
+      { id: 'pending', gymId: 'gym-public', rating: 3, comment: '', status: 'pending', demo: true },
+      { id: 'published', gymId: 'gym-public', rating: 5, comment: 'Bom', status: 'published', demo: false },
+    ]
+    const reviewConsole = GymConsole({
+      view: 'reviews', gyms, reviews, selectedReviewId: 'pending', reviewFilter: 'all', reason: 'Conteúdo verificado.',
+      onReviewFilter, onSelectReview, onPrepareAction,
+    })
+    const reviewPanel = byTypeName(reviewConsole, 'ReviewConsole')
+    const reviewContent = reviewPanel.type(reviewPanel.props)
+    for (const filter of findElements(reviewContent, element => element.type === 'button' && element.props['aria-pressed'] !== undefined).slice(0, 4)) filter.props.onClick()
+    findElements(reviewContent, element => element.type === 'button' && element.props.className === 'client-row compact')[1].props.onClick()
+    const pendingActions = byTypeName(reviewContent, 'ModerationActions')
+    const pendingButtons = pendingActions.type(pendingActions.props)
+    findElements(pendingButtons, element => element.props.children === 'Publish')[0].props.onClick()
+    findElements(pendingButtons, element => element.props.children === 'Remove')[0].props.onClick()
+    expect(onReviewFilter.mock.calls).toEqual([['all'], ['pending'], ['published'], ['removed']])
+    expect(onSelectReview).toHaveBeenCalledWith('published')
+    expect(onPrepareAction).toHaveBeenCalledWith({ type: 'review', id: 'pending', action: 'publish' })
+    expect(onPrepareAction).toHaveBeenCalledWith({ type: 'review', id: 'pending', action: 'remove' })
+    expect(renderToStaticMarkup(GymConsole({ view: 'reviews', gyms, reviews, reviewFilter: 'removed' }))).toContain('No reviews in this status.')
+    expect(renderToStaticMarkup(GymConsole({ view: 'contributions' }))).toContain('No contributions to review.')
+  })
+
+  it('sends the latest revision for each moderation mutation and refreshes all gym views', async () => {
+    const cases = [
+      {
+        action: { type: 'request', id: 'request-1', action: 'approve' }, endpoint: '/api/dev/gym-requests/review', method: 'POST',
+        body: { id: 'request-1', decision: 'approve', reason: 'Motivo objetivo.', rev: 40 }, message: 'Contribution approved.',
+      },
+      {
+        action: { type: 'gym', id: 'gym-1', action: 'archive' }, endpoint: '/api/dev/gym', method: 'PUT',
+        body: { id: 'gym-1', action: 'archive', reason: 'Motivo objetivo.', rev: 40 }, message: 'Gym archived.',
+      },
+      {
+        action: { type: 'review', id: 'review-1', action: 'restore' }, endpoint: '/api/dev/gym-review', method: 'PUT',
+        body: { id: 'review-1', status: 'published', reason: 'Motivo objetivo.', rev: 40 }, message: 'Review restored.',
+      },
+    ]
+
+    for (const current of cases) {
+      hooksResetForGymDashboard(current.action)
+      harness.api.mockImplementation(async path => {
+        if (path === current.endpoint) return { rev: 41 }
+        if (path === '/api/dev/gym-requests') return { rev: 41, requests: [] }
+        if (path === '/api/dev/gyms') return { rev: 41, gyms: [] }
+        if (path === '/api/dev/gym-reviews') return { rev: 41, reviews: [] }
+        return { ok: true }
+      })
+      const dashboard = byTypeName(DevPanel(), 'DevDashboard')
+
+      dashboard.props.onSection('users')
+      dashboard.props.onSelectRequest('request-2')
+      dashboard.props.onSelectGym('gym-2')
+      dashboard.props.onSelectReview('review-2')
+      dashboard.props.onGymView('reviews')
+      dashboard.props.onReviewFilter('removed')
+      dashboard.props.onCancelAction()
+
+      await dashboard.props.onConfirmAction()
+
+      expect(harness.api).toHaveBeenCalledWith(current.endpoint, { method: current.method, body: JSON.stringify(current.body) })
+      expect(harness.api).toHaveBeenCalledWith('/api/dev/gym-requests')
+      expect(harness.api).toHaveBeenCalledWith('/api/dev/gyms')
+      expect(harness.api).toHaveBeenCalledWith('/api/dev/gym-reviews')
+      expect(harness.setters[21]).toHaveBeenCalledWith(41)
+      expect(harness.setters[25]).toHaveBeenCalledWith(current.message)
+      expect(harness.setters[23]).toHaveBeenCalledWith(null)
+    }
+  })
+
+  it('closes a completed confirmation even when refreshed data fails and reloads stale revisions', async () => {
+    hooksResetForGymDashboard({ type: 'gym', id: 'gym-1', action: 'archive' })
+    harness.api.mockResolvedValueOnce({ rev: 41 }).mockRejectedValue(new Error('refresh unavailable'))
+    let dashboard = byTypeName(DevPanel(), 'DevDashboard')
+    await dashboard.props.onConfirmAction()
+
+    expect(harness.setters[21]).toHaveBeenCalledWith(41)
+    expect(harness.setters[23]).toHaveBeenCalledWith(null)
+    expect(harness.setters[26]).toHaveBeenCalledWith('Action completed, but updated data could not be loaded. Reload the panel.')
+
+    hooksResetForGymDashboard({ type: 'request', id: 'request-1', action: 'reject' })
+    const stale = Object.assign(new Error('stale revision'), { status: 409 })
+    harness.api.mockRejectedValueOnce(stale)
+      .mockResolvedValueOnce({ rev: 42, requests: [] })
+      .mockResolvedValueOnce({ rev: 42, gyms: [] })
+      .mockResolvedValueOnce({ rev: 42, reviews: [] })
+    dashboard = byTypeName(DevPanel(), 'DevDashboard')
+    await dashboard.props.onConfirmAction()
+
+    expect(harness.setters[21]).toHaveBeenCalledWith(42)
+    expect(harness.setters[26]).toHaveBeenCalledWith(expect.any(String))
+    expect(harness.setters[23]).not.toHaveBeenCalledWith(null)
   })
 
   it('shows three compact provider choices but opens only the selected provider editor', () => {
@@ -627,4 +806,11 @@ describe('Dev operations console contracts', () => {
 function hooksResetForDashboard(error = '') {
   harness.reset([{ unlocked: true }, { username: '', password: '' }, [], '7d', {}, false, error])
   harness.api.mockImplementation(async path => path.startsWith('/api/dev/ai/usage') ? { usage: { requests: 30 } } : { ok: true })
+}
+
+function hooksResetForGymDashboard(pendingAction) {
+  harness.reset([
+    { unlocked: true }, { username: '', password: '' }, [], '7d', {}, false, '', 'gyms', '', [], '', [], '', null,
+    [], '', [], '', 'contributions', '', 'all', 40, 'Motivo objetivo.', pendingAction, false, '', '',
+  ])
 }

@@ -292,7 +292,7 @@ test('Dev reviews equipment requests and inspects registered users', async ({ pa
   }))
 })
 
-test('Dev compares contributions and safely moderates gyms and reviews with the latest revision', async ({ page }) => {
+test('Dev compares contributions and safely moderates gyms and reviews with the latest revision', async ({ page }, testInfo) => {
   const fixtures = devFixtures({
     rev: 40,
     requests: [{
@@ -344,12 +344,16 @@ test('Dev compares contributions and safely moderates gyms and reviews with the 
   await page.getByRole('button', { name: 'Confirmar restauração' }).click()
   await expect(page.getByText('Avaliação restaurada.')).toBeVisible()
 
+  const touchTargets = await page.locator('.dev-gym-tabs button, .dev-review-filters button').evaluateAll(buttons => buttons.map(button => button.getBoundingClientRect().height))
+  expect(touchTargets.every(height => height >= 44)).toBe(true)
+
   expect(fixtures.writes.filter(write => ['/api/dev/gym-requests/review', '/api/dev/gym', '/api/dev/gym-review'].includes(write.pathname)).map(write => write.body)).toEqual([
     { id: 'request-correction', decision: 'approve', reason: 'Endereço confirmado na fonte oficial.', rev: 40 },
     { id: 'gym-1', action: 'archive', reason: 'Unidade encerrada e fonte conferida.', rev: 41 },
     { id: 'review-1', status: 'published', reason: 'Comentário conferido e seguro para publicação.', rev: 42 },
   ])
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1)
+  await page.screenshot({ path: testInfo.outputPath('dev-gym-moderation-mobile.png'), fullPage: true, animations: 'disabled', caret: 'hide' })
 })
 
 test('an unavailable user index does not block AI provider configuration', async ({ page }) => {

@@ -169,7 +169,7 @@ function LegacyProviderConsole({ providers, onChanged }) {
 function GymTabs({ view, onView }) {
   return <nav className="dev-gym-tabs" role="tablist" aria-label={t('Gym moderation sections')}>
     {[['contributions', 'Contributions'], ['directory', 'Directory'], ['reviews', 'Reviews']].map(([value, label]) => <button
-      type="button" role="tab" aria-selected={view === value} aria-controls={`dev-gym-${value}`} key={value}
+      id={`dev-gym-tab-${value}`} type="button" role="tab" aria-selected={view === value} aria-controls={`dev-gym-${value}`} key={value}
       onClick={() => onView?.(value)}
     >{t(label)}</button>)}
   </nav>
@@ -178,7 +178,7 @@ function GymTabs({ view, onView }) {
 function ModerationActions({ type, id, actions, reason = '', pendingAction, busy, onReason, onPrepareAction, onConfirmAction, onCancelAction }) {
   const pending = pendingAction?.type === type && pendingAction?.id === id ? pendingAction : null
   return <div className="dev-moderation-actions">
-    <label><span>{t('Decision reason')}</span><textarea className="field" name="gym-moderation-reason" maxLength={300} value={reason} onChange={event => onReason?.(event.target.value)} placeholder={t('Add a short, factual reason')} /></label>
+    <label><span>{t('Decision reason')}</span><textarea className="field" name="gym-moderation-reason" maxLength={300} value={reason} onChange={event => onReason?.(event.target.value)} autoComplete="off" placeholder={t('Add a short, factual reason…')} /></label>
     {pending ? <div className="dev-confirmation" role="alert">
       <p>{t('Review the reason before confirming this action.')}</p>
       <div>
@@ -199,7 +199,7 @@ function ContributionConsole({ requests, gyms, selectedRequestId, onSelectReques
   const gym = gyms.find(item => item.id === selected?.gymId) || selected?.gym || {}
   const submitter = selected?.requestedBy || selected?.submittedBy || {}
   const comparison = contributionComparison(selected, gym)
-  return <section id="dev-gym-contributions" role="tabpanel" className="dev-gym-panel">
+  return <section id="dev-gym-contributions" role="tabpanel" aria-labelledby="dev-gym-tab-contributions" className="dev-gym-panel">
     {requests.length ? <div className="dev-console-split">
       <div className="client-list" aria-label={t('Contributions')}>
         {requests.map(request => <button className="client-row compact" type="button" aria-pressed={selected?.id === request.id} key={request.id} onClick={() => onSelectRequest?.(request.id)}>
@@ -232,8 +232,8 @@ function DirectoryConsole({ gyms, selectedGymId, onSelectGym, search = '', onSea
   const visible = gyms.filter(gym => !term || `${gym.name} ${gym.city} ${gym.state} ${gym.address}`.toLocaleLowerCase('pt-BR').includes(term))
   const selected = visible.find(item => item.id === selectedGymId) || visible[0]
   const source = selected?.source || {}
-  return <section id="dev-gym-directory" role="tabpanel" className="dev-gym-panel">
-    <SearchField name="dev-gym-search" value={search} onChange={event => onSearch?.(event.target.value)} onClear={() => onSearch?.('')} placeholder={t('Search the directory')} aria-label={t('Search the directory')} />
+  return <section id="dev-gym-directory" role="tabpanel" aria-labelledby="dev-gym-tab-directory" className="dev-gym-panel">
+    <SearchField name="dev-gym-search" value={search} onChange={event => onSearch?.(event.target.value)} onClear={() => onSearch?.('')} autoComplete="off" placeholder={t('Search the directory…')} aria-label={t('Search the directory')} />
     {visible.length ? <div className="dev-console-split">
       <div className="client-list" aria-label={t('Directory')}>
         {visible.map(gym => <button className="client-row compact" type="button" aria-pressed={selected?.id === gym.id} key={gym.id} onClick={() => onSelectGym?.(gym.id)}>
@@ -266,7 +266,7 @@ function ReviewConsole({ reviews, gyms, selectedReviewId, onSelectReview, review
     : selected?.status === 'pending'
       ? [{ action: 'publish', label: 'Publish', primary: true }, { action: 'remove', label: 'Remove' }]
       : [{ action: 'remove', label: 'Remove' }]
-  return <section id="dev-gym-reviews" role="tabpanel" className="dev-gym-panel">
+  return <section id="dev-gym-reviews" role="tabpanel" aria-labelledby="dev-gym-tab-reviews" className="dev-gym-panel">
     <div className="dev-review-filters" role="group" aria-label={t('Review status')}>
       {[['all', 'All'], ['pending', 'Pending'], ['published', 'Published'], ['removed', 'Removed']].map(([value, label]) => <button type="button" aria-pressed={reviewFilter === value} key={value} onClick={() => onReviewFilter?.(value)}>{t(label)}</button>)}
     </div>
@@ -610,19 +610,24 @@ export default function DevPanel() {
         endpoint = '/api/dev/gym-review'
         payload = { id: pendingAction.id, status: pendingAction.action === 'remove' ? 'removed' : 'published', reason, rev: collaborationRev }
       }
-      const data = await api(endpoint, { method: pendingAction.type === 'request' ? 'POST' : 'PUT', body: JSON.stringify(payload) })
+      const completedAction = pendingAction
+      const data = await api(endpoint, { method: completedAction.type === 'request' ? 'POST' : 'PUT', body: JSON.stringify(payload) })
       if (Number.isInteger(data.rev)) setCollaborationRev(data.rev)
-      await loadGymData()
       const success = {
         approve: 'Contribution approved.', reject: 'Contribution rejected.', archive: 'Gym archived.',
-        restore: pendingAction.type === 'review' ? 'Review restored.' : 'Gym restored.',
+        restore: completedAction.type === 'review' ? 'Review restored.' : 'Gym restored.',
         publish: 'Review published.', remove: 'Review removed.',
-      }[pendingAction.action]
+      }[completedAction.action]
       setModerationMessage(t(success || 'Action completed.'))
       setModerationReason(''); setPendingAction(null)
+      try { await loadGymData() }
+      catch { setModerationError(t('Action completed, but updated data could not be loaded. Reload the panel.')) }
     } catch (requestError) {
-      setModerationError(t(safeDevError(requestError, 'The moderation action could not be completed.')))
-      if (requestError?.status === 409) loadGymData().catch(() => {})
+      setModerationError(t(safeDevError(requestError, 'The moderation action could not be completed. Refresh the data and try again.')))
+      if (requestError?.status === 409) {
+        try { await loadGymData() }
+        catch { setModerationError(t('The data changed and could not be reloaded. Reload the panel.')) }
+      }
     } finally { setModerationBusy(false) }
   }
 
@@ -635,7 +640,7 @@ export default function DevPanel() {
       {!session?.unlocked
         ? <DevLogin busy={busy} values={login} onChange={setLogin} onSubmit={unlock} error={error} />
         : <DevDashboard
-         providers={providers} usage={usage} window={window} section={section} selectedProvider={selectedProvider}
+          providers={providers} usage={usage} window={window} section={section} selectedProvider={selectedProvider}
           requests={requests} selectedRequestId={selectedRequestId} gyms={gyms} selectedGymId={selectedGymId}
           reviews={reviews} selectedReviewId={selectedReviewId} gymView={gymView} gymSearch={gymSearch} reviewFilter={reviewFilter}
           moderationReason={moderationReason} pendingAction={pendingAction} moderationBusy={moderationBusy}
@@ -646,7 +651,7 @@ export default function DevPanel() {
           onSelectGym={value => { setSelectedGymId(value); setPendingAction(null); setModerationReason('') }}
           onSelectReview={value => { setSelectedReviewId(value); setPendingAction(null); setModerationReason('') }}
           onGymView={value => { setGymView(value); setPendingAction(null); setModerationReason(''); setModerationMessage(''); setModerationError('') }}
-          onGymSearch={setGymSearch} onReviewFilter={value => { setReviewFilter(value); setSelectedReviewId('') }}
+          onGymSearch={setGymSearch} onReviewFilter={value => { setReviewFilter(value); setSelectedReviewId(''); setPendingAction(null); setModerationReason('') }}
           onModerationReason={setModerationReason} onPrepareAction={setPendingAction} onConfirmAction={confirmModeration} onCancelAction={() => setPendingAction(null)}
           onSelectUser={selectUser}
           onWindow={changeWindow} onLogout={logout} onChanged={() => loadDashboard(window)}

@@ -1775,6 +1775,7 @@ body:has(.ai-wizard) #tabbar{display:none}
 .dev-comparison{display:flex;flex-direction:column;margin-top:14px;overflow:hidden;border:var(--hair) solid var(--sep-op);border-radius:var(--r);background:var(--sep-op)}
 .dev-comparison>div{display:grid;grid-template-columns:minmax(90px,.6fr) repeat(2,minmax(0,1fr));gap:var(--hair)}
 .dev-comparison>div>*{min-width:0;margin:0;padding:9px;background:var(--surface);font-size:11px;line-height:1.4;overflow-wrap:anywhere}
+.dev-comparison>div>p{font-variant-numeric:tabular-nums}
 .dev-comparison>div>span{color:var(--label-2);font-weight:600}
 .dev-comparison-head>*{color:var(--label-3);font:650 9px/1.3 ui-monospace,SFMono-Regular,Consolas,monospace;text-transform:uppercase}
 .dev-moderation-actions{display:flex;flex-direction:column;gap:9px;margin-top:14px;padding-top:14px;border-top:var(--hair) solid var(--sep-op)}
@@ -1826,6 +1827,7 @@ body:has(.ai-wizard) #tabbar{display:none}
 
 @media (hover:hover){
   .home-gym-card:hover,.gym-result:hover,.exercise-catalog-picker>.list>.item:hover:not(:disabled),.dev-provider-list .client-row:hover,.dev-console-split>.client-list .client-row:hover{transform:translateY(-1px);box-shadow:inset 0 0 0 1px var(--sep)}
+  .dev-gym-tabs button:hover,.dev-review-filters button:hover{background:var(--surface-3);color:var(--label)}
 }
 
 @media (max-width:720px){
