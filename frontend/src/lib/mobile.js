@@ -17,10 +17,29 @@ export const MOBILE = import.meta.env.VITE_MOBILE === '1'
 
 const FILE = `${APP_SLUG}-state.json`
 
+export function requestBrowserLocation(geolocation = globalThis.navigator?.geolocation) {
+  return new Promise((resolve, reject) => {
+    if (!geolocation?.getCurrentPosition) {
+      reject(Object.assign(new Error('Geolocation is unavailable.'), { code: 0 }))
+      return
+    }
+    geolocation.getCurrentPosition(position => {
+      const latitude = Number(position?.coords?.latitude)
+      const longitude = Number(position?.coords?.longitude)
+      const accuracy = Number(position?.coords?.accuracy)
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        reject(Object.assign(new Error('Geolocation returned invalid coordinates.'), { code: 2 }))
+        return
+      }
+      resolve({ latitude, longitude, ...(Number.isFinite(accuracy) ? { accuracy } : {}) })
+    }, reject, { enableHighAccuracy: false, timeout: 10_000, maximumAge: 60_000 })
+  })
+}
+
 // Registers Android's hardware-back listener without importing the native plugin in
 // web builds. Dependencies stay explicit so React can clean up an in-flight dynamic
 // import safely under StrictMode.
-export function registerAndroidBackButton({ loadApp, getSheets, closeSheet, goBack }) {
+export function registerAndroidBackButton({ loadApp, getSheets, closeSheet, handleBack, goBack }) {
   let disposed = false
   let handle = null
   let removed = false
@@ -43,6 +62,7 @@ export function registerAndroidBackButton({ loadApp, getSheets, closeSheet, goBa
         if (!top.locked) closeSheet(top.id)
         return
       }
+      if (handleBack?.()) return
       if (canGoBack) goBack()
       else void app.exitApp()
     })

@@ -291,6 +291,11 @@ function StudentApp() {
       loadApp: () => import('@capacitor/app'),
       getSheets: () => useUI.getState().sheets,
       closeSheet: id => useUI.getState().closeSheet(id),
+      handleBack: () => {
+        const event = new CustomEvent('first:native-back', { cancelable: true })
+        window.dispatchEvent(event)
+        return event.defaultPrevented
+      },
       goBack: () => window.history.back(),
     })
   }, [])

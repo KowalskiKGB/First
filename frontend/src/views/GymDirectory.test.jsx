@@ -21,6 +21,16 @@ vi.mock('../lib/i18n.js', () => ({
       'Opening hours': 'Dias e horários',
       'Available exercises': 'Exercícios disponíveis',
       'Could not find your equipment? Click here to register it': 'Não encontrou seu aparelho? Clique aqui para cadastrar',
+      'Use my location': 'Usar minha localização',
+      'All gyms': 'Todas',
+      Nearby: 'Próximas',
+      Favorites: 'Favoritas',
+      Trending: 'Em alta',
+      'Could not find the gym? Create it here': 'Não encontrou a academia? Crie aqui',
+      'Suggest a correction': 'Sugerir correção',
+      'Add equipment': 'Adicionar aparelho',
+      'Report closure': 'Informar fechamento',
+      'Community reviews': 'Avaliações da comunidade',
     }
     return args.reduce((value, arg, index) => value.replaceAll(`{${index}}`, arg), pt[message] || message)
   },
@@ -90,7 +100,6 @@ describe('GymDirectory', () => {
     expect(markup).toContain('name="gym-state"')
     expect(markup).toContain('name="gym-city"')
     expect(markup).toContain('name="gym-search"')
-    expect(markup).toContain('Onde você treina?')
     expect(markup.match(/<option/g)).toHaveLength(29)
     expect(markup).toContain('Selecione a UF')
     expect(markup).toContain('Selecione a UF primeiro')
@@ -105,8 +114,8 @@ describe('GymDirectory', () => {
       <GymDirectory gyms={gyms} selectedGymId="gym-y" onSelect={vi.fn()} />,
     )
 
-    expect(markup).toContain('<option value="SP" selected="">SP</option>')
-    expect(markup).toContain('<option value="Campinas" selected="">Campinas</option>')
+    expect(markup).toContain('gym-directory-detail-view')
+    expect(markup).toContain('Campinas / SP')
     expect(markup).toContain('Academia Y')
   })
 
@@ -124,8 +133,8 @@ describe('GymDirectory', () => {
     expect(markup).toContain('data-selected-ids="0043,0085"')
     expect(markup).toContain('data-read-only="true"')
     expect(markup).toContain('data-search-name="gym-exercise-search"')
-    expect(markup).toContain('Não encontrou seu aparelho? Clique aqui para cadastrar')
-    expect(markup).toContain('Selecionar academia')
+    expect(markup).toContain('Adicionar aparelho')
+    expect(markup).toContain('Academia selecionada')
     expect(markup).toContain('aria-pressed="true"')
     expect(markup).toContain('role="radiogroup"')
     expect(markup.match(/type="radio"/g)).toHaveLength(5)

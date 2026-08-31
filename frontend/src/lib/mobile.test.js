@@ -137,7 +137,7 @@ describe('Android hardware back button', () => {
     await Promise.resolve()
   }
 
-  function setupBackButton(sheets = []) {
+  function setupBackButton(sheets = [], handleBack) {
     let listener
     const remove = vi.fn().mockResolvedValue(undefined)
     const app = {
@@ -154,6 +154,7 @@ describe('Android hardware back button', () => {
       loadApp: async () => ({ App: app }),
       getSheets: () => sheets,
       closeSheet,
+      handleBack,
       goBack,
     })
     return {
@@ -198,6 +199,17 @@ describe('Android hardware back button', () => {
 
     expect(back.goBack).toHaveBeenCalledOnce()
     expect(back.closeSheet).not.toHaveBeenCalled()
+    expect(back.app.exitApp).not.toHaveBeenCalled()
+  })
+
+  it('lets an in-view detail consume back before router history', async () => {
+    const handleBack = vi.fn(() => true)
+    const back = setupBackButton([], handleBack)
+
+    await back.press(true)
+
+    expect(handleBack).toHaveBeenCalledOnce()
+    expect(back.goBack).not.toHaveBeenCalled()
     expect(back.app.exitApp).not.toHaveBeenCalled()
   })
 

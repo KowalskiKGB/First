@@ -42,9 +42,75 @@ export function filterGyms(gyms = [], { state = '', city = '', query = '' } = {}
   return gyms.filter(gym => {
     if (wantedState && normalizedText(gym?.state) !== wantedState) return false
     if (wantedCity && normalizedText(gym?.city) !== wantedCity) return false
-    const searchable = normalizedText([gym?.name, gym?.address, gym?.city, gym?.state].filter(Boolean).join(' '))
+    const searchable = normalizedText([
+      gym?.name, gym?.networkName, gym?.address, gym?.neighborhood, gym?.city, gym?.state,
+      ...(Array.isArray(gym?.tags) ? gym.tags : []),
+    ].filter(Boolean).join(' '))
     return terms.every(term => searchable.includes(term))
   })
+}
+
+const coordinate = (value, min, max) => {
+  if (value == null || String(value).trim() === '') return null
+  const number = Number(value)
+  return Number.isFinite(number) && number >= min && number <= max ? number : null
+}
+
+export function distanceKm(location, gym) {
+  const latitudeA = coordinate(location?.latitude, -90, 90)
+  const longitudeA = coordinate(location?.longitude, -180, 180)
+  const latitudeB = coordinate(gym?.latitude, -90, 90)
+  const longitudeB = coordinate(gym?.longitude, -180, 180)
+  if ([latitudeA, longitudeA, latitudeB, longitudeB].some(value => value === null)) {
+    return Number.isFinite(Number(gym?.distanceKm)) ? Number(gym.distanceKm) : null
+  }
+  const radians = Math.PI / 180
+  const a = Math.sin((latitudeB - latitudeA) * radians / 2) ** 2
+    + Math.cos(latitudeA * radians) * Math.cos(latitudeB * radians)
+    * Math.sin((longitudeB - longitudeA) * radians / 2) ** 2
+  return 6371.0088 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+const hasTag = (gym, tag) => Array.isArray(gym?.tags) && gym.tags.includes(tag)
+
+export function rankGyms(gyms = [], { filter = 'all', location = null } = {}) {
+  const ranked = (Array.isArray(gyms) ? gyms : []).map(gym => ({
+    ...gym,
+    ...(distanceKm(location, gym) == null ? {} : { distanceKm: Math.round(distanceKm(location, gym) * 10) / 10 }),
+  }))
+  const filtered = filter === 'favorites'
+    ? ranked.filter(gym => hasTag(gym, 'Preferida'))
+    : filter === 'trending'
+      ? ranked.filter(gym => hasTag(gym, 'Em alta'))
+      : filter === 'nearby'
+        ? ranked.filter(gym => Number.isFinite(gym.distanceKm))
+        : ranked
+  return filtered.toSorted((left, right) => {
+    if (filter === 'all') {
+      const favorite = Number(hasTag(right, 'Preferida')) - Number(hasTag(left, 'Preferida'))
+      if (favorite) return favorite
+    }
+    return (left.distanceKm ?? Infinity) - (right.distanceKm ?? Infinity)
+      || String(left.name || '').localeCompare(String(right.name || ''), 'pt-BR')
+      || String(left.id || '').localeCompare(String(right.id || ''))
+  })
+}
+
+const minutes = value => {
+  const match = /^(\d{2}):(\d{2})$/.exec(String(value || ''))
+  return match ? Number(match[1]) * 60 + Number(match[2]) : null
+}
+
+export function isGymOpen(gym, now = new Date()) {
+  const entries = Array.isArray(gym?.openingHours) ? gym.openingHours : []
+  const entry = entries.find(item => item?.day === now.getDay())
+  if (!entry) return null
+  if (entry.closed) return false
+  const open = minutes(entry.open)
+  const close = minutes(entry.close)
+  if (open == null || close == null) return null
+  const current = now.getHours() * 60 + now.getMinutes()
+  return close < open ? current >= open || current < close : current >= open && current < close
 }
 
 export function gymMonogram(name = '') {

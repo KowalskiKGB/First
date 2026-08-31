@@ -35,6 +35,8 @@ function gymSelection(gym) {
   const snapshot = {
     id: String(gym?.id || ''), directoryGymId: String(gym?.id || ''), name: String(gym?.name || '').trim(),
     state: String(gym?.state || '').trim(), city: String(gym?.city || '').trim(), address: String(gym?.address || '').trim(),
+    networkName: String(gym?.networkName || '').trim(), neighborhood: String(gym?.neighborhood || '').trim(),
+    postalCode: String(gym?.postalCode || '').trim(),
     status: ['verified', 'partner'].includes(gym?.status) ? gym.status : 'unverified',
     openingHours: clone(Array.isArray(gym?.openingHours) ? gym.openingHours : []), exerciseIds,
   }
