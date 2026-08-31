@@ -15,6 +15,31 @@ const BRAZIL_STATE_CODES = Object.freeze([
   'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO',
 ])
 
+export const gymListPath = () => '/api/gyms?limit=100'
+export const gymConflictRevision = error => error?.status === 409 && Number.isInteger(error.rev) ? error.rev : null
+
+export function createGymRequestGate() {
+  let sequence = 0
+  let activeController = null
+  return {
+    begin() {
+      activeController?.abort()
+      const controller = new AbortController()
+      const requestId = ++sequence
+      activeController = controller
+      return {
+        signal: controller.signal,
+        isCurrent: () => requestId === sequence && activeController === controller && !controller.signal.aborted,
+      }
+    },
+    abort() {
+      activeController?.abort()
+      activeController = null
+      sequence += 1
+    },
+  }
+}
+
 export function gymInitialLocality(gyms = [], selectedGymId = '') {
   const selected = selectedGymId ? gyms.find(gym => gym?.id === selectedGymId) : null
   return { state: selected?.state || '', city: selected?.city || '' }

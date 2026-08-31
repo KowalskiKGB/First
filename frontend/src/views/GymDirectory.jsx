@@ -5,7 +5,7 @@ import GymCard from '../components/gym/GymCard.jsx'
 import GymDetail from '../components/gym/GymDetail.jsx'
 import Icon from '../components/Icon.jsx'
 import { api } from '../lib/api.js'
-import { filterGyms, gymCities, gymInitialLocality, gymStates, rankGyms } from '../lib/gym-directory.js'
+import { createGymRequestGate, filterGyms, gymCities, gymConflictRevision, gymInitialLocality, gymListPath, gymStates, rankGyms } from '../lib/gym-directory.js'
 import { t } from '../lib/i18n.js'
 import { requestBrowserLocation } from '../lib/mobile.js'
 
@@ -78,13 +78,15 @@ export default function GymDirectory({ gyms: providedGyms, selectedGymId = null,
   const [message, setMessage] = useState('')
   const localityTouched = useRef(false)
   const returnFocus = useRef(null)
+  const gymRequests = useRef(null)
+  if (!gymRequests.current) gymRequests.current = createGymRequestGate()
   const states = useMemo(() => gymStates(), [])
 
-  const loadGyms = useCallback(async coordinates => {
+  const loadGyms = useCallback(async () => {
     if (Array.isArray(providedGyms)) return
-    const params = new URLSearchParams({ limit: '100' })
-    if (coordinates) { params.set('latitude', String(coordinates.latitude)); params.set('longitude', String(coordinates.longitude)) }
-    const result = await api(`/api/gyms?${params}`)
+    const request = gymRequests.current.begin()
+    const result = await api(gymListPath(), { signal: request.signal })
+    if (!request.isCurrent()) return
     const nextGyms = Array.isArray(result?.gyms) ? result.gyms : []
     const locality = gymInitialLocality(nextGyms, selectedGymId)
     setGyms(nextGyms); setRev(Number(result?.rev) || 0)
@@ -94,8 +96,8 @@ export default function GymDirectory({ gyms: providedGyms, selectedGymId = null,
   useEffect(() => {
     if (Array.isArray(providedGyms)) { setGyms(providedGyms); return undefined }
     let current = true
-    loadGyms().catch(() => { if (current) setMessage(t('Could not load gyms.')) })
-    return () => { current = false }
+    loadGyms().catch(error => { if (current && error?.name !== 'AbortError') setMessage(t('Could not load gyms.')) })
+    return () => { current = false; gymRequests.current.abort() }
   }, [loadGyms, providedGyms])
 
   const loadDetail = useCallback(async id => {
@@ -119,17 +121,21 @@ export default function GymDirectory({ gyms: providedGyms, selectedGymId = null,
     if (gymId) requestAnimationFrame(() => Array.from(document.querySelectorAll('[data-gym-id]')).find(element => element.dataset.gymId === gymId)?.focus())
   }, [])
   const closeDetail = useCallback(() => { setDetailId(null); setDetailGym(null); setReviews([]); setMessage(''); restoreFocus() }, [restoreFocus])
+  const backToList = useCallback(() => {
+    if (window.history.state?.firstGymDetail) window.history.back()
+    else closeDetail()
+  }, [closeDetail])
   useEffect(() => {
     const pop = () => { if (detailId) closeDetail() }
     window.addEventListener('popstate', pop); return () => window.removeEventListener('popstate', pop)
   }, [closeDetail, detailId])
   useEffect(() => {
     const back = event => {
-      if (detailId) { event.preventDefault(); closeDetail(); return }
+      if (detailId) { event.preventDefault(); backToList(); return }
       if (newGymOpen) { event.preventDefault(); setNewGymOpen(false) }
     }
     window.addEventListener('first:native-back', back); return () => window.removeEventListener('first:native-back', back)
-  }, [closeDetail, detailId, newGymOpen])
+  }, [backToList, detailId, newGymOpen])
 
   const locality = useMunicipalities(state, gyms)
   const requestLocality = useMunicipalities(newGymOpen ? newGym.state : '', gyms)
@@ -142,7 +148,6 @@ export default function GymDirectory({ gyms: providedGyms, selectedGymId = null,
     setDetailId(gym.id); setDetailGym(gym); setReviews([]); setMessage('')
     window.history.pushState({ firstGymDetail: gym.id }, '')
   }
-  const backToList = () => { if (window.history.state?.firstGymDetail) window.history.back(); else closeDetail() }
   const changeState = event => { localityTouched.current = true; setState(event.target.value); setCity(''); setQuery(''); setDetailId(null) }
   const useLocation = async () => {
     if (locationStatus === 'loading') return
@@ -152,7 +157,7 @@ export default function GymDirectory({ gyms: providedGyms, selectedGymId = null,
       setLocation(coordinates)
       const localityResult = await api(`/api/location/reverse?latitude=${encodeURIComponent(coordinates.latitude)}&longitude=${encodeURIComponent(coordinates.longitude)}`)
       localityTouched.current = true; setState(localityResult.state || ''); setCity(localityResult.city || ''); setAttribution(localityResult.attribution || '')
-      await loadGyms(coordinates); setLocationStatus('ready')
+      setLocationStatus('ready')
     } catch (error) {
       setLocationStatus('error'); setMessage(t(error?.code === 1 ? 'Location permission denied. Select it manually.' : error?.message || 'Could not identify your location. Select it manually.'))
     }
@@ -160,6 +165,14 @@ export default function GymDirectory({ gyms: providedGyms, selectedGymId = null,
   const requireAccount = action => {
     if (!authenticated) { openAccount(); return false }
     action?.(); return true
+  }
+  const recoverConflict = async (error, gymId = '') => {
+    const conflictRev = gymConflictRevision(error)
+    if (conflictRev === null) return false
+    setRev(conflictRev)
+    await Promise.allSettled([loadGyms(), gymId ? loadDetail(gymId) : Promise.resolve()])
+    setMessage(t('Gym data changed. Your entries are still here; review and repeat the action.'))
+    return true
   }
   const toggleFavorite = async () => {
     if (!detail || busy) return
@@ -169,7 +182,7 @@ export default function GymDirectory({ gyms: providedGyms, selectedGymId = null,
       const tags = result.favorite ? ['Preferida', ...(detail.tags || []).filter(tag => tag !== 'Preferida')] : (detail.tags || []).filter(tag => tag !== 'Preferida')
       setRev(Number(result.rev) || rev); setDetailGym(current => ({ ...current, tags })); setGyms(current => current.map(gym => gym.id === detail.id ? { ...gym, tags } : gym))
       setMessage(t(result.favorite ? 'Gym added to favorites.' : 'Gym removed from favorites.'))
-    } catch (error) { if (error?.status === 401) openAccount(); else setMessage(t(error?.message || 'Could not update favorite.')) } finally { setBusy(false) }
+    } catch (error) { if (error?.status === 401) openAccount(); else if (!await recoverConflict(error, detail.id)) setMessage(t(error?.message || 'Could not update favorite.')) } finally { setBusy(false) }
   }
   const submitReview = async payload => {
     if (!detail || busy || payload.rating < 1) return
@@ -177,7 +190,7 @@ export default function GymDirectory({ gyms: providedGyms, selectedGymId = null,
     try {
       const result = await api('/api/gym/review', { method: 'PUT', body: JSON.stringify({ rev, gymId: detail.id, ...payload }) })
       setRev(Number(result.rev) || rev); setMessage(t(result.review?.status === 'pending' ? 'Review sent for verification.' : 'Review published.')); await loadDetail(detail.id)
-    } catch (error) { if (error?.status === 401) openAccount(); else setMessage(t(error?.message || 'Could not publish review.')) } finally { setBusy(false) }
+    } catch (error) { if (error?.status === 401) openAccount(); else if (!await recoverConflict(error, detail.id)) setMessage(t(error?.message || 'Could not publish review.')) } finally { setBusy(false) }
   }
   const submitContribution = async (kind, payload) => {
     if (!detail || busy) return
@@ -187,7 +200,7 @@ export default function GymDirectory({ gyms: providedGyms, selectedGymId = null,
       else { const result = await api('/api/gym-requests', { method: 'POST', body: JSON.stringify({ rev, kind, gymId: detail.id, payload }) }); setRev(Number(result?.rev) || rev) }
       setMessage(t('Contribution sent. It is now under verification.'))
       return true
-    } catch (error) { if (error?.status === 401) openAccount(); else setMessage(t(error?.message || 'Could not send the request.')); return false } finally { setBusy(false) }
+    } catch (error) { if (error?.status === 401) openAccount(); else if (!await recoverConflict(error, detail.id)) setMessage(t(error?.message || 'Could not send the request.')); return false } finally { setBusy(false) }
   }
   const openNewGym = () => requireAccount(() => { setMessage(''); setNewGym(current => ({ ...current, state: state || current.state, city: city || current.city })); setNewGymOpen(true) })
   const submitNewGym = async event => {
@@ -199,7 +212,7 @@ export default function GymDirectory({ gyms: providedGyms, selectedGymId = null,
       if (onRequestGym) await onRequestGym(payload)
       else { const result = await api('/api/gym-requests', { method: 'POST', body: JSON.stringify({ rev, kind: 'gym', payload }) }); setRev(Number(result?.rev) || rev) }
       setNewGymOpen(false); setNewGym({ ...EMPTY_GYM, state, city }); setMessage(t('Gym request sent. It is now under verification.'))
-    } catch (error) { if (error?.status === 401) openAccount(); else setMessage(t(error?.message || 'Could not send the request.')) } finally { setBusy(false) }
+    } catch (error) { if (error?.status === 401) openAccount(); else if (!await recoverConflict(error)) setMessage(t(error?.message || 'Could not send the request.')) } finally { setBusy(false) }
   }
 
   if (detail) return <main className="narrow gym-directory gym-directory-detail-view"><GymDetail gym={detail} reviews={reviews} selected={selectedGymId === detail.id} authenticated={authenticated} busy={busy} onBack={backToList} onSelect={onSelect} onToggleFavorite={toggleFavorite} onSubmitReview={submitReview} onSubmitContribution={submitContribution} onRequireLogin={openAccount} />{message ? <p className="gym-directory-message" role="status">{message}</p> : null}</main>

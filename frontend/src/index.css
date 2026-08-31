@@ -1697,7 +1697,7 @@ body:has(.ai-wizard) #tabbar{display:none}
 .gym-directory-detail-view{padding-top:max(12px,env(safe-area-inset-top))}
 .gym-detail{padding:0;border:0;background:transparent}
 .gym-detail-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}
-.gym-detail-nav .iconbtn{border:var(--hair) solid var(--sep-op);background:var(--surface)}
+.gym-detail-nav .iconbtn{min-width:44px;min-height:44px;width:44px;height:44px;border:var(--hair) solid var(--sep-op);background:var(--surface)}
 .gym-favorite{display:flex;align-items:center;gap:7px;min-height:44px;padding:8px 13px;border:var(--hair) solid var(--sep-op);border-radius:999px;background:var(--surface);color:var(--label-2);font-size:12px;font-weight:650}
 .gym-favorite.is-favorite{border-color:var(--acc-line);color:var(--acc)}
 .gym-detail-heading{align-items:center;padding:18px;border:var(--hair) solid var(--sep-op);border-radius:var(--r-card) var(--r-card) 0 0;background:var(--surface)}
@@ -1743,6 +1743,7 @@ body:has(.ai-wizard) #tabbar{display:none}
 
 @media (hover:hover){
   .gym-location-button:hover,.gym-filter-chips button:hover,.gym-new-request-action:hover,.gym-favorite:hover,.gym-community-actions>div>.btn:hover{border-color:var(--acc-line);background:var(--surface-2)}
+  .gym-directory .btn:hover,.gym-detail-nav .iconbtn:hover{filter:brightness(1.08)}
   .gym-filter-chips button.is-active:hover{border-color:var(--acc);background:var(--acc);filter:brightness(1.08)}
 }
 

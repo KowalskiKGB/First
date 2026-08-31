@@ -6,12 +6,15 @@ import { t } from '../../lib/i18n.js'
 const EMPTY = Object.freeze({ note: '', name: '', networkName: '', address: '', neighborhood: '', exerciseIds: [] })
 
 export default function GymContributionForm({ kind, gym, busy = false, onCancel, onSubmit }) {
-  const [values, setValues] = useState(() => ({ ...EMPTY, name: gym.name || '', networkName: gym.networkName || '', address: gym.address || '', neighborhood: gym.neighborhood || '' }))
+  const [values, setValues] = useState(() => kind === 'correction'
+    ? { ...EMPTY, name: gym.name || '', networkName: gym.networkName || '', address: gym.address || '', neighborhood: gym.neighborhood || '' }
+    : { ...EMPTY })
   const change = event => setValues(current => ({ ...current, [event.target.name]: event.target.value }))
   const submit = event => {
     event.preventDefault()
     if (kind === 'equipment') {
-      onSubmit({ name: values.name.trim(), note: values.note.trim(), exerciseIds: [...values.exerciseIds] })
+      const name = values.name.trim()
+      onSubmit({ ...(name ? { name } : {}), note: values.note.trim(), exerciseIds: [...values.exerciseIds] })
       return
     }
     if (kind === 'closure') {

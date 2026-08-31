@@ -1239,6 +1239,7 @@ export default {
   'Gym removed from favorites.': 'Academia removida das favoritas.',
   'Review sent for verification.': 'Avaliação enviada para verificação.',
   'Review published.': 'Avaliação publicada.',
+  'Gym data changed. Your entries are still here; review and repeat the action.': 'Os dados da academia mudaram. O que você preencheu continua aqui; revise e repita a ação.',
   'Could not update favorite.': 'Não foi possível atualizar o favorito.',
   'Could not publish review.': 'Não foi possível publicar a avaliação.',
   'Could not load gym details.': 'Não foi possível carregar os detalhes da academia.',

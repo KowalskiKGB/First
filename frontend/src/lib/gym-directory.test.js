@@ -6,6 +6,7 @@ import {
   filterGyms,
   gymCities,
   gymInitialLocality,
+  gymConflictRevision,
   gymListPath,
   gymStates,
   isGymOpen,
@@ -26,6 +27,12 @@ describe('gym directory request coordination', () => {
     expect(first.isCurrent()).toBe(false)
     expect(second.signal.aborted).toBe(false)
     expect(second.isCurrent()).toBe(true)
+  })
+
+  it('uses the fresh server revision only for a stale-write conflict', () => {
+    expect(gymConflictRevision({ status: 409, rev: 31 })).toBe(31)
+    expect(gymConflictRevision({ status: 409, rev: '31' })).toBeNull()
+    expect(gymConflictRevision({ status: 500, rev: 31 })).toBeNull()
   })
 })
 

@@ -17,6 +17,7 @@ export const webauthnOK = () => !!(window.PublicKeyCredential && navigator.crede
 const responseError = (data, status) => {
   const error = new Error(data?.error || ('HTTP ' + status))
   error.status = status
+  if (Number.isInteger(data?.rev)) error.rev = data.rev
   return error
 }
 

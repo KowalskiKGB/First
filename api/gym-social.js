@@ -248,6 +248,7 @@ export function projectGymDirectory({ gyms, reviews, favorites, userId, latitude
       state: gym.state, city: gym.city, address: gym.address,
       ...(gym.neighborhood ? { neighborhood: gym.neighborhood } : {}),
       ...(gym.postalCode ? { postalCode: gym.postalCode } : {}),
+      latitude: gym.latitude, longitude: gym.longitude,
       status: gym.status, visibility: gym.visibility,
       openingHours: structuredClone(gym.openingHours), openingHoursNote: gym.openingHoursNote,
       exerciseIds: [...gym.exerciseIds], ...(gym.source ? { source: structuredClone(gym.source) } : {}),
