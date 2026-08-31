@@ -18,6 +18,7 @@ function devFixtures(seed = {}) {
   let gyms = [...(seed.gyms || [])]
   let gymReviews = [...(seed.reviews || [])]
   let rev = seed.rev || 12
+  let staleDelivered = false
   const users = [...(seed.users || [])]
   const userDetails = seed.userDetails || {}
   const writes = []
@@ -50,6 +51,11 @@ function devFixtures(seed = {}) {
       if (pathname === '/api/dev/ai/usage') {
         const longWindow = searchParams.get('window') === '30d'
         return json(route, { usage: { requests: longWindow ? 30 : 7, failures: longWindow ? 3 : 1, totalTokens: longWindow ? 5400 : 1200, latencyMs: longWindow ? 9000 : 2100 } })
+      }
+      if (!staleDelivered && seed.staleOnce?.pathname === pathname && seed.staleOnce?.id === (body?.id || body?.requestId)) {
+        staleDelivered = true
+        rev += 1
+        return json(route, { error: 'stale revision', rev }, 409)
       }
       if (pathname === '/api/dev/gym-requests/review' && method === 'POST') {
         rev += 1
@@ -292,25 +298,34 @@ test('Dev reviews equipment requests and inspects registered users', async ({ pa
   }))
 })
 
-test('Dev compares contributions and safely moderates gyms and reviews with the latest revision', async ({ page }, testInfo) => {
+for (const viewport of VIEWPORTS) test(`Dev completes the gym moderation matrix and stale-revision recovery on ${viewport.name}`, async ({ page }, testInfo) => {
   const fixtures = devFixtures({
     rev: 40,
-    requests: [{
-      id: 'request-correction', kind: 'correction', status: 'pending', gymId: 'gym-1',
-      gym: { id: 'gym-1', name: 'Academia Centro' },
-      payload: { address: 'Rua Nova, 200', neighborhood: 'Centro' }, createdAt: '2026-08-31T12:30:00.000Z',
-    }],
+    staleOnce: { pathname: '/api/dev/gym-requests/review', id: 'request-reject' },
+    requests: [
+      {
+        id: 'request-approve', kind: 'correction', status: 'pending', gymId: 'gym-1',
+        gym: { id: 'gym-1', name: 'Academia Centro — Aprovar' },
+        payload: { address: 'Rua Nova, 200', neighborhood: 'Centro' }, createdAt: '2026-08-31T12:30:00.000Z',
+      },
+      {
+        id: 'request-reject', kind: 'correction', status: 'pending', gymId: 'gym-1',
+        gym: { id: 'gym-1', name: 'Academia Centro — Rejeitar' },
+        payload: { address: 'Rua sem fonte, 999' }, createdAt: '2026-08-31T12:35:00.000Z',
+      },
+    ],
     gyms: [{
       id: 'gym-1', name: 'Academia Centro', state: 'AP', city: 'Macapá', address: 'Rua Antiga, 10', neighborhood: 'Aldeota',
       status: 'verified', visibility: 'public', exerciseIds: [],
       source: { label: 'Site oficial', url: 'https://example.com/gym', confidence: 'high', verifiedAt: '2026-08-30' },
     }],
     reviews: [{
-      id: 'review-1', gymId: 'gym-1', rating: 2, comment: 'Comentário revisado sem contato.', status: 'removed',
-      submittedBy: { name: 'Ana Silva', email: 'ana@example.com' }, createdAt: '2026-08-30T10:00:00.000Z',
+      id: 'review-1', gymId: 'gym-1', rating: 4, comment: 'Comentário revisado sem contato.', status: 'pending',
+      submittedBy: { name: 'Pessoa revisora' }, createdAt: '2026-08-30T10:00:00.000Z',
     }],
   })
-  await page.setViewportSize(VIEWPORTS[0])
+  await page.setViewportSize(viewport)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.route('**/api/**', route => fixtures.handle(route))
 
   await page.goto('/devadmin')
@@ -323,11 +338,25 @@ test('Dev compares contributions and safely moderates gyms and reviews with the 
   await expect(page.getByLabel('Comparação antes e depois').getByText('Rua Antiga, 10')).toBeVisible()
   await expect(page.getByText('Rua Nova, 200')).toBeVisible()
   const reason = page.locator('[name="gym-moderation-reason"]')
-  await expect(page.getByRole('button', { name: 'Aprovar' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Aprovar', exact: true })).toBeDisabled()
   await reason.fill('Endereço confirmado na fonte oficial.')
-  await page.getByRole('button', { name: 'Aprovar' }).click()
+  await page.getByRole('button', { name: 'Aprovar', exact: true }).click()
+  await expect(page.locator('.dev-confirmation')).toHaveAttribute('role', 'status')
+  await expect(page.locator('.dev-confirmation')).toHaveAttribute('aria-live', 'polite')
   await page.getByRole('button', { name: 'Confirmar aprovação' }).click()
   await expect(page.getByText('Contribuição aprovada.')).toBeVisible()
+
+  await page.locator('.client-list button', { hasText: 'Academia Centro — Rejeitar' }).click()
+  await reason.fill('Cadastro não confirmado na fonte.')
+  await page.getByRole('button', { name: 'Rejeitar', exact: true }).click()
+  await page.getByRole('button', { name: 'Confirmar rejeição' }).click()
+  await expect(page.getByText('Os dados mudaram. Revise o cadastro atualizado e escolha a ação novamente.')).toBeVisible()
+  await expect(reason).toHaveValue('')
+  await expect(page.getByRole('button', { name: 'Confirmar rejeição' })).toHaveCount(0)
+  await reason.fill('Cadastro não confirmado após atualização.')
+  await page.getByRole('button', { name: 'Rejeitar', exact: true }).click()
+  await page.getByRole('button', { name: 'Confirmar rejeição' }).click()
+  await expect(page.getByText('Contribuição rejeitada.')).toBeVisible()
 
   await page.getByRole('tab', { name: 'Diretório' }).click()
   await expect(page.getByText('Site oficial')).toBeVisible()
@@ -335,25 +364,40 @@ test('Dev compares contributions and safely moderates gyms and reviews with the 
   await page.getByRole('button', { name: 'Arquivar' }).click()
   await page.getByRole('button', { name: 'Confirmar arquivamento' }).click()
   await expect(page.getByText('Arquivada', { exact: true }).last()).toBeVisible()
+  await reason.fill('Reabertura confirmada na fonte oficial.')
+  await page.getByRole('button', { name: 'Restaurar' }).click()
+  await page.getByRole('button', { name: 'Confirmar restauração' }).click()
+  await expect(page.getByText('Academia restaurada.')).toBeVisible()
 
   await page.getByRole('tab', { name: 'Avaliações' }).click()
-  await page.getByRole('button', { name: 'Removidas', exact: true }).click()
   await expect(page.getByText('Comentário revisado sem contato.', { exact: true })).toBeVisible()
-  await reason.fill('Comentário conferido e seguro para publicação.')
+  await reason.fill('Avaliação adequada para publicação.')
+  await page.getByRole('button', { name: 'Publicar' }).click()
+  await page.getByRole('button', { name: 'Confirmar publicação' }).click()
+  await expect(page.getByText('Avaliação publicada.')).toBeVisible()
+  await reason.fill('Remoção necessária após nova revisão.')
+  await page.getByRole('button', { name: 'Remover' }).click()
+  await page.getByRole('button', { name: 'Confirmar remoção' }).click()
+  await expect(page.getByText('Avaliação removida.')).toBeVisible()
+  await reason.fill('Conteúdo liberado após revisão final.')
   await page.getByRole('button', { name: 'Restaurar' }).click()
   await page.getByRole('button', { name: 'Confirmar restauração' }).click()
   await expect(page.getByText('Avaliação restaurada.')).toBeVisible()
 
   const touchTargets = await page.locator('.dev-gym-tabs button, .dev-review-filters button').evaluateAll(buttons => buttons.map(button => button.getBoundingClientRect().height))
   expect(touchTargets.every(height => height >= 44)).toBe(true)
-
   expect(fixtures.writes.filter(write => ['/api/dev/gym-requests/review', '/api/dev/gym', '/api/dev/gym-review'].includes(write.pathname)).map(write => write.body)).toEqual([
-    { id: 'request-correction', decision: 'approve', reason: 'Endereço confirmado na fonte oficial.', rev: 40 },
-    { id: 'gym-1', action: 'archive', reason: 'Unidade encerrada e fonte conferida.', rev: 41 },
-    { id: 'review-1', status: 'published', reason: 'Comentário conferido e seguro para publicação.', rev: 42 },
+    { id: 'request-approve', decision: 'approve', reason: 'Endereço confirmado na fonte oficial.', rev: 40 },
+    { id: 'request-reject', decision: 'reject', reason: 'Cadastro não confirmado na fonte.', rev: 41 },
+    { id: 'request-reject', decision: 'reject', reason: 'Cadastro não confirmado após atualização.', rev: 42 },
+    { id: 'gym-1', action: 'archive', reason: 'Unidade encerrada e fonte conferida.', rev: 43 },
+    { id: 'gym-1', action: 'restore', reason: 'Reabertura confirmada na fonte oficial.', rev: 44 },
+    { id: 'review-1', status: 'published', reason: 'Avaliação adequada para publicação.', rev: 45 },
+    { id: 'review-1', status: 'removed', reason: 'Remoção necessária após nova revisão.', rev: 46 },
+    { id: 'review-1', status: 'published', reason: 'Conteúdo liberado após revisão final.', rev: 47 },
   ])
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1)
-  await page.screenshot({ path: testInfo.outputPath('dev-gym-moderation-mobile.png'), fullPage: true, animations: 'disabled', caret: 'hide' })
+  await page.screenshot({ path: testInfo.outputPath(`dev-gym-moderation-${viewport.name}.png`), fullPage: true, animations: 'disabled', caret: 'hide' })
 })
 
 test('an unavailable user index does not block AI provider configuration', async ({ page }) => {

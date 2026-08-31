@@ -382,6 +382,41 @@ describe('Dev AI panel UI contracts', () => {
     expect(chooseProvider('')).toBe('gemini')
     expect(chooseProvider('openai')).toBe('openai')
   })
+
+  it.each([
+    ['requests', '/api/dev/gym-requests', 9, 10],
+    ['gyms', '/api/dev/gyms', 14, 15],
+    ['reviews', '/api/dev/gym-reviews', 16, 17],
+  ])('preserves the previous %s slice when its dashboard request fails', async (_, failedPath, dataIndex, selectionIndex) => {
+    harness.reset([
+      null, { username: '', password: '' }, [], '7d', {}, false, '', 'gyms', '',
+      [{ id: 'request-old' }], 'request-old', [], '', null,
+      [{ id: 'gym-old' }], 'gym-old', [{ id: 'review-old' }], 'review-old',
+      'contributions', '', 'all', 40, '', null, false, '', '',
+    ])
+    harness.api.mockImplementation(async path => {
+      if (path === '/api/dev/session') return { unlocked: true, username: 'first_dev_saved' }
+      if (path === '/api/dev/ai/providers') return { providers: [] }
+      if (path === '/api/dev/ai/usage?window=7d') return { usage: {} }
+      if (path === '/api/dev/users') return { users: [] }
+      if (path === failedPath) throw new Error('slice unavailable')
+      if (path === '/api/dev/gym-requests') return { rev: 41, requests: [{ id: 'request-new' }] }
+      if (path === '/api/dev/gyms') return { rev: 42, gyms: [{ id: 'gym-new' }] }
+      if (path === '/api/dev/gym-reviews') return { rev: 43, reviews: [{ id: 'review-new' }] }
+      return { ok: true }
+    })
+
+    DevPanel()
+    harness.effects[0]()
+    await flush()
+    await flush()
+
+    expect(harness.setters[dataIndex]).not.toHaveBeenCalled()
+    expect(harness.setters[selectionIndex]).not.toHaveBeenCalled()
+    for (const fulfilledIndex of [9, 14, 16].filter(index => index !== dataIndex)) {
+      expect(harness.setters[fulfilledIndex]).toHaveBeenCalled()
+    }
+  })
 })
 
 describe('Dev operations console contracts', () => {
@@ -539,7 +574,11 @@ describe('Dev operations console contracts', () => {
       view: 'directory', gyms: [gym], selectedGymId: gym.id, reason: 'Unidade encerrou as atividades.',
       pendingAction: { type: 'gym', id: gym.id, action: 'archive' }, onConfirmAction: vi.fn(), onCancelAction: vi.fn(),
     })
-    expect(renderToStaticMarkup(confirm)).toContain('Confirm archive')
+    const confirmationMarkup = renderToStaticMarkup(confirm)
+    expect(confirmationMarkup).toContain('Confirm archive')
+    expect(confirmationMarkup).toContain('role="status"')
+    expect(confirmationMarkup).toContain('aria-live="polite"')
+    expect(confirmationMarkup).not.toContain('role="alert"')
     const confirmDirectory = byTypeName(confirm, 'DirectoryConsole')
     const confirmContent = confirmDirectory.type(confirmDirectory.props)
     const confirmActions = byTypeName(confirmContent, 'ModerationActions')
@@ -685,8 +724,9 @@ describe('Dev operations console contracts', () => {
     await dashboard.props.onConfirmAction()
 
     expect(harness.setters[21]).toHaveBeenCalledWith(42)
-    expect(harness.setters[26]).toHaveBeenCalledWith(expect.any(String))
-    expect(harness.setters[23]).not.toHaveBeenCalledWith(null)
+    expect(harness.setters[26]).toHaveBeenCalledWith('Data changed. Review the updated record and choose the action again.')
+    expect(harness.setters[23]).toHaveBeenCalledWith(null)
+    expect(harness.setters[22]).toHaveBeenCalledWith('')
   })
 
   it('shows three compact provider choices but opens only the selected provider editor', () => {
