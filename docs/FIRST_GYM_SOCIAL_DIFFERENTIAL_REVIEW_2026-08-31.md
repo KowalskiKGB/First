@@ -1,7 +1,7 @@
 # First gym social differential review — 2026-08-31
 
 Base: `40cc71d`
-Head: `73e8b1f`
+Head: `50b3fd0`
 
 ## Verdict
 
@@ -25,21 +25,24 @@ geocoding, seeded Macapá gyms/reviews, mobile permissions or Docker packaging c
 
 ## Verification evidence
 
-- `npm test` in `api`: 270/270 passing.
-- `npm run test:coverage` in `api`: 270/270 passing, 83.99% line coverage, 81.03% branch coverage.
-- `npm test` in `frontend`: 582/582 passing.
+- `npm test` in `api`: 271/271 passing.
+- `npm run test:coverage` in `api`: 271/271 passing, 84.01% line coverage, 81.02% branch coverage, 81.19% function coverage.
+- `npm test` in `frontend`: 583/583 passing.
 - `npx vitest run --coverage` in `frontend`: 583/583 passing; global legacy coverage remains 64.45%
   line coverage, with new/changed gym modules covered by focused unit/E2E tests.
-- `npm run test:e2e` in `frontend`: 34/34 passing.
+- `npm run test:e2e -- e2e/gym-directory.spec.js e2e/dev-ai.spec.js` in `frontend`: 13/13 passing.
+- `npm run test:e2e -- e2e/gym-directory.spec.js` after the final CSS cleanup: 3/3 passing.
 - `npm run build`: web build passing.
 - `npm run build:mobile`: mobile build/sync passing, copied 1,324 images and 1,324 GIFs.
 - `gradlew assembleDebug`: debug APK build passing after setting local Android SDK env vars.
-- `adb install -r`: installed successfully on device `RQGL209YMME`.
+- `adb install -r`: installed successfully on device `RQGL209YMME`; the app process started and stayed alive.
 - `npm audit --audit-level=high` in `api` and `frontend`: 0 vulnerabilities.
 - `node --test scripts/deployment.test.mjs`: 5/5 passing.
-- Mobile screenshots inspected for Home, Academias and `/devadmin`; no overflow or unusable mobile
-  controls observed. Local API proxy 502 messages were expected because no backend was running
-  behind Vite during screenshot capture.
+- Local Docker smoke for the API image: `/api/ready` returned `{"ok":true}` and
+  `/api/gyms?uf=AP&city=Macapá` returned 11 gyms.
+- Playwright screenshots inspected for Home, Academias and `/devadmin`; no overflow or unusable
+  mobile controls observed. The final physical screenshot landed on the Android lockscreen, so it
+  was not used as UI evidence.
 
 ## Residual risks
 
