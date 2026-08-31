@@ -88,7 +88,7 @@ test('guest opts into location, searches social signals and returns with focus o
   const errors = watchBrowser(page)
   await page.setViewportSize(MOBILE)
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  await context.grantPermissions(['geolocation'], { origin: 'http://127.0.0.1:5173' })
+  await context.grantPermissions(['geolocation'])
   await context.setGeolocation({ latitude: 0.03545, longitude: -51.06656 })
   await page.route('**/api/**', route => api.handle(route))
 
