@@ -57,7 +57,7 @@ vi.mock('../components/ExerciseCatalogPicker.jsx', () => ({
   ),
 }))
 
-import GymDirectory from './GymDirectory.jsx'
+import GymDirectory, { reverseLocationPath } from './GymDirectory.jsx'
 
 const gyms = [
   {
@@ -91,6 +91,13 @@ const gyms = [
 ]
 
 describe('GymDirectory', () => {
+  it('limits reverse-geocoding coordinates to 3 decimals without losing zero or negative signs', () => {
+    expect(reverseLocationPath({ latitude: 0, longitude: -51.06656 }))
+      .toBe('/api/location/reverse?latitude=0&longitude=-51.067')
+    expect(reverseLocationPath({ latitude: -3.73154, longitude: 0 }))
+      .toBe('/api/location/reverse?latitude=-3.732&longitude=0')
+  })
+
   it('offers locality and gym search before authentication is needed', () => {
     const markup = renderToStaticMarkup(
       <GymDirectory gyms={gyms} selectedGymId={null} onSelect={vi.fn()} onRequestEquipment={vi.fn()} />,

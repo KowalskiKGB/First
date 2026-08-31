@@ -89,7 +89,7 @@ test('guest opts into location, searches social signals and returns with focus o
   await page.setViewportSize(MOBILE)
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await context.grantPermissions(['geolocation'], { origin: 'http://127.0.0.1:5173' })
-  await context.setGeolocation({ latitude: 0.034, longitude: -51.066 })
+  await context.setGeolocation({ latitude: 0.03545, longitude: -51.06656 })
   await page.route('**/api/**', route => api.handle(route))
 
   await page.goto('/#/academias')
@@ -98,7 +98,7 @@ test('guest opts into location, searches social signals and returns with focus o
   await expect(page.locator('[name="gym-city"]')).toHaveValue('Macapá')
   await expect(page.getByText('© OpenStreetMap contributors')).toBeVisible()
   expect(api.reads.filter(read => read.pathname === '/api/gyms').every(read => !/[?&](latitude|longitude)=/.test(read.search))).toBe(true)
-  expect(api.reads.some(read => read.pathname === '/api/location/reverse' && /latitude=/.test(read.search) && /longitude=/.test(read.search))).toBe(true)
+  expect(api.reads.some(read => read.pathname === '/api/location/reverse' && read.search === '?latitude=0.035&longitude=-51.067')).toBe(true)
   await expect(page.locator('.gym-result')).toHaveCount(2)
   await expect(page.locator('.gym-result').first()).toContainText('Smart Fit Macapá')
 
@@ -108,6 +108,7 @@ test('guest opts into location, searches social signals and returns with focus o
   await page.locator('[name="gym-search"]').fill('Smart Central')
   const smart = page.locator('.gym-result', { hasText: 'Smart Fit Macapá' })
   await expect(smart).toContainText('4,8')
+  await expect(smart).toContainText('500 m')
   await smart.click()
   await expect(page.getByRole('heading', { name: 'Smart Fit Macapá' })).toBeVisible()
   await expect(page.getByText('Demonstração', { exact: true }).last()).toBeVisible()
