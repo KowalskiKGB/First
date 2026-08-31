@@ -1344,6 +1344,7 @@ export default {
   'Action completed.': 'Ação concluída.',
   'The moderation action could not be completed. Refresh the data and try again.': 'Não foi possível concluir a ação de moderação. Atualize os dados e tente novamente.',
   'Action completed, but updated data could not be loaded. Reload the panel.': 'A ação foi concluída, mas os dados atualizados não carregaram. Recarregue o painel.',
+  'Data changed. Review the updated record and choose the action again.': 'Os dados mudaram. Revise o cadastro atualizado e escolha a ação novamente.',
   'The data changed and could not be reloaded. Reload the panel.': 'Os dados mudaram e não puderam ser recarregados. Recarregue o painel.',
   'invalid gym action': 'Ação de academia inválida.',
   'invalid review moderation': 'Moderação de avaliação inválida.',

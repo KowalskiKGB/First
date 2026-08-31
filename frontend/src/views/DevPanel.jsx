@@ -179,7 +179,7 @@ function ModerationActions({ type, id, actions, reason = '', pendingAction, busy
   const pending = pendingAction?.type === type && pendingAction?.id === id ? pendingAction : null
   return <div className="dev-moderation-actions">
     <label><span>{t('Decision reason')}</span><textarea className="field" name="gym-moderation-reason" maxLength={300} value={reason} onChange={event => onReason?.(event.target.value)} autoComplete="off" placeholder={t('Add a short, factual reason…')} /></label>
-    {pending ? <div className="dev-confirmation" role="alert">
+    {pending ? <div className="dev-confirmation" role="status" aria-live="polite">
       <p>{t('Review the reason before confirming this action.')}</p>
       <div>
         <Button type="button" variant="primary" disabled={busy} onClick={() => onConfirmAction?.()}>{t(moderationConfirmation(pending.action))}</Button>
@@ -510,16 +510,24 @@ export default function DevPanel() {
   const [moderationMessage, setModerationMessage] = useState('')
   const [moderationError, setModerationError] = useState('')
 
-  const applyGymData = (requestData = {}, gymData = {}, reviewData = {}) => {
-    const nextRequests = requestData.requests || []
-    const nextGyms = gymData.gyms || []
-    const nextReviews = reviewData.reviews || []
-    const revisions = [requestData.rev, gymData.rev, reviewData.rev].filter(Number.isInteger)
+  const applyGymData = (requestData, gymData, reviewData) => {
+    const revisions = [requestData?.rev, gymData?.rev, reviewData?.rev].filter(Number.isInteger)
     if (revisions.length) setCollaborationRev(Math.max(...revisions))
-    setRequests(nextRequests); setGyms(nextGyms); setReviews(nextReviews)
-    setSelectedRequestId(current => nextRequests.some(item => item.id === current) ? current : nextRequests[0]?.id || '')
-    setSelectedGymId(current => nextGyms.some(item => item.id === current) ? current : nextGyms[0]?.id || '')
-    setSelectedReviewId(current => nextReviews.some(item => item.id === current) ? current : nextReviews[0]?.id || '')
+    if (requestData) {
+      const nextRequests = requestData.requests || []
+      setRequests(nextRequests)
+      setSelectedRequestId(current => nextRequests.some(item => item.id === current) ? current : nextRequests[0]?.id || '')
+    }
+    if (gymData) {
+      const nextGyms = gymData.gyms || []
+      setGyms(nextGyms)
+      setSelectedGymId(current => nextGyms.some(item => item.id === current) ? current : nextGyms[0]?.id || '')
+    }
+    if (reviewData) {
+      const nextReviews = reviewData.reviews || []
+      setReviews(nextReviews)
+      setSelectedReviewId(current => nextReviews.some(item => item.id === current) ? current : nextReviews[0]?.id || '')
+    }
   }
 
   const loadGymData = async () => {
@@ -541,23 +549,25 @@ export default function DevPanel() {
       api('/api/dev/gym-reviews'),
       api('/api/dev/users'),
     ])
-    const requestData = requestResult.status === 'fulfilled' ? requestResult.value : {}
-    const gymData = gymResult.status === 'fulfilled' ? gymResult.value : {}
-    const reviewData = reviewResult.status === 'fulfilled' ? reviewResult.value : {}
-    const userData = userResult.status === 'fulfilled' ? userResult.value : {}
+    const requestData = requestResult.status === 'fulfilled' ? requestResult.value : null
+    const gymData = gymResult.status === 'fulfilled' ? gymResult.value : null
+    const reviewData = reviewResult.status === 'fulfilled' ? reviewResult.value : null
     if ([requestResult, gymResult, reviewResult, userResult].some(result => result.status === 'rejected')) {
       setError(t('Some console data could not be loaded.'))
     }
     const nextProviders = providerData.providers || []
-    const nextUsers = userData.users || []
     setProviders(nextProviders); setUsage(usageData.usage || {})
-    applyGymData(requestData, gymData, reviewData); setUsers(nextUsers)
+    applyGymData(requestData, gymData, reviewData)
+    if (userResult.status === 'fulfilled') {
+      const nextUsers = userResult.value.users || []
+      setUsers(nextUsers)
+      setSelectedUserId(current => nextUsers.some(item => item.id === current) ? current : '')
+    }
     setSelectedProvider(current => {
       const activeProvider = nextProviders.find(item => item.active)?.provider
       if (!current) return activeProvider || 'openai'
       return DEV_PROVIDERS.some(item => item.provider === current) ? current : activeProvider || 'openai'
     })
-    setSelectedUserId(current => nextUsers.some(item => item.id === current) ? current : '')
   }
   useEffect(() => {
     let current = true
@@ -623,10 +633,14 @@ export default function DevPanel() {
       try { await loadGymData() }
       catch { setModerationError(t('Action completed, but updated data could not be loaded. Reload the panel.')) }
     } catch (requestError) {
-      setModerationError(t(safeDevError(requestError, 'The moderation action could not be completed. Refresh the data and try again.')))
       if (requestError?.status === 409) {
-        try { await loadGymData() }
-        catch { setModerationError(t('The data changed and could not be reloaded. Reload the panel.')) }
+        setPendingAction(null); setModerationReason('')
+        try {
+          await loadGymData()
+          setModerationError(t('Data changed. Review the updated record and choose the action again.'))
+        } catch { setModerationError(t('The data changed and could not be reloaded. Reload the panel.')) }
+      } else {
+        setModerationError(t(safeDevError(requestError, 'The moderation action could not be completed. Refresh the data and try again.')))
       }
     } finally { setModerationBusy(false) }
   }
