@@ -92,15 +92,17 @@ test('provider key can be saved before choosing a model but cannot test or activ
   assert.throws(() => activateProvider(configured.records, 'gemini'), /successful test/);
 });
 
-test('Gemini uses camelCase structured output fields and keeps key only in header', () => {
+test('Gemini uses the current REST responseFormat contract and keeps key only in header', () => {
   const request = buildProviderRequest('gemini', {
     apiKey: 'gemini-complete-key', model: 'gemini-test', prompt: 'return ok', schema
   });
   const body = JSON.parse(request.options.body);
   assert.equal(new URL(request.url).search, '');
   assert.equal(request.options.headers['x-goog-api-key'], 'gemini-complete-key');
-  assert.equal(body.generationConfig.responseMimeType, 'application/json');
-  assert.deepEqual(body.generationConfig.responseJsonSchema, schema);
+  assert.equal(body.generationConfig.responseFormat.text.mimeType, 'application/json');
+  assert.deepEqual(body.generationConfig.responseFormat.text.schema, schema);
+  assert.equal('responseMimeType' in body.generationConfig, false);
+  assert.equal('responseJsonSchema' in body.generationConfig, false);
   assert.equal('responseSchema' in body.generationConfig, false);
   assert.equal('response_mime_type' in body.generationConfig, false);
 });
@@ -143,8 +145,8 @@ test('provider requests remove only unsupported schema constraints without mutat
   const anthropic = JSON.parse(buildProviderRequest('anthropic', { apiKey: 'c', model: 'claude', prompt: 'ok', schema: AI_WORKOUT_SCHEMA }).options.body);
 
   assert.equal(hasSchemaKeyword(openai.text.format.schema, 'minLength'), true);
-  assert.equal(hasSchemaKeyword(gemini.generationConfig.responseJsonSchema, 'minLength'), false);
-  assert.equal(hasSchemaKeyword(gemini.generationConfig.responseJsonSchema, 'minimum'), true);
+  assert.equal(hasSchemaKeyword(gemini.generationConfig.responseFormat.text.schema, 'minLength'), false);
+  assert.equal(hasSchemaKeyword(gemini.generationConfig.responseFormat.text.schema, 'minimum'), true);
   for (const keyword of ['minimum', 'maximum', 'minLength', 'maxLength']) {
     assert.equal(hasSchemaKeyword(anthropic.output_config.format.schema, keyword), false, keyword);
   }
@@ -160,7 +162,7 @@ test('each provider must pass its adapted real workout schema before activation'
     },
     {
       provider: 'gemini', model: 'gemini-test', key: 'gemini-secret',
-      schema: body => body.generationConfig.responseJsonSchema,
+      schema: body => body.generationConfig.responseFormat.text.schema,
       response: {
         candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(providerTestPlan()) }] } }],
         usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 2, totalTokenCount: 6 }
