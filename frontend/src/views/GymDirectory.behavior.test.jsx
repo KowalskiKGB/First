@@ -207,6 +207,61 @@ describe('GymDirectory behavior', () => {
     expect(harness.setters[15]).toHaveBeenCalledWith('ready')
   })
 
+  it('resets locality state without a request until a UF is selected', () => {
+    harness.reset()
+
+    GymDirectory({ gyms, authenticated: false })
+    const cleanup = harness.effects[2]()
+
+    expect(cleanup).toBeUndefined()
+    expect(harness.api).not.toHaveBeenCalledWith(expect.stringContaining('/api/locations/municipalities'))
+    expect(harness.setters[14]).toHaveBeenCalledWith([])
+    expect(harness.setters[15]).toHaveBeenCalledWith('idle')
+    expect(harness.setters[16]).toHaveBeenCalledWith('')
+  })
+
+  it('uses the safe manual fallback when loading municipalities fails', async () => {
+    harness.reset([gyms, 7, 'RR'])
+    harness.api.mockRejectedValue(new Error('Não foi possível carregar os municípios. Digite o município manualmente.'))
+
+    GymDirectory({ gyms, authenticated: false })
+    harness.effects[2]()
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(harness.setters[14]).toHaveBeenCalledWith([])
+    expect(harness.setters[15]).toHaveBeenCalledWith('error')
+    expect(harness.setters[16]).toHaveBeenCalledWith('Não foi possível carregar os municípios. Digite o município manualmente.')
+  })
+
+  it('clears search and open detail whenever the locality changes', () => {
+    harness.reset([gyms, 7, 'CE', 'Fortaleza', 'x', 'gym-x'])
+    const view = GymDirectory({ gyms, selectedGymId: 'gym-x', authenticated: false })
+    const stateSelect = findElements(view, element => element.props.name === 'gym-state')[0]
+    const citySelect = findElements(view, element => element.props.name === 'gym-city')[0]
+
+    stateSelect.props.onChange({ target: { value: 'SP' } })
+    citySelect.props.onChange('Campinas')
+
+    expect(harness.setters[2]).toHaveBeenCalledWith('SP')
+    expect(harness.setters[3]).toHaveBeenCalledWith('')
+    expect(harness.setters[3]).toHaveBeenCalledWith('Campinas')
+    expect(harness.setters[4]).toHaveBeenCalledWith('')
+    expect(harness.setters[5]).toHaveBeenCalledWith(null)
+  })
+
+  it('inherits the selected locality when an authenticated student requests a gym', () => {
+    harness.reset([gyms, 7, 'CE', 'Fortaleza'])
+    const view = GymDirectory({ gyms, authenticated: true })
+    const button = findElements(view, element => element.props.children === 'Could not find your gym? Request its registration')[0]
+
+    button.props.onClick()
+
+    expect(harness.setters[13]).toHaveBeenCalledWith('')
+    expect(harness.setters[11]).toHaveBeenCalledWith(expect.any(Function))
+    expect(harness.setters[11].mock.calls[0][0]({ state: '', city: '' })).toMatchObject({ state: 'CE', city: 'Fortaleza' })
+    expect(harness.setters[10]).toHaveBeenCalledWith(true)
+  })
+
   it('shows a manual municipality field when the location service fails', () => {
     harness.reset([gyms, 7, 'RR', '', '', null, false, [], '', '', false, {
       name: '', state: '', city: '', address: '', openingHoursNote: '', exerciseIds: [],

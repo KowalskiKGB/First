@@ -139,6 +139,7 @@ export default function GymDirectory({
     const nextState = event.target.value
     setState(nextState)
     setCity('')
+    setQuery('')
     setDetailId(null)
   }
 
@@ -236,7 +237,7 @@ export default function GymDirectory({
             {states.map(value => <option key={value} value={value}>{value}</option>)}
           </select>
         </label>
-        <MunicipalityField name="gym-city" uf={state} city={city} locality={locality} onChange={value => { setCity(value); setDetailId(null) }} />
+        <MunicipalityField name="gym-city" uf={state} city={city} locality={locality} onChange={value => { setCity(value); setQuery(''); setDetailId(null) }} />
       </div>
       <label className="gym-directory-search"><span>{t('Search gyms')}</span>
         <span className="search"><Icon name="search" /><input name="gym-search" value={query} onChange={event => setQuery(event.target.value)} placeholder={t('Search by name or address')} disabled={!localityReady} /></span>
