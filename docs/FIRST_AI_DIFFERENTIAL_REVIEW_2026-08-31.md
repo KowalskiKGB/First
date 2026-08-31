@@ -22,6 +22,7 @@ No Critical or High findings.
 - Provider test failures expose only fixed diagnostics: credential rejected, provider/model HTTP status, or timeout.
 - Upstream response bodies, transport exception text, prompts, full model responses, and complete API keys remain out of public DTOs and test assertions cover those sentinel cases.
 - The diagnostic marker is a private module `Symbol`; browser input cannot mark an arbitrary upstream or transport error as safe.
+- Gemini HTTP 400 credential failures are recognized only from an allowlist of Google `ErrorInfo.reason` values or fixed invalid/leaked-key phrases; the upstream body is never returned.
 - Gemini/OpenAI/Anthropic keys remain sent only in headers or request bodies already covered by provider adapter tests; model-list URLs do not contain keys.
 - Gemini generation follows the current REST `generationConfig.responseFormat.text` structured-output contract; the older fields are absent from the request.
 - Provider configuration payloads now use the rendered provider identity instead of stale draft state, preventing a fast provider switch from saving a key/model into the previous provider slot.

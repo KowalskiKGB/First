@@ -425,6 +425,28 @@ test('provider tests expose only fixed diagnostics for sanitized HTTP and timeou
   assert.doesNotMatch(JSON.stringify(timedOut), /timeout-secret|AbortError|operation was aborted/i);
 });
 
+test('Gemini recognizes an allowlisted API-key rejection hidden behind HTTP 400', async () => {
+  const secret = 'complete-gemini-auth-key';
+  const slot = upsertProvider([], {
+    provider: 'gemini', selectedModel: 'gemini-test', apiKey: secret
+  }, masterKey, 'now').records[0];
+  const tested = await testProvider([slot], 'gemini', {
+    masterKey,
+    now: () => 'later',
+    fetchImpl: async () => new Response(JSON.stringify({
+      error: {
+        code: 400,
+        message: `SENTINEL_UPSTREAM_BODY ${secret}`,
+        status: 'INVALID_ARGUMENT',
+        details: [{ '@type': 'type.googleapis.com/google.rpc.ErrorInfo', reason: 'API_KEY_INVALID' }]
+      }
+    }), { status: 400 })
+  });
+
+  assert.equal(tested.error, 'The provider credential was rejected.');
+  assert.doesNotMatch(JSON.stringify(tested), /SENTINEL_UPSTREAM_BODY|complete-gemini-auth-key/);
+});
+
 test('provider tests keep untrusted transport errors generic', async () => {
   const sentinel = 'SENTINEL_UNTRUSTED_TRANSPORT_DETAIL';
   const slot = upsertProvider([], {

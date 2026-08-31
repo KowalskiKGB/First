@@ -9,6 +9,11 @@ const PROVIDER_CREDENTIAL_REJECTED = 'The provider credential was rejected.';
 const PROVIDER_REQUEST_TIMED_OUT = 'AI provider request timeout.';
 const PROVIDER_RESPONSE_TRUNCATED = 'provider_response_truncated';
 const SAFE_PROVIDER_DIAGNOSTIC = Symbol('safeProviderDiagnostic');
+const GEMINI_CREDENTIAL_REASONS = new Set([
+  'API_KEY_INVALID', 'API_KEY_EXPIRED', 'API_KEY_SERVICE_BLOCKED',
+  'API_KEY_HTTP_REFERRER_BLOCKED', 'API_KEY_IP_ADDRESS_BLOCKED',
+  'API_KEY_ANDROID_APP_BLOCKED', 'API_KEY_IOS_APP_BLOCKED'
+]);
 const PROVIDER_TEST_VALUE = Object.freeze({
   justification: 'Plano diagnostico seguro.',
   routines: [{
@@ -192,6 +197,13 @@ export function buildProviderRequest(providerValue, { apiKey, model, prompt, sch
   };
 }
 
+function geminiCredentialRejected(url, data) {
+  if (!url.includes('generativelanguage.googleapis.com')) return false;
+  const details = Array.isArray(data?.error?.details) ? data.error.details : [];
+  if (details.some(detail => GEMINI_CREDENTIAL_REASONS.has(String(detail?.reason || '')))) return true;
+  return /(?:api key.+not valid|api key.+reported as leaked)/i.test(String(data?.error?.message || ''));
+}
+
 async function fetchJson(fetchImpl, url, options, timeoutMs = 45_000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -200,7 +212,7 @@ async function fetchJson(fetchImpl, url, options, timeoutMs = 45_000) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       const service = url.includes('generativelanguage.googleapis.com') ? 'Gemini model' : 'AI provider';
-      const credentialRejected = [401, 403].includes(response.status);
+      const credentialRejected = [401, 403].includes(response.status) || geminiCredentialRejected(url, data);
       const error = new Error(credentialRejected
         ? PROVIDER_CREDENTIAL_REJECTED
         : `${service} request failed (${response.status})`);
