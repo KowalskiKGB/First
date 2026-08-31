@@ -139,4 +139,3 @@ Cada registro guarda URL da fonte, confiança e data. Dados de demonstração us
 - Dev arquiva/restaura academia e remove/restaura comentário.
 - Avaliações demo são claramente identificadas e não afetam métricas.
 - Testes unitários, integração e E2E cobrem autorização, moderação, ranking, privacidade e fluxos móveis.
-

@@ -100,4 +100,3 @@ Ampliar `POST /api/gym-requests` e seu review para `closure` e correções estru
 6. Merge da branch validada em `main`, push e deploy Coolify.
 7. Smoke de produção: seed, localização/fallback, favoritos, avaliação, criação/moderação e ausência de erros no console.
 8. Instalar APK com `adb install -r` se o celular estiver conectado no momento da entrega.
-
