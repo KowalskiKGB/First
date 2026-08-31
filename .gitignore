@@ -21,6 +21,7 @@ frontend/android/app/build/
 
 # Local tooling
 graphify-out/
+.worktrees/
 CREDENCIAIS_TESTE*.md
 backups/
 first-data-*.tgz
