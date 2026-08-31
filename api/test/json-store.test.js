@@ -23,7 +23,7 @@ test('creates the collaboration document from its initial schema', (t) => {
 
   assert.equal(existsSync(options.file), true);
   assert.deepEqual(store.read(), {
-    schemaVersion: 3,
+    schemaVersion: 4,
     rev: 0,
     profiles: [],
     connections: [],
@@ -39,6 +39,10 @@ test('creates the collaboration document from its initial schema', (t) => {
     gymProfiles: [],
     gymDirectory: [],
     gymRequests: [],
+    gymReviews: [],
+    gymFavorites: [],
+    gymSeedTombstones: [],
+    gymSeedVersion: null,
     aiPlans: [],
     aiJobs: [],
     aiUsage: []
@@ -51,7 +55,7 @@ test('migrates incomplete collaboration data idempotently', (t) => {
 
   const migrated = migrateCollaboration(JSON.parse(JSON.stringify(createJsonStore(options).read())));
 
-  assert.equal(migrated.schemaVersion, 3);
+  assert.equal(migrated.schemaVersion, 4);
   assert.equal(migrated.rev, 4);
   assert.deepEqual(migrated.profiles, [{ userId: 'u1' }]);
   assert.deepEqual(migrated.receivables, []);

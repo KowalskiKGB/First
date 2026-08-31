@@ -94,7 +94,7 @@ test('collaboration migration preserves legacy data, is idempotent and enforces 
 
   const migrated = migrateCollaboration(legacy);
 
-  assert.equal(migrated.schemaVersion, 3);
+  assert.equal(migrated.schemaVersion, 4);
   assert.equal(migrated.rev, 7);
   assert.deepEqual(migrated.legacyFlag, { keep: true });
   for (const key of ['profiles', 'clients', 'notifications', 'audit', 'programs', 'measurements', 'availability', 'appointments', 'receivables']) {

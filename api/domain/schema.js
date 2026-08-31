@@ -1,3 +1,10 @@
+import {
+  normalizeGymFavorite,
+  normalizeGymRecord,
+  normalizeGymSeedTombstones,
+  retainOneActiveGymReview
+} from '../gym-social.js';
+
 const AGE_BANDS = new Set(['under14', '14to17', 'adult']);
 const EXPERIENCES = new Set(['iniciante', 'intermediario', 'avancado']);
 export const AI_PLAN_SOURCES = Object.freeze(['ai', 'personal']);
@@ -18,8 +25,7 @@ const LEGACY_JOB_STAGES = Object.freeze({
   completed: 'applying'
 });
 const USAGE_STATUSES = new Set(['success', 'failed']);
-const GYM_STATUSES = new Set(['unverified', 'verified', 'partner']);
-const GYM_REQUEST_KINDS = new Set(['gym', 'equipment', 'correction']);
+const GYM_REQUEST_KINDS = new Set(['gym', 'equipment', 'correction', 'closure']);
 const GYM_REQUEST_STATUSES = new Set(['pending', 'approved', 'rejected']);
 const CONNECTION_GRANTS = [
   'plansWrite', 'workoutsRead', 'progressRead', 'measurementsWrite',
@@ -48,25 +54,7 @@ function normalizeOpeningHours(value) {
 }
 
 function normalizeDirectoryGym(value) {
-  const id = text(value?.id, 100);
-  const name = text(value?.name, 120);
-  const state = text(value?.state, 2).toUpperCase();
-  const city = text(value?.city, 100);
-  const address = text(value?.address, 240);
-  if (!id || !name || !/^[A-Z]{2}$/.test(state) || !city || !address) return null;
-  return {
-    id,
-    name,
-    state,
-    city,
-    address,
-    status: GYM_STATUSES.has(value.status) ? value.status : 'unverified',
-    openingHours: normalizeOpeningHours(value.openingHours),
-    openingHoursNote: text(value.openingHoursNote, 300),
-    exerciseIds: stringList(value.exerciseIds, 200),
-    createdAt: timestamp(value.createdAt),
-    updatedAt: timestamp(value.updatedAt)
-  };
+  return normalizeGymRecord(value);
 }
 
 function normalizeGymRequestPayload(value, kind) {
@@ -333,7 +321,7 @@ function retainedPlans(values) {
 }
 
 export const INITIAL_COLLABORATION = {
-  schemaVersion: 3,
+  schemaVersion: 4,
   rev: 0,
   profiles: [],
   connections: [],
@@ -349,6 +337,10 @@ export const INITIAL_COLLABORATION = {
   gymProfiles: [],
   gymDirectory: [],
   gymRequests: [],
+  gymReviews: [],
+  gymFavorites: [],
+  gymSeedTombstones: [],
+  gymSeedVersion: null,
   aiPlans: [],
   aiJobs: [],
   aiUsage: []
@@ -359,12 +351,13 @@ export function migrateCollaboration(value) {
   const legacyCollections = Object.keys(INITIAL_COLLABORATION)
     .filter(key => ![
       'schemaVersion', 'rev', 'connections', 'trainingProfiles', 'gymProfiles',
-      'gymDirectory', 'gymRequests', 'aiPlans', 'aiJobs', 'aiUsage'
+      'gymDirectory', 'gymRequests', 'gymReviews', 'gymFavorites', 'gymSeedTombstones', 'gymSeedVersion',
+      'aiPlans', 'aiJobs', 'aiUsage'
     ].includes(key));
 
   return {
     ...collaboration,
-    schemaVersion: 3,
+    schemaVersion: 4,
     rev: Number.isInteger(collaboration.rev) && collaboration.rev >= 0 ? collaboration.rev : 0,
     ...Object.fromEntries(legacyCollections.map(key => [key, Array.isArray(collaboration[key]) ? collaboration[key] : []])),
     connections: (Array.isArray(collaboration.connections) ? collaboration.connections : []).map(normalizeConnection),
@@ -374,6 +367,11 @@ export function migrateCollaboration(value) {
       .map(normalizeDirectoryGym).filter(Boolean),
     gymRequests: (Array.isArray(collaboration.gymRequests) ? collaboration.gymRequests : [])
       .map(normalizeGymRequest).filter(Boolean).slice(-2000),
+    gymReviews: retainOneActiveGymReview(collaboration.gymReviews).slice(-5000),
+    gymFavorites: [...new Map((Array.isArray(collaboration.gymFavorites) ? collaboration.gymFavorites : [])
+      .map(normalizeGymFavorite).filter(Boolean).map(item => [`${item.gymId}\u0000${item.userId}`, item])).values()],
+    gymSeedTombstones: normalizeGymSeedTombstones(collaboration.gymSeedTombstones),
+    gymSeedVersion: text(collaboration.gymSeedVersion, 100) || null,
     aiPlans: retainedPlans(collaboration.aiPlans),
     aiJobs: (Array.isArray(collaboration.aiJobs) ? collaboration.aiJobs : []).map(normalizeAiJob).filter(Boolean).slice(-2000),
     aiUsage: (Array.isArray(collaboration.aiUsage) ? collaboration.aiUsage : []).map(normalizeAiUsage).filter(Boolean).slice(-2000)

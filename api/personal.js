@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { createJsonStore, RevisionConflictError } from './lib/json-store.js';
 import { INITIAL_COLLABORATION, migrateCollaboration } from './domain/schema.js';
+import { applyGymSeed } from './gym-social.js';
 const DEFAULT_GRANTS = {
   plansWrite: false,
   workoutsRead: false,
@@ -235,7 +236,7 @@ export function createCollaborationStore(dataDir) {
   return createJsonStore({
     file: path.join(dataDir, 'collaboration.json'),
     initial: INITIAL_COLLABORATION,
-    migrate: migrateCollaboration
+    migrate: value => applyGymSeed(migrateCollaboration(value))
   });
 }
 export function ensureProfile({ collaboration, userId, roles = [], name, now, randomId, randomShareCode = randomId }) {
