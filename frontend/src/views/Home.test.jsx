@@ -1,5 +1,6 @@
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { readFileSync } from 'node:fs'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const harness = vi.hoisted(() => ({
@@ -34,6 +35,8 @@ vi.mock('../lib/i18n.js', () => ({
       'Create your week with AI': 'Montar treino com IA',
       'Set up my AI workout': 'Montar treino com IA',
       'Rest day': 'Dia de descanso',
+      'Leg Day': 'Dia de Pernas',
+      'Select your gym': 'Selecione sua academia',
     }
     return args.reduce((value, arg, index) => value.replaceAll(`{${index}}`, arg), pt[message] || message)
   },
@@ -178,6 +181,43 @@ describe('Home schedule summary', () => {
     expect(markup).not.toContain('id="home-week-title"')
   })
 
+  it('keeps AI readiness descriptive without a numeric fraction', () => {
+    harness.user = { id: 'student-1', name: 'Ana' }
+
+    const markup = renderToStaticMarkup(<Home />)
+
+    expect(markup).toContain('home-ai-readiness')
+    expect(markup).not.toMatch(/>\s*\d+\s*\/\s*4\s*</)
+  })
+
+  it('uses one divider between the week rail and today action', () => {
+    const css = readFileSync(new URL('../index.css', import.meta.url), 'utf8')
+    const rule = selector => css.match(new RegExp(`${selector.replaceAll('.', '\\.')}\\s*\\{([^}]+)\\}`))?.[1] || ''
+    const railRule = rule('.home-week-rail')
+    const todayRule = rule('.home-week-card .today-row')
+
+    expect(railRule).not.toMatch(/border-block\s*:/)
+    expect(railRule).not.toMatch(/border-bottom\s*:/)
+    expect(todayRule.match(/border-top\s*:/g) || []).toHaveLength(1)
+  })
+
+  it('lets a guest open the gym directory without requiring authentication first', () => {
+    const tree = Home()
+    const gymAction = findElements(tree, element => (
+      ['button', 'a'].includes(element.type)
+      && elementText(element).includes('Selecione sua academia')
+    ))[0]
+
+    expect(gymAction).toBeDefined()
+    expect(elementText(gymAction)).toContain('Selecione sua academia')
+    if (gymAction.props.onClick) {
+      gymAction.props.onClick()
+      expect(harness.navigate).toHaveBeenCalledWith('/academias')
+    } else {
+      expect(gymAction.props.to).toBe('/academias')
+    }
+  })
+
   it('uses one compact AI CTA and removes the generic training-rhythm copy', () => {
     harness.user = { id: 'student-1', name: 'Ana' }
     harness.state = { ...baseState(), routines: [], week: {} }
@@ -306,5 +346,17 @@ describe('Home schedule summary', () => {
     expect(markup).toContain('10 kg to lose')
     expect(markup).toContain('Dia de descanso')
     expect(markup).not.toContain('Dia De Descanso')
+  })
+
+  it('translates legacy routine names on the home schedule and today action', () => {
+    harness.state = {
+      ...baseState(),
+      routines: [{ ...manualRoutine, name: 'Leg Day' }],
+    }
+
+    const markup = renderToStaticMarkup(<Home />)
+
+    expect(markup).toContain('Dia de Pernas')
+    expect(markup).not.toContain('Leg Day')
   })
 })

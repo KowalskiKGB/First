@@ -119,6 +119,23 @@ test('official OpenAI and Anthropic structured output contracts are used', () =>
   assert.equal(anthropicBody.output_config.format.type, 'json_schema');
 });
 
+test('GPT-5 requests use minimal reasoning and leave more than 4000 tokens for compact structured output', () => {
+  const request = buildProviderRequest('openai', {
+    apiKey: 'openai-key', model: 'gpt-5', prompt: 'ok', schema
+  });
+  const body = JSON.parse(request.options.body);
+
+  assert.ok(body.max_output_tokens > 4000, 'GPT-5 output must not retain the truncating 4000-token cap');
+  assert.deepEqual(body.reasoning, { effort: 'minimal' });
+  assert.equal(body.text.verbosity, 'low');
+
+  const legacy = JSON.parse(buildProviderRequest('openai', {
+    apiKey: 'openai-key', model: 'gpt-4.1-mini', prompt: 'ok', schema
+  }).options.body);
+  assert.equal('reasoning' in legacy, false);
+  assert.equal('verbosity' in legacy.text, false);
+});
+
 test('provider requests remove only unsupported schema constraints without mutating the local contract', () => {
   const before = structuredClone(AI_WORKOUT_SCHEMA);
   const openai = JSON.parse(buildProviderRequest('openai', { apiKey: 'a', model: 'gpt', prompt: 'ok', schema: AI_WORKOUT_SCHEMA }).options.body);

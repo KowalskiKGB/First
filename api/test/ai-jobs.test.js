@@ -239,6 +239,48 @@ test('provider failure is recorded once without retry/fallback and preserves the
   assert.equal(fx.usage[0].details.status, 'failed');
 });
 
+test('truncated provider output persists and exposes only a sanitized failure code and public message', async () => {
+  const masterKey = '55'.repeat(32);
+  const rawResponse = 'SENTINEL_RAW_TRUNCATED_RESPONSE';
+  const rawError = 'SENTINEL_RAW_PROVIDER_ERROR';
+  const slot = upsertProvider([], {
+    provider: 'openai', selectedModel: 'gpt-5', apiKey: 'complete-test-key'
+  }, masterKey, NOW).records[0];
+  let submittedPrompt = '';
+  const fx = fixture({}, {
+    getActiveProvider: () => slot,
+    runStructured: (provider, input) => {
+      submittedPrompt = input.prompt;
+      return runStructuredOutput(provider, {
+        ...input,
+        masterKey,
+        fetchImpl: async () => new Response(JSON.stringify({
+          status: 'incomplete',
+          incomplete_details: { reason: 'max_output_tokens', rawError },
+          output_text: rawResponse,
+          usage: { input_tokens: 17, output_tokens: 4000, total_tokens: 4017 }
+        }), { status: 200 })
+      });
+    }
+  });
+
+  const job = fx.service.enqueue({ studentId: 'student-a', idempotencyKey: 'truncated-output' });
+  await fx.service.drain();
+
+  const stored = fx.store.read().aiJobs.find(item => item.id === job.id);
+  const exposed = fx.service.getJob({ studentId: 'student-a', jobId: job.id });
+  for (const value of [stored, exposed]) {
+    assert.equal(value.status, 'failed');
+    assert.equal(value.failureCode, 'provider_response_truncated');
+    assert.match(value.publicError, /não foi possível/i);
+    assert.equal('prompt' in value, false);
+    assert.equal('response' in value, false);
+    assert.equal('rawError' in value, false);
+    assert.doesNotMatch(JSON.stringify(value), new RegExp(`${rawResponse}|${rawError}|AI provider response was truncated`));
+    assert.equal(JSON.stringify(value).includes(submittedPrompt), false);
+  }
+});
+
 test('a medical restriction enabled while the provider is running fails the job without replacing the current plan', async () => {
   const providerStarted = deferred();
   const providerResult = deferred();

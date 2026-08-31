@@ -316,6 +316,148 @@ describe('Dev AI panel UI contracts', () => {
   })
 })
 
+describe('Dev operations console contracts', () => {
+  beforeEach(() => harness.reset())
+
+  const providers = [
+    { provider: 'openai', configured: true, selectedModel: 'gpt-5-mini', testStatus: 'success', active: true },
+    { provider: 'gemini', configured: true, selectedModel: 'gemini-2.5-flash', testStatus: 'success', active: false },
+    { provider: 'anthropic', configured: false, selectedModel: '', testStatus: 'untested', active: false },
+  ]
+
+  it('organizes the console into APIs, requests and users tabs', () => {
+    const onSection = vi.fn()
+    const dashboard = DevDashboard({
+      providers,
+      usage: {},
+      window: '7d',
+      section: 'apis',
+      onSection,
+      onWindow: vi.fn(),
+      onLogout: vi.fn(),
+    })
+    const markup = renderToStaticMarkup(dashboard)
+
+    expect(markup).toContain('role="tablist"')
+    for (const label of ['APIs', 'Requests', 'Users']) {
+      const tab = findElements(dashboard, element => element.props.role === 'tab' && element.props.children === label)[0]
+      expect(tab).toBeTruthy()
+      tab.props.onClick()
+    }
+    expect(onSection.mock.calls).toEqual([['apis'], ['requests'], ['users']])
+  })
+
+  it('shows three compact provider choices but opens only the selected provider editor', () => {
+    const dashboard = DevDashboard({
+      providers,
+      usage: {},
+      window: '7d',
+      section: 'apis',
+      selectedProvider: 'gemini',
+      onSelectProvider: vi.fn(),
+      onWindow: vi.fn(),
+      onLogout: vi.fn(),
+    })
+    const markup = renderToStaticMarkup(dashboard)
+
+    expect(markup).toContain('OpenAI')
+    expect(markup).toContain('Gemini')
+    expect(markup).toContain('Anthropic')
+    expect((markup.match(/type="password"/g) || [])).toHaveLength(1)
+    expect((markup.match(/name="[^"]+-model-search"/g) || [])).toHaveLength(1)
+    expect((markup.match(/>Load models</g) || [])).toHaveLength(1)
+    expect(markup).toContain('name="gemini-api-key"')
+    expect(markup).not.toContain('name="openai-api-key"')
+    expect(markup).not.toContain('name="anthropic-api-key"')
+    expect(markup).toContain('Activate globally')
+    expect(markup).not.toContain('Deactivate globally')
+
+    const activeDashboard = DevDashboard({
+      providers,
+      usage: {},
+      window: '7d',
+      section: 'apis',
+      selectedProvider: 'openai',
+      onSelectProvider: vi.fn(),
+      onWindow: vi.fn(),
+      onLogout: vi.fn(),
+    })
+    const activeMarkup = renderToStaticMarkup(activeDashboard)
+    expect(activeMarkup).toContain('Deactivate globally')
+    expect(activeMarkup).not.toContain('Activate globally')
+  })
+
+  it('renders an equipment request list and selected request details without leaking secrets', () => {
+    const requests = [{
+      id: 'request-leg-press',
+      kind: 'equipment',
+      status: 'pending',
+      equipmentName: 'Leg press 45°',
+      exerciseId: 'leg-press-45',
+      gym: { id: 'gym-1', name: 'Academia X', municipality: 'Fortaleza', address: 'Rua ABC, 123' },
+      requestedBy: { id: 'student-1', name: 'Ana Silva', email: 'ana@example.com' },
+      createdAt: '2026-08-30T12:00:00Z',
+      apiKey: 'must-never-render',
+    }]
+    const dashboard = DevDashboard({
+      providers,
+      usage: {},
+      window: '7d',
+      section: 'requests',
+      requests,
+      selectedRequestId: 'request-leg-press',
+      onSelectRequest: vi.fn(),
+      onWindow: vi.fn(),
+      onLogout: vi.fn(),
+    })
+    const markup = renderToStaticMarkup(dashboard)
+
+    expect(markup).toContain('Leg press 45°')
+    expect(markup).toContain('Academia X')
+    expect(markup).toContain('Rua ABC, 123')
+    expect(markup).toContain('Ana Silva')
+    expect(markup).toContain('ana@example.com')
+    expect(markup).toContain('Pending')
+    expect(markup).not.toContain('must-never-render')
+  })
+
+  it('renders a compact registered-user list and opens operational details without credentials', () => {
+    const users = [{
+      id: 'student-1',
+      name: 'Ana Silva',
+      email: 'ana@example.com',
+      role: 'student',
+      online: false,
+      lastAccessAt: '2026-08-30T10:00:00Z',
+      profile: { weightKg: 68, heightCm: 171, goal: 'muscle_gain' },
+      passwordHash: 'scrypt-secret-hash',
+      apiKey: 'provider-secret',
+    }]
+    const dashboard = DevDashboard({
+      providers,
+      usage: {},
+      window: '7d',
+      section: 'users',
+      users,
+      selectedUserId: 'student-1',
+      onSelectUser: vi.fn(),
+      onWindow: vi.fn(),
+      onLogout: vi.fn(),
+    })
+    const markup = renderToStaticMarkup(dashboard)
+
+    expect(markup).toContain('Registered users')
+    expect(markup).toContain('Ana Silva')
+    expect(markup).toContain('ana@example.com')
+    expect(markup).toContain('68 kg')
+    expect(markup).toContain('1,71 m')
+    expect(markup).toContain('Muscle gain')
+    expect(markup).toContain('Offline')
+    expect(markup).not.toContain('scrypt-secret-hash')
+    expect(markup).not.toContain('provider-secret')
+  })
+})
+
 function hooksResetForDashboard(error = '') {
   harness.reset([{ unlocked: true }, { username: '', password: '' }, [], '7d', {}, false, error])
   harness.api.mockImplementation(async path => path.startsWith('/api/dev/ai/usage') ? { usage: { requests: 30 } } : { ok: true })
