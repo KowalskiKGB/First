@@ -223,7 +223,7 @@ function ProviderCard({ definition, slot, onChanged }) {
   }, [definition.provider])
   const visibleModels = useMemo(() => filterProviderModels(models, query), [models, query])
   const providerPayload = () => ({
-    provider: draft.provider,
+    provider: definition.provider,
     ...(draft.selectedModel ? { selectedModel: draft.selectedModel } : {}),
     ...(draft.apiKey ? { apiKey: draft.apiKey } : {}),
   })

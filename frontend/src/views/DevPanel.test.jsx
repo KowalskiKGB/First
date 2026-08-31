@@ -154,6 +154,26 @@ describe('Dev AI panel UI contracts', () => {
     expect(harness.setters[5]).toHaveBeenCalledWith('')
   })
 
+  it('always saves into the provider currently rendered even before stale draft state settles', async () => {
+    const slot = { provider: 'gemini', selectedModel: '', configured: false, testStatus: 'untested', active: false }
+    harness.reset([{ provider: 'openai', selectedModel: '', apiKey: 'new-gemini-key' }, [], '', 'idle', '', ''])
+    harness.api.mockResolvedValue({ ok: true })
+    const dashboard = DevDashboard({
+      providers: [slot], usage: {}, window: '7d', selectedProvider: 'gemini',
+      onWindow: vi.fn(), onLogout: vi.fn(), onChanged: vi.fn(),
+    })
+    const provider = findElements(dashboard, element => element.props.definition?.provider === 'gemini')[0]
+    const form = provider.type(provider.props)
+
+    form.props.onSubmit({ preventDefault: vi.fn() })
+    await flush()
+
+    expect(harness.api).toHaveBeenCalledWith('/api/dev/ai/provider', {
+      method: 'PUT',
+      body: JSON.stringify({ provider: 'gemini', apiKey: 'new-gemini-key' }),
+    })
+  })
+
   it('keeps the model empty while loading models after a key paste', async () => {
     const slot = { provider: 'openai', selectedModel: '', configured: false, testStatus: 'untested', active: false }
     const draft = { provider: 'openai', selectedModel: '', apiKey: 'secret' }

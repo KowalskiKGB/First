@@ -32,5 +32,13 @@ export function safeDevError(error, fallback) {
   if (error?.status === 401 || error?.status === 403) return 'Invalid Dev credential.'
   if (error?.status === 429) return 'Too many attempts. Try again later.'
   if (error?.status === 422 && error?.message === 'The provider credential was rejected.') return error.message
+  const providerTestFailure = error?.status === 422 || error?.status === 502
+  if (providerTestFailure && error?.message === 'AI provider request timeout.') return 'The provider took too long to respond.'
+  const providerFailure = providerTestFailure
+    ? /^(?:Gemini model|AI provider) request failed \(([45]\d{2})\)$/.exec(error?.message || '')
+    : null
+  if (providerFailure?.[1] === '429') return 'The provider request limit was reached. Try again later.'
+  if (providerFailure && Number(providerFailure[1]) >= 500) return 'The provider is temporarily unavailable. Try again later.'
+  if (providerFailure) return 'The selected model rejected the structured test. Try another model.'
   return fallback
 }

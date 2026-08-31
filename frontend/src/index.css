@@ -1695,7 +1695,7 @@ body:has(.ai-wizard) #tabbar{display:none}
   .dev-provider-list .client-row-main{flex:0 1 auto}
   .dev-provider-list .client-row-title strong{font-size:13px}
   .dev-provider-list .client-row.compact .client-facts{display:none}
-  .dev-provider-list .status-badge{width:8px;min-width:8px;height:8px;min-height:8px;padding:0;overflow:hidden;background:currentColor;font-size:0}
+  .dev-provider-list .status-badge{min-width:0;min-height:20px;padding:2px 4px;font-size:9px}
   .dev-console-split{grid-template-columns:1fr}
   .dev-console-split>.client-list{max-height:300px}
 }

@@ -8,9 +8,11 @@ const VIEWPORTS = [
 
 function devFixtures(seed = {}) {
   let unlocked = false
+  const providerSeeds = new Map((seed.providers || []).map(slot => [slot.provider, slot]))
   let providers = ['openai', 'gemini', 'anthropic'].map(provider => ({
     provider, selectedModel: '', configured: false, keyFingerprint: null,
     testedAt: null, testStatus: 'untested', active: false,
+    ...providerSeeds.get(provider),
   }))
   let gymRequests = [...(seed.requests || [])]
   const users = [...(seed.users || [])]
@@ -69,6 +71,10 @@ function devFixtures(seed = {}) {
         return json(route, { ok: true })
       }
       if (pathname === '/api/dev/ai/provider/test' && method === 'POST') {
+        if (seed.providerTestError) {
+          patchProvider(body.provider, { testStatus: 'failed', testedAt: '2026-08-29T18:00:00.000Z', active: false })
+          return json(route, { error: seed.providerTestError }, 422)
+        }
         patchProvider(body.provider, { testStatus: 'success', testedAt: '2026-08-29T18:00:00.000Z' })
         return json(route, { ok: true })
       }
@@ -113,12 +119,14 @@ for (const viewport of VIEWPORTS) test(`Dev configures, tests and activates one 
         maxButtonWidth: Math.max(...buttons.map(button => button.width)),
         maxButtonHeight: Math.max(...buttons.map(button => button.height)),
         topSpread: Math.max(...buttons.map(button => button.top)) - Math.min(...buttons.map(button => button.top)),
+        statusFontSizes: [...list.querySelectorAll('.status-badge')].map(status => Number.parseFloat(getComputedStyle(status).fontSize)),
       }
     })
     expect(providerLayout.overflows).toBe(false)
     expect(providerLayout.maxButtonWidth).toBeLessThanOrEqual(130)
     expect(providerLayout.maxButtonHeight).toBeLessThanOrEqual(48)
     expect(providerLayout.topSpread).toBeLessThanOrEqual(1)
+    expect(providerLayout.statusFontSizes.every(size => size >= 9)).toBe(true)
   }
   await page.locator('.dev-provider-list button', { hasText: 'OpenAI' }).click()
   const openai = page.locator('form[aria-labelledby="provider-openai"]')
@@ -183,6 +191,33 @@ test('Dev shows a sanitized Gemini model error without leaking upstream material
   expect(await page.content()).not.toContain('upstream credential material')
   await page.screenshot({ path: testInfo.outputPath('dev-ai-gemini-error-desktop.png'), fullPage: true, animations: 'disabled', caret: 'hide' })
   expect(errors.console).toEqual([expect.stringContaining('422 (Unprocessable Entity)')])
+  expect(errors.page).toEqual([])
+})
+
+test('Dev explains a safe provider rate-limit failure in pt-BR', async ({ page }) => {
+  const fixtures = devFixtures({
+    providers: [{
+      provider: 'gemini', selectedModel: 'gemini-2.5-flash', configured: true,
+      keyFingerprint: '…A1B2', testedAt: null, testStatus: 'untested', active: false,
+    }],
+    providerTestError: 'Gemini model request failed (429)',
+  })
+  const errors = watchBrowser(page)
+  await page.route('**/api/**', route => fixtures.handle(route))
+
+  await page.goto('/devadmin')
+  await page.locator('[name="dev-username"]').fill('first_dev_demo')
+  await page.locator('[name="dev-password"]').fill('temporary-demo-password')
+  await page.getByRole('button', { name: 'Abrir Painel Dev' }).click()
+  await page.locator('.dev-provider-list button', { hasText: 'Gemini' }).click()
+
+  const gemini = page.locator('form[aria-labelledby="provider-gemini"]')
+  const testButton = gemini.getByRole('button', { name: 'Testar saída estruturada' })
+  await expect(testButton).toBeEnabled()
+  await testButton.click()
+
+  await expect(gemini.getByText('O limite de requisições do provedor foi atingido. Tente novamente mais tarde.')).toBeVisible()
+  expect(await page.content()).not.toContain('upstream')
   expect(errors.page).toEqual([])
 })
 

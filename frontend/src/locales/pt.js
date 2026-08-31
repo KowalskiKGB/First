@@ -982,6 +982,10 @@ export default {
   'Usage could not be loaded.': 'Não foi possível carregar o uso.',
   'Could not log out of Dev.': 'Não foi possível sair do Painel Dev.',
   'Too many attempts. Try again later.': 'Muitas tentativas. Tente novamente mais tarde.',
+  'The provider took too long to respond.': 'O provedor demorou demais para responder. Tente novamente.',
+  'The provider request limit was reached. Try again later.': 'O limite de requisições do provedor foi atingido. Tente novamente mais tarde.',
+  'The selected model rejected the structured test. Try another model.': 'O modelo selecionado recusou o teste estruturado. Escolha outro modelo.',
+  'The provider is temporarily unavailable. Try again later.': 'O provedor está indisponível no momento. Tente novamente mais tarde.',
 
   'AI and gym': 'IA e academia',
   'Permission required': 'Permissão necessária',
