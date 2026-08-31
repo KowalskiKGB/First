@@ -239,3 +239,24 @@ test('reverse geocoding allows only configured HTTPS hosts and does not coerce m
   assert.deepEqual({ status: missing.status, body: missing.body }, { status: 400, body: { error: 'Localização inválida.' } });
   assert.equal(requests, 0);
 });
+
+test('reverse geocoding serializes distinct rounded keys across the global upstream interval', async () => {
+  const started = [];
+  const interval = 40;
+  const routes = createBrazilLocationsRoutes({
+    json,
+    reverseMinIntervalMs: interval,
+    fetchImpl: async () => {
+      started.push(Date.now());
+      return { ok: true, json: async () => ({ address: { state: 'Amapá', city: 'Macapá' } }) };
+    }
+  });
+  await invoke(routes, 'GET /api/location/reverse', '/api/location/reverse?latitude=0&longitude=-51');
+  await Promise.all([
+    invoke(routes, 'GET /api/location/reverse', '/api/location/reverse?latitude=0.01&longitude=-51'),
+    invoke(routes, 'GET /api/location/reverse', '/api/location/reverse?latitude=0.02&longitude=-51')
+  ]);
+  assert.equal(started.length, 3);
+  assert.ok(started[1] - started[0] >= interval - 5, `first interval was ${started[1] - started[0]}ms`);
+  assert.ok(started[2] - started[1] >= interval - 5, `second interval was ${started[2] - started[1]}ms`);
+});

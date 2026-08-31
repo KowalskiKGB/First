@@ -197,7 +197,7 @@ test('Dev console endpoints reject anonymous, student and app-admin sessions', a
     const response = await fetch(`${url}/api/dev/gym-requests/review`, {
       method: 'POST',
       headers: { Origin: ORIGIN, 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
-      body: JSON.stringify({ id: REQUEST.id, decision: 'approve' })
+      body: JSON.stringify({ rev: 0, id: REQUEST.id, decision: 'approve' })
     });
     assert.equal(response.status, 401);
   }
@@ -285,14 +285,16 @@ test('Dev request queue identifies the submitter and gym without exposing creden
 test('Dev request review requires an exact trusted Origin and persists reviewer metadata', async t => {
   const { dataDir, url } = await startServer(t);
   const cookie = await devCookie(url);
-  const request = headers => fetch(`${url}/api/dev/gym-requests/review`, {
+  const revision = (await (await fetch(`${url}/api/dev/gym-requests`, { headers: { Cookie: cookie } })).json()).rev;
+  const request = (headers, body = { rev: revision, id: REQUEST.id, decision: 'approve' }) => fetch(`${url}/api/dev/gym-requests/review`, {
     method: 'POST',
     headers: { Cookie: cookie, 'Content-Type': 'application/json', ...headers },
-    body: JSON.stringify({ id: REQUEST.id, decision: 'approve' })
+    body: JSON.stringify(body)
   });
 
   assert.equal((await request({})).status, 403);
   assert.equal((await request({ Origin: 'https://evil.example' })).status, 403);
+  assert.equal((await request({ Origin: ORIGIN }, { id: REQUEST.id, decision: 'approve' })).status, 400);
   const unchanged = JSON.parse(readFileSync(path.join(dataDir, 'collaboration.json'), 'utf8'));
   assert.equal(unchanged.gymRequests.find(item => item.id === REQUEST.id).status, 'pending');
 

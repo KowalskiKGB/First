@@ -74,6 +74,7 @@ export function createBrazilLocationsRoutes({
   const reverseCache = new Map();
   const reverseInFlight = new Map();
   let nextReverseAt = 0;
+  let reverseQueue = Promise.resolve();
   const copy = municipalities => municipalities.map(item => ({ ...item }));
   const loadMunicipalities = uf => {
     if (cache.has(uf)) return Promise.resolve(cache.get(uf));
@@ -108,10 +109,10 @@ export function createBrazilLocationsRoutes({
     const key = `${latitude.toFixed(3)}:${longitude.toFixed(3)}`;
     if (reverseCache.has(key)) return Promise.resolve(reverseCache.get(key));
     if (reverseInFlight.has(key)) return reverseInFlight.get(key);
-    const pending = (async () => {
+    const runReverse = async () => {
       const delay = Math.max(0, nextReverseAt - now());
       if (delay) await new Promise(resolve => setTimeout(resolve, delay));
-      nextReverseAt = Math.max(now(), nextReverseAt) + Math.max(0, reverseMinIntervalMs);
+      nextReverseAt = now() + Math.max(0, reverseMinIntervalMs);
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), Math.max(1, timeoutMs));
       try {
@@ -130,7 +131,9 @@ export function createBrazilLocationsRoutes({
       } finally {
         clearTimeout(timer);
       }
-    })();
+    };
+    const pending = reverseQueue.then(runReverse);
+    reverseQueue = pending.catch(() => {});
     reverseInFlight.set(key, pending);
     pending.finally(() => reverseInFlight.delete(key)).catch(() => {});
     return pending;

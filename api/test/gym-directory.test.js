@@ -330,6 +330,14 @@ test('public directory enriches gyms without exposing reviewer identity and a si
   assert.deepEqual(f.store.read().gymFavorites, []);
 });
 
+test('public directory never ranks a gym by distance until both coordinates were supplied', async () => {
+  const f = await fixture(source({ gymDirectory: [gym({ latitude: 0.03, longitude: -51.07 })] }));
+  const response = await invoke(f.routes, 'GET /api/gyms');
+  assert.equal(response.status, 200);
+  assert.equal('distanceKm' in response.body.gyms[0], false);
+  assert.equal(response.body.gyms[0].tags.includes('Perto de você'), false);
+});
+
 test('a student owns one review, suspicious content is pending and review edits are rate-limited', async () => {
   const f = await fixture(source());
   const suspicious = await invoke(f.routes, 'PUT /api/gym/review', {
@@ -356,6 +364,37 @@ test('a student owns one review, suspicious content is pending and review edits 
     user: { id: 'student-b' }, body: { rev: 32, gymId: 'gym-fortaleza-centro', rating: 4, comment: 'Excedente' }
   });
   assert.deepEqual({ status: limited.status, body: limited.body }, { status: 429, body: { error: 'too many gym reviews' } });
+});
+
+test('structural request capacity does not consume the independent review capacity', async () => {
+  const f = await fixture(source());
+  for (let index = 0; index < 20; index += 1) {
+    const created = await invoke(f.routes, 'POST /api/gym-requests', {
+      user: { id: 'student-a' },
+      body: { rev: index, kind: 'closure', gymId: 'gym-fortaleza-centro', payload: { note: `Fechamento ${index}` } }
+    });
+    assert.equal(created.status, 200);
+  }
+  for (let index = 0; index < 30; index += 1) {
+    const created = await invoke(f.routes, 'PUT /api/gym/review', {
+      user: { id: 'student-a' },
+      body: { rev: index + 20, gymId: 'gym-fortaleza-centro', rating: 4, comment: `Review ${index}` }
+    });
+    assert.equal(created.status, 200);
+  }
+  const limited = await invoke(f.routes, 'PUT /api/gym/review', {
+    user: { id: 'student-a' }, body: { rev: 50, gymId: 'gym-fortaleza-centro', rating: 4, comment: 'Review excedente' }
+  });
+  assert.equal(limited.status, 429);
+});
+
+test('Dev request review requires an explicit optimistic revision', async () => {
+  const f = await fixture(source({ gymRequests: [pendingRequest()] }));
+  const missing = await invoke(f.routes, 'POST /api/dev/gym-requests/review', {
+    devUsername: 'first_dev_test', body: { requestId: 'request-equipment', status: 'approved' }
+  });
+  assert.deepEqual({ status: missing.status, body: missing.body }, { status: 400, body: { error: 'rev required' } });
+  assert.equal(f.store.read().gymRequests[0].status, 'pending');
 });
 
 test('Dev applies structured corrections, archives and restores gyms, and moderates reviews', async () => {

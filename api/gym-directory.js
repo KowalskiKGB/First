@@ -122,9 +122,16 @@ function ownReview(review) {
   };
 }
 
+function queryCoordinate(value, min, max) {
+  if (value == null || String(value).trim() === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= min && number <= max ? number : null;
+}
+
 function publicGyms(state, userId, query, now) {
-  const latitude = Number(query.get('latitude'));
-  const longitude = Number(query.get('longitude'));
+  const rawLatitude = queryCoordinate(query.get('latitude'), -90, 90);
+  const rawLongitude = queryCoordinate(query.get('longitude'), -180, 180);
+  const [latitude, longitude] = rawLatitude === null || rawLongitude === null ? [null, null] : [rawLatitude, rawLongitude];
   const locality = { state: query.get('uf') || query.get('state') || '', city: query.get('city') || '' };
   return projectGymDirectory({
     gyms: state.gymDirectory, reviews: state.gymReviews, favorites: state.gymFavorites, userId,
@@ -179,11 +186,11 @@ export function createGymDirectoryRoutes({
   const catalogue = new Set([...catalogIds].map(item => typeof item === 'string' ? item : item?.id).filter(Boolean));
   const nextId = typeof randomId === 'function' ? randomId : () => crypto.randomUUID();
   const attempts = new Map();
-  const withinLimit = (userId, req, res, limit, error) => {
+  const withinLimit = (scope, userId, req, res, limit, error) => {
     const currentTime = Date.parse(now()) || Date.now();
     const cutoff = currentTime - 60 * 60 * 1000;
     const address = clean(getRequestAddress(req), 100);
-    const keys = [`user:${userId}`, ...(address ? [`address:${address}`] : [])];
+    const keys = [`${scope}:user:${userId}`, ...(address ? [`${scope}:address:${address}`] : [])];
     const recent = keys.map(key => (attempts.get(key) || []).filter(timestamp => timestamp > cutoff));
     if (recent.some(entries => entries.length >= limit)) {
       json(res, 429, { error });
@@ -240,7 +247,7 @@ export function createGymDirectoryRoutes({
       const user = readSession(req);
       if (!user?.id) return json(res, 401, { error: 'not signed in' });
       if (!requireTrustedWrite(req, res)) return;
-      if (!withinLimit(user.id, req, res, 20, 'too many gym requests')) return;
+      if (!withinLimit('gym-request', user.id, req, res, 20, 'too many gym requests')) return;
       const body = await readBody(req, BODY_LIMIT);
       if (!Number.isInteger(body.rev)) throw fail('rev required');
       if (!REQUEST_KINDS.has(body.kind)) throw fail('invalid request kind');
@@ -264,7 +271,7 @@ export function createGymDirectoryRoutes({
       const user = readSession(req);
       if (!user?.id) return json(res, 401, { error: 'not signed in' });
       if (!requireTrustedWrite(req, res)) return;
-      if (!withinLimit(user.id, req, res, 60, 'too many gym favorites')) return;
+      if (!withinLimit('gym-favorite', user.id, req, res, 60, 'too many gym favorites')) return;
       const body = await readBody(req, BODY_LIMIT);
       if (!Number.isInteger(body.rev)) throw fail('rev required');
       const gymId = clean(body.gymId, 100);
@@ -279,7 +286,7 @@ export function createGymDirectoryRoutes({
       const user = readSession(req);
       if (!user?.id) return json(res, 401, { error: 'not signed in' });
       if (!requireTrustedWrite(req, res)) return;
-      if (!withinLimit(user.id, req, res, 30, 'too many gym reviews')) return;
+      if (!withinLimit('gym-review', user.id, req, res, 30, 'too many gym reviews')) return;
       const body = await readBody(req, BODY_LIMIT);
       if (!Number.isInteger(body.rev)) throw fail('rev required');
       const gymId = clean(body.gymId, 100);
@@ -316,11 +323,10 @@ export function createGymDirectoryRoutes({
       const requestId = clean(body.requestId || body.id, 100);
       const status = body.status || REVIEW_STATUS[body.decision];
       const reviewReason = optionalText(body.reason, 'reason', 300);
+      if (!Number.isInteger(body.rev)) throw fail('rev required');
       if (!requestId || !['approved', 'rejected'].includes(status)) throw fail('invalid review');
-      const current = store.read();
-      const expectedRev = Number.isInteger(body.rev) ? body.rev : current.rev;
       const reviewedAt = now();
-      const updated = store.update(expectedRev, state => {
+      const updated = store.update(body.rev, state => {
         const request = state.gymRequests.find(item => item.id === requestId);
         if (!request) throw fail('request not found', 404);
         if (request.status !== 'pending') throw fail('request already reviewed', 409);
