@@ -3,7 +3,7 @@ name: first
 services:
   media:
     image: alpine:3.22
-    restart: "no"
+    restart: unless-stopped
     volumes:
       - first-media:/out
     entrypoint: ["/bin/sh", "-c"]
@@ -23,7 +23,7 @@ services:
         if [ "$$names_sha" = "$$MEDIA_NAMES_SHA" ]; then content_sha=$$(cd /out && find img gif -type f | sort | while IFS= read -r f; do sha256sum "$$f"; done | sha256sum | awk '{print $$1}'); fi
         if [ "$$(cat /out/.source-commit 2>/dev/null || true)" = "$$MEDIA_SHA" ] && [ "$$jpg_count" = 1324 ] && [ "$$gif_count" = 1324 ] && [ "$$names_sha" = "$$MEDIA_NAMES_SHA" ] && [ "$$content_sha" = "$$MEDIA_CONTENT_SHA" ]; then
           echo "Exercise media already matches $$MEDIA_SHA"
-          exit 0
+          exec tail -f /dev/null
         fi
         work=/tmp/first-exercise-media
         stage=/out/.staging-media
@@ -43,6 +43,13 @@ services:
         printf '%s' "$$MEDIA_SHA" > /out/.source-commit
         rm -rf "$$work" "$$stage"
         echo "Installed 1,324 images and 1,324 GIFs from $$MEDIA_SHA"
+        exec tail -f /dev/null
+    healthcheck:
+      test: ["CMD-SHELL", "test \"$$(cat /out/.source-commit 2>/dev/null)\" = '7455efae41b330c265e7cd4b78dfa848e7ce5ebd' && test -d /out/img && test -d /out/gif"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
   api:
     build:
@@ -89,11 +96,17 @@ services:
       api:
         condition: service_healthy
       media:
-        condition: service_completed_successfully
+        condition: service_healthy
     expose:
       - "80"
     volumes:
       - first-media:/usr/share/nginx/html/media:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     # Signed app sessions protect exercise media inside Nginx. Basic Auth remains available
     # only as an optional temporary guard for the whole host during bootstrap.
     labels:

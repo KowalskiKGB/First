@@ -222,6 +222,31 @@ test('docker compose accepts the documented production-safe environment', () => 
   assert.match(result.stdout, /NOMINATIM_ALLOWED_HOSTS: geo\.example\.test/)
 })
 
+test('Coolify keeps every production service running and health-checked', () => {
+  const result = spawnSync(
+    'docker',
+    ['compose', '--env-file', '.env.example', 'config', '--format', 'json'],
+    {
+      cwd: new URL('.', root),
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        INVITE_ONLY: '1',
+        DEV_PANEL_USER: 'first_dev_test_only',
+        DEV_PANEL_PASSWORD_HASH: 'scrypt:test-only-salt:test-only-hash-material',
+        FIRST_BASIC_AUTH_USERS: 'first-test:{SHA}not-a-production-credential',
+      },
+    },
+  )
+
+  assert.equal(result.status, 0, result.stderr || result.stdout)
+  const services = JSON.parse(result.stdout).services
+  assert.equal(services.media.restart, 'unless-stopped')
+  assert.ok(services.media.healthcheck, 'media must report healthy after validating the volume')
+  assert.equal(services.web.depends_on.media.condition, 'service_healthy')
+  assert.ok(services.web.healthcheck, 'web must expose its own container health')
+})
+
 test('mobile media publication retries transient Windows directory locks', async () => {
   const { renameWithRetry } = await import(new URL('frontend/scripts/fs-retry.mjs', root))
   const waits = []
