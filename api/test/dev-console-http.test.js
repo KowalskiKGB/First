@@ -179,7 +179,9 @@ test('successful Dev logins do not consume the failed-login budget', async t => 
 const devReads = [
   '/api/dev/users',
   '/api/dev/user?id=student-a',
-  '/api/dev/gym-requests'
+  '/api/dev/gym-requests',
+  '/api/dev/gyms',
+  '/api/dev/gym-reviews'
 ];
 
 test('Dev console endpoints reject anonymous, student and app-admin sessions', async t => {
@@ -307,4 +309,47 @@ test('Dev request review requires an exact trusted Origin and persists reviewer 
   assert.equal(reviewed.status, 'approved');
   assert.equal(reviewed.reviewedBy, DEV_USER);
   assert.equal(Number.isFinite(Date.parse(reviewed.reviewedAt)), true);
+});
+
+test('social gym writes require the app session and trusted Origin while Dev moderation stays isolated', async t => {
+  const { dataDir, url } = await startServer(t);
+  const directory = await fetch(`${url}/api/gyms`);
+  const initialRev = (await directory.json()).rev;
+  const favorite = headers => fetch(`${url}/api/gym/favorite`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify({ rev: initialRev, gymId: GYM.id })
+  });
+  assert.equal((await favorite({ Origin: ORIGIN })).status, 401);
+  assert.equal((await favorite({ Cookie: appCookie('student-a') })).status, 403);
+  const savedFavorite = await favorite({ Cookie: appCookie('student-a'), Origin: ORIGIN });
+  assert.equal(savedFavorite.status, 200);
+  const favoriteBody = await savedFavorite.json();
+  assert.equal(favoriteBody.favorite, true);
+
+  const submitted = await fetch(`${url}/api/gym/review`, {
+    method: 'PUT', headers: { Cookie: appCookie('student-a'), Origin: ORIGIN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rev: favoriteBody.rev, gymId: GYM.id, rating: 5, comment: 'Meu telefone é 99999-9999' })
+  });
+  assert.equal(submitted.status, 200);
+  const submittedBody = await submitted.json();
+  const review = submittedBody.review;
+  assert.equal(review.status, 'pending');
+  assert.equal('userId' in review, false);
+
+  const dev = await devCookie(url);
+  const published = await fetch(`${url}/api/dev/gym-review`, {
+    method: 'PUT', headers: { Cookie: dev, Origin: ORIGIN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rev: submittedBody.rev, id: review.id, status: 'published', reason: 'Seguro' })
+  });
+  assert.equal(published.status, 200);
+  const publicGym = await fetch(`${url}/api/gym?id=${GYM.id}`);
+  assert.equal(publicGym.status, 200);
+  const body = await publicGym.json();
+  assert.equal(body.reviews[0].displayName, 'Maria A.');
+  const serialized = JSON.stringify(body);
+  assert.equal(serialized.includes('student-a'), false);
+  assert.equal(serialized.includes('maria@example.com'), false);
+
+  const persisted = JSON.parse(readFileSync(path.join(dataDir, 'collaboration.json'), 'utf8'));
+  assert.equal(persisted.gymReviews[0].moderatedBy, DEV_USER);
 });

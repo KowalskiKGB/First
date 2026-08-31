@@ -42,6 +42,9 @@ const DATA = process.env.DATA_DIR || '/data';
 const RP_ID = process.env.RP_ID || 'localhost';
 const ORIGIN = process.env.ORIGIN || 'http://localhost:8080';
 const RP_NAME = process.env.RP_NAME || 'First';
+const NOMINATIM_REVERSE_URL = process.env.NOMINATIM_REVERSE_URL || 'https://nominatim.openstreetmap.org/reverse';
+const NOMINATIM_USER_AGENT = process.env.NOMINATIM_USER_AGENT || 'First gym directory/1.0 (+https://github.com/rafael/first)';
+const NOMINATIM_ALLOWED_HOSTS = (process.env.NOMINATIM_ALLOWED_HOSTS || 'nominatim.openstreetmap.org').split(',').map(host => host.trim()).filter(Boolean);
 if (process.env.NODE_ENV === 'production' && (!process.env.RP_ID || !process.env.ORIGIN)) {
   console.error('RP_ID and ORIGIN are required in production.');
   process.exit(1);
@@ -1367,7 +1370,9 @@ Object.assign(routes, createPersonalRoutes({
   readState,
   sendPush,
   store: collaborationStore
-}), createBrazilLocationsRoutes({ json }), createGymDirectoryRoutes({
+}), createBrazilLocationsRoutes({
+  json, reverseUrl: NOMINATIM_REVERSE_URL, reverseUserAgent: NOMINATIM_USER_AGENT, reverseAllowedHosts: NOMINATIM_ALLOWED_HOSTS
+}), createGymDirectoryRoutes({
   store: collaborationStore,
   readSession,
   readBody,
@@ -1375,7 +1380,8 @@ Object.assign(routes, createPersonalRoutes({
   requireTrustedWrite,
   requireDev,
   catalogIds: AI_EXERCISES.map(exercise => exercise.id),
-  getUsers: () => db.users
+  getUsers: () => db.users,
+  getRequestAddress: requestAddress
 }), createAiJobRoutes({
   service: aiJobs,
   readSession,

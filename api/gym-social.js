@@ -74,9 +74,17 @@ export function normalizeGymRecord(value) {
   const networkName = text(value.networkName, 120);
   const neighborhood = text(value.neighborhood, 120);
   const postalCode = text(value.postalCode, 20);
+  const moderatedAt = timestamp(value.moderatedAt);
+  const moderatedBy = text(value.moderatedBy, 100);
+  const moderationReason = text(value.moderationReason, 300);
+  const archivedStatus = GYM_STATUSES.has(value.archivedStatus) && value.archivedStatus !== 'archived' ? value.archivedStatus : '';
   if (networkName) normalized.networkName = networkName;
   if (neighborhood) normalized.neighborhood = neighborhood;
   if (postalCode) normalized.postalCode = postalCode;
+  if (moderatedAt) normalized.moderatedAt = moderatedAt;
+  if (moderatedBy) normalized.moderatedBy = moderatedBy;
+  if (moderationReason) normalized.moderationReason = moderationReason;
+  if (archivedStatus) normalized.archivedStatus = archivedStatus;
   return normalized;
 }
 

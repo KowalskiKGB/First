@@ -12,6 +12,10 @@ const STATES = Object.freeze([
   ['SP', 'São Paulo'], ['SE', 'Sergipe'], ['TO', 'Tocantins']
 ].map(([code, name]) => Object.freeze({ code, name })));
 const STATE_CODES = new Set(STATES.map(state => state.code));
+const STATE_BY_NAME = new Map(STATES.map(state => [state.name.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase(), state.code]));
+const NOMINATIM_REVERSE = 'https://nominatim.openstreetmap.org/reverse';
+const REVERSE_ERROR = 'Não foi possível identificar sua localização. Selecione manualmente.';
+const REVERSE_ATTRIBUTION = '© OpenStreetMap contributors';
 
 export const isBrazilStateCode = value => STATE_CODES.has(value);
 
@@ -31,16 +35,45 @@ function cleanMunicipalities(rows) {
     .slice(0, MAX_MUNICIPALITIES);
 }
 
+function reverseCoordinate(value, min, max) {
+  if (value == null || String(value).trim() === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= min && number <= max ? number : null;
+}
+
+function reverseLocality(payload) {
+  const address = payload?.address;
+  if (!address || typeof address !== 'object' || Array.isArray(address)) throw new TypeError('invalid Nominatim response');
+  const stateName = String(address.state || '').trim().normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+  const state = STATE_BY_NAME.get(stateName) || (/^br-[a-z]{2}$/i.test(address.state_code || '') ? address.state_code.slice(-2).toUpperCase() : '');
+  const city = [address.city, address.town, address.municipality, address.village]
+    .find(value => typeof value === 'string' && value.trim());
+  if (!state || !city) throw new TypeError('missing Nominatim locality');
+  return { state, city: city.trim().replace(/\s+/g, ' ').slice(0, 100), attribution: REVERSE_ATTRIBUTION };
+}
+
 export function createBrazilLocationsRoutes({
   json,
   fetchImpl = globalThis.fetch,
   timeoutMs = 5_000,
   failureCooldownMs = 60_000,
-  now = () => Date.now()
+  now = () => Date.now(),
+  reverseUrl = NOMINATIM_REVERSE,
+  reverseUserAgent = 'First gym directory/1.0 (+https://github.com/rafael/first)',
+  reverseMinIntervalMs = 1_000,
+  reverseAllowedHosts = ['nominatim.openstreetmap.org']
 }) {
+  const reverseEndpoint = new URL(reverseUrl);
+  if (reverseEndpoint.protocol !== 'https:') throw new TypeError('reverse geocoder must use HTTPS');
+  const allowedHosts = new Set((Array.isArray(reverseAllowedHosts) ? reverseAllowedHosts : String(reverseAllowedHosts).split(','))
+    .map(host => String(host).trim().toLowerCase()).filter(Boolean));
+  if (!allowedHosts.has(reverseEndpoint.hostname.toLowerCase())) throw new TypeError('reverse geocoder host is not allowlisted');
   const cache = new Map();
   const inFlight = new Map();
   const failureUntil = new Map();
+  const reverseCache = new Map();
+  const reverseInFlight = new Map();
+  let nextReverseAt = 0;
   const copy = municipalities => municipalities.map(item => ({ ...item }));
   const loadMunicipalities = uf => {
     if (cache.has(uf)) return Promise.resolve(cache.get(uf));
@@ -71,6 +104,37 @@ export function createBrazilLocationsRoutes({
     pending.finally(() => inFlight.delete(uf)).catch(() => {});
     return pending;
   };
+  const loadReverse = (latitude, longitude) => {
+    const key = `${latitude.toFixed(3)}:${longitude.toFixed(3)}`;
+    if (reverseCache.has(key)) return Promise.resolve(reverseCache.get(key));
+    if (reverseInFlight.has(key)) return reverseInFlight.get(key);
+    const pending = (async () => {
+      const delay = Math.max(0, nextReverseAt - now());
+      if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+      nextReverseAt = Math.max(now(), nextReverseAt) + Math.max(0, reverseMinIntervalMs);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), Math.max(1, timeoutMs));
+      try {
+        const url = new URL(reverseEndpoint);
+        url.search = new URLSearchParams({
+          format: 'jsonv2', lat: String(Number(latitude.toFixed(3))), lon: String(Number(longitude.toFixed(3))), addressdetails: '1'
+        }).toString();
+        const response = await fetchImpl(url.toString(), {
+          headers: { Accept: 'application/json', 'User-Agent': reverseUserAgent }, signal: controller.signal
+        });
+        if (!response?.ok) throw new Error('Nominatim request failed');
+        const locality = reverseLocality(await response.json());
+        if (reverseCache.size >= 1_000) reverseCache.delete(reverseCache.keys().next().value);
+        reverseCache.set(key, locality);
+        return locality;
+      } finally {
+        clearTimeout(timer);
+      }
+    })();
+    reverseInFlight.set(key, pending);
+    pending.finally(() => reverseInFlight.delete(key)).catch(() => {});
+    return pending;
+  };
 
   return {
     'GET /api/locations/states': (_req, res) => json(res, 200, {
@@ -87,6 +151,19 @@ export function createBrazilLocationsRoutes({
         return json(res, 200, { uf, municipalities: copy(municipalities) });
       } catch {
         return json(res, 502, { error: PUBLIC_UPSTREAM_ERROR });
+      }
+    },
+
+    'GET /api/location/reverse': async (req, res) => {
+      const query = new URL(req.url, 'http://first.local').searchParams;
+      const latitude = reverseCoordinate(query.get('latitude'), -90, 90);
+      const longitude = reverseCoordinate(query.get('longitude'), -180, 180);
+      if (latitude === null || longitude === null) return json(res, 400, { error: 'Localização inválida.' });
+      try {
+        const locality = await loadReverse(latitude, longitude);
+        return json(res, 200, { ...locality });
+      } catch {
+        return json(res, 502, { error: REVERSE_ERROR });
       }
     }
   };

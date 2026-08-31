@@ -185,3 +185,57 @@ test('registers both public location routes in the HTTP server', () => {
   assert.match(source, /createBrazilLocationsRoutes/);
   assert.match(source, /Object\.assign\(routes,[\s\S]*createBrazilLocationsRoutes/);
 });
+
+test('reverse geocoding accepts valid coordinates, coalesces rounded keys and returns only locality attribution', async () => {
+  let requests = 0;
+  let release;
+  const pending = new Promise(resolve => { release = resolve; });
+  const routes = createBrazilLocationsRoutes({
+    json,
+    reverseMinIntervalMs: 0,
+    fetchImpl: async (url, options) => {
+      requests += 1;
+      assert.equal(url, 'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=0.035&lon=-51.07&addressdetails=1');
+      assert.match(options.headers['User-Agent'], /First/);
+      return pending;
+    }
+  });
+  const first = invoke(routes, 'GET /api/location/reverse', '/api/location/reverse?latitude=0.0346&longitude=-51.0696');
+  const second = invoke(routes, 'GET /api/location/reverse', '/api/location/reverse?latitude=0.0347&longitude=-51.0697&url=https://attacker.example');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(requests, 1);
+  release({ ok: true, json: async () => ({ address: { state: 'Amapá', city: 'Macapá', postcode: '68900-000' } }) });
+  const [one, two] = await Promise.all([first, second]);
+  const expected = { state: 'AP', city: 'Macapá', attribution: '© OpenStreetMap contributors' };
+  assert.deepEqual(one.body, expected);
+  assert.deepEqual(two.body, expected);
+  assert.equal(JSON.stringify(one.body).includes('0.03'), false);
+});
+
+test('reverse geocoding rejects malformed coordinates without fetch and returns one fixed public error on failure', async () => {
+  let requests = 0;
+  const routes = createBrazilLocationsRoutes({
+    json,
+    reverseMinIntervalMs: 0,
+    fetchImpl: async () => { requests += 1; throw new Error('secret upstream coordinates'); }
+  });
+  const invalid = await invoke(routes, 'GET /api/location/reverse', '/api/location/reverse?latitude=200&longitude=0');
+  assert.deepEqual({ status: invalid.status, body: invalid.body }, { status: 400, body: { error: 'Localização inválida.' } });
+  assert.equal(requests, 0);
+  const unavailable = await invoke(routes, 'GET /api/location/reverse', '/api/location/reverse?latitude=0.03&longitude=-51.07');
+  assert.deepEqual({ status: unavailable.status, body: unavailable.body }, {
+    status: 502, body: { error: 'Não foi possível identificar sua localização. Selecione manualmente.' }
+  });
+  assert.equal(JSON.stringify(unavailable.body).includes('secret'), false);
+});
+
+test('reverse geocoding allows only configured HTTPS hosts and does not coerce missing coordinates to zero', async () => {
+  assert.throws(() => createBrazilLocationsRoutes({
+    json, reverseUrl: 'https://attacker.example/reverse', reverseAllowedHosts: ['nominatim.openstreetmap.org']
+  }), /allowlisted/);
+  let requests = 0;
+  const routes = createBrazilLocationsRoutes({ json, fetchImpl: async () => { requests += 1; } });
+  const missing = await invoke(routes, 'GET /api/location/reverse', '/api/location/reverse?latitude=&longitude=');
+  assert.deepEqual({ status: missing.status, body: missing.body }, { status: 400, body: { error: 'Localização inválida.' } });
+  assert.equal(requests, 0);
+});

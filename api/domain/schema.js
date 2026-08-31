@@ -78,6 +78,24 @@ function normalizeGymRequestPayload(value, kind) {
       ...(note ? { note } : {})
     };
   }
+  if (kind === 'closure') return note ? { note } : null;
+  if (kind === 'correction') {
+    const payload = {};
+    const fields = [
+      ['name', 120], ['networkName', 120], ['city', 100], ['address', 240], ['neighborhood', 120],
+      ['postalCode', 20], ['openingHoursNote', 300]
+    ];
+    for (const [field, max] of fields) {
+      const current = text(value[field], max);
+      if (current) payload[field] = current;
+    }
+    const state = text(value.state, 2).toUpperCase();
+    if (state && /^[A-Z]{2}$/.test(state)) payload.state = state;
+    if (value.openingHours != null) payload.openingHours = normalizeOpeningHours(value.openingHours);
+    if (value.exerciseIds != null) payload.exerciseIds = exerciseIds;
+    if (note) payload.note = note;
+    return Object.keys(payload).length ? payload : null;
+  }
   const name = text(value.name, 100);
   if (!name && !note && !exerciseIds.length) return null;
   return {
@@ -97,6 +115,7 @@ function normalizeGymRequest(value) {
   if (!id || !kind || !status || !submittedByUserId || !payload || (kind !== 'gym' && !gymId)) return null;
   const reviewedAt = timestamp(value.reviewedAt);
   const reviewedBy = text(value.reviewedBy, 100);
+  const reviewReason = text(value.reviewReason, 300);
   return {
     id,
     kind,
@@ -106,7 +125,8 @@ function normalizeGymRequest(value) {
     payload,
     createdAt: timestamp(value.createdAt),
     ...(reviewedAt ? { reviewedAt } : {}),
-    ...(reviewedBy ? { reviewedBy } : {})
+    ...(reviewedBy ? { reviewedBy } : {}),
+    ...(reviewReason ? { reviewReason } : {})
   };
 }
 
