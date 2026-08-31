@@ -12,6 +12,14 @@ import { requestBrowserLocation } from '../lib/mobile.js'
 const FILTERS = [['all', 'All gyms'], ['nearby', 'Nearby'], ['favorites', 'Favorites'], ['trending', 'Trending']]
 const EMPTY_GYM = Object.freeze({ name: '', state: '', city: '', address: '', openingHoursNote: '', exerciseIds: [] })
 
+export function reverseLocationPath({ latitude, longitude }) {
+  const round = value => {
+    const rounded = Math.round(Number(value) * 1000) / 1000
+    return Object.is(rounded, -0) ? 0 : rounded
+  }
+  return `/api/location/reverse?latitude=${encodeURIComponent(round(latitude))}&longitude=${encodeURIComponent(round(longitude))}`
+}
+
 function openAccount() {
   if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return
   window.dispatchEvent(new CustomEvent('first:account', { detail: { mode: 'login' } }))
@@ -155,7 +163,7 @@ export default function GymDirectory({ gyms: providedGyms, selectedGymId = null,
     try {
       const coordinates = await requestBrowserLocation()
       setLocation(coordinates)
-      const localityResult = await api(`/api/location/reverse?latitude=${encodeURIComponent(coordinates.latitude)}&longitude=${encodeURIComponent(coordinates.longitude)}`)
+      const localityResult = await api(reverseLocationPath(coordinates))
       localityTouched.current = true; setState(localityResult.state || ''); setCity(localityResult.city || ''); setAttribution(localityResult.attribution || '')
       setLocationStatus('ready')
     } catch (error) {
