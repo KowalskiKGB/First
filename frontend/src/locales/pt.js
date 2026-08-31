@@ -1180,7 +1180,7 @@ export default {
   'No model selected': 'Nenhum modelo selecionado',
   'Choose a provider, save the key, test the model and activate it.': 'Escolha um provedor, salve a chave, teste o modelo e ative-o.',
   'Moderation': 'Moderação',
-  'Equipment requests': 'Solicitações de aparelhos',
+  'Equipment requests': 'Solicitações de academias e aparelhos',
   'Equipment request': 'Solicitação de aparelho',
   'New gym': 'Nova academia',
   'Requested by': 'Solicitado por',

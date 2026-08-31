@@ -1690,9 +1690,12 @@ body:has(.ai-wizard) #tabbar{display:none}
 
 @media (max-width:720px){
   .ai-toggle-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .dev-provider-list{display:flex;overflow-x:auto;padding-bottom:3px;scrollbar-width:none}
-  .dev-provider-list::-webkit-scrollbar{display:none}
-  .dev-provider-list .client-row{flex:0 0 min(230px,76vw)}
+  .dev-provider-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;overflow:visible;padding-bottom:0}
+  .dev-provider-list .client-row{justify-content:center;gap:6px;min-height:44px;padding:7px 8px}
+  .dev-provider-list .client-row-main{flex:0 1 auto}
+  .dev-provider-list .client-row-title strong{font-size:13px}
+  .dev-provider-list .client-row.compact .client-facts{display:none}
+  .dev-provider-list .status-badge{width:8px;min-width:8px;height:8px;min-height:8px;padding:0;overflow:hidden;background:currentColor;font-size:0}
   .dev-console-split{grid-template-columns:1fr}
   .dev-console-split>.client-list{max-height:300px}
 }

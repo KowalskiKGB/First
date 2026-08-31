@@ -105,6 +105,21 @@ for (const viewport of VIEWPORTS) test(`Dev configures, tests and activates one 
   await expect(page.getByRole('heading', { name: 'Provedores de IA' })).toBeVisible()
   await expect(page.locator('.dev-provider-list button')).toHaveCount(3)
   await expect(page.locator('.dev-provider-card')).toHaveCount(1)
+  if (viewport.name === 'mobile') {
+    const providerLayout = await page.locator('.dev-provider-list').evaluate(list => {
+      const buttons = [...list.querySelectorAll('button')].map(button => button.getBoundingClientRect())
+      return {
+        overflows: list.scrollWidth > list.clientWidth + 1,
+        maxButtonWidth: Math.max(...buttons.map(button => button.width)),
+        maxButtonHeight: Math.max(...buttons.map(button => button.height)),
+        topSpread: Math.max(...buttons.map(button => button.top)) - Math.min(...buttons.map(button => button.top)),
+      }
+    })
+    expect(providerLayout.overflows).toBe(false)
+    expect(providerLayout.maxButtonWidth).toBeLessThanOrEqual(130)
+    expect(providerLayout.maxButtonHeight).toBeLessThanOrEqual(48)
+    expect(providerLayout.topSpread).toBeLessThanOrEqual(1)
+  }
   await page.locator('.dev-provider-list button', { hasText: 'OpenAI' }).click()
   const openai = page.locator('form[aria-labelledby="provider-openai"]')
   await openai.locator('[name="openai-api-key"]').fill('test-provider-key-never-render-again')
@@ -203,7 +218,7 @@ test('Dev reviews equipment requests and inspects registered users', async ({ pa
   await page.getByRole('button', { name: 'Abrir Painel Dev' }).click()
 
   await page.getByRole('tab', { name: 'Solicitações' }).click()
-  await expect(page.getByRole('heading', { name: 'Solicitações de aparelhos' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Solicitações de academias e aparelhos' })).toBeVisible()
   await expect(page.getByText('Hack squat articulado').first()).toBeVisible()
   await page.getByRole('button', { name: 'Aprovar' }).click()
   await expect(page.getByText('Aprovada', { exact: true }).last()).toBeVisible()

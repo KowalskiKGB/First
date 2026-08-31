@@ -384,6 +384,60 @@ test('provider HTTP errors are sanitized and never include the complete key', as
     && !error.message.includes(completeKey));
 });
 
+test('provider tests expose only fixed diagnostics for sanitized HTTP and timeout failures', async () => {
+  const cases = [
+    { status: 401, expected: 'The provider credential was rejected.' },
+    { status: 400, expected: 'Gemini model request failed (400)' },
+    { status: 429, expected: 'Gemini model request failed (429)' }
+  ];
+
+  for (const item of cases) {
+    const secret = `complete-gemini-key-${item.status}`;
+    const sentinel = `SENTINEL_UPSTREAM_${item.status}`;
+    const slot = upsertProvider([], {
+      provider: 'gemini', selectedModel: 'gemini-test', apiKey: secret
+    }, masterKey, 'now').records[0];
+    const tested = await testProvider([slot], 'gemini', {
+      masterKey,
+      now: () => 'later',
+      fetchImpl: async () => new Response(JSON.stringify({ error: { message: `${sentinel} ${secret}` } }), { status: item.status })
+    });
+
+    assert.equal(tested.error, item.expected);
+    assert.doesNotMatch(JSON.stringify(tested), new RegExp(`${sentinel}|${secret}`));
+  }
+
+  const timeoutSlot = upsertProvider([], {
+    provider: 'openai', selectedModel: 'gpt-timeout', apiKey: 'timeout-secret'
+  }, masterKey, 'now').records[0];
+  const timedOut = await testProvider([timeoutSlot], 'openai', {
+    masterKey,
+    now: () => 'later',
+    timeoutMs: 10,
+    fetchImpl: async (_url, options) => new Promise((resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+    })
+  });
+
+  assert.equal(timedOut.error, 'AI provider request timeout.');
+  assert.doesNotMatch(JSON.stringify(timedOut), /timeout-secret|AbortError|operation was aborted/i);
+});
+
+test('provider tests keep untrusted transport errors generic', async () => {
+  const sentinel = 'SENTINEL_UNTRUSTED_TRANSPORT_DETAIL';
+  const slot = upsertProvider([], {
+    provider: 'openai', selectedModel: 'gpt-test', apiKey: 'complete-provider-key'
+  }, masterKey, 'now').records[0];
+  const tested = await testProvider([slot], 'openai', {
+    masterKey,
+    now: () => 'later',
+    fetchImpl: async () => { throw new Error(`${sentinel} complete-provider-key`); }
+  });
+
+  assert.equal(tested.error, 'AI provider test failed');
+  assert.doesNotMatch(JSON.stringify(tested), new RegExp(`${sentinel}|complete-provider-key`));
+});
+
 test('HTTP 200 structured failures carry normalized usage without retaining raw output', async () => {
   const cases = [
     {

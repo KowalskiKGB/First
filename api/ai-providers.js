@@ -6,7 +6,9 @@ const MASTER_KEY_PATTERN = /^[0-9a-fA-F]{64}$/;
 const INVALID_STRUCTURED_OUTPUT = 'AI provider returned invalid structured output';
 const PROVIDER_TEST_FAILED = 'AI provider test failed';
 const PROVIDER_CREDENTIAL_REJECTED = 'The provider credential was rejected.';
+const PROVIDER_REQUEST_TIMED_OUT = 'AI provider request timeout.';
 const PROVIDER_RESPONSE_TRUNCATED = 'provider_response_truncated';
+const SAFE_PROVIDER_DIAGNOSTIC = Symbol('safeProviderDiagnostic');
 const PROVIDER_TEST_VALUE = Object.freeze({
   justification: 'Plano diagnostico seguro.',
   routines: [{
@@ -204,9 +206,17 @@ async function fetchJson(fetchImpl, url, options, timeoutMs = 45_000) {
         : `${service} request failed (${response.status})`);
       error.status = credentialRejected ? 422 : 502;
       error.expose = true;
+      Object.defineProperty(error, SAFE_PROVIDER_DIAGNOSTIC, { value: true });
       throw error;
     }
     return data;
+  } catch (error) {
+    if (!controller.signal.aborted) throw error;
+    const timeout = new Error(PROVIDER_REQUEST_TIMED_OUT);
+    timeout.status = 502;
+    timeout.expose = true;
+    Object.defineProperty(timeout, SAFE_PROVIDER_DIAGNOSTIC, { value: true });
+    throw timeout;
   } finally {
     clearTimeout(timer);
   }
@@ -310,7 +320,8 @@ export async function testProvider(records, providerValue, options) {
     usage ||= error?.usage;
     const next = { ...slot, testedAt, testStatus: 'failed', active: false };
     const nextRecords = records.map(record => record.provider === provider ? next : record);
-    return { records: nextRecords, provider: publicSlot(next, []), error: PROVIDER_TEST_FAILED, ...(usage ? { usage } : {}) };
+    const publicError = error?.[SAFE_PROVIDER_DIAGNOSTIC] ? error.message : PROVIDER_TEST_FAILED;
+    return { records: nextRecords, provider: publicSlot(next, []), error: publicError, ...(usage ? { usage } : {}) };
   }
 }
 
