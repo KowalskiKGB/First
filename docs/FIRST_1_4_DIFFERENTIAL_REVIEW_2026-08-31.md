@@ -1,7 +1,7 @@
 # First 1.4 differential review - 2026-08-31
 
 Base: `03c8c1289c5bfe632d44af6f45eddcdaf00b4830`
-Head: `5f9143e`
+Head: release candidate based on `a4af554`
 
 ## Executive summary
 
@@ -55,11 +55,11 @@ No HIGH or CRITICAL issues were found in the reviewed diff.
 
 - `npm test` in `api`: 271/271 passing.
 - `npm run test:coverage` in `api`: 271/271 passing, 84.01% line coverage, 81.02% branch coverage, 81.19% function coverage.
-- `npm test` in `frontend`: 596/596 passing.
-- `npm test -- --coverage` in `frontend`: 596/596 passing, 64.94% global line coverage; changed critical views/libs covered by focused tests and E2E.
+- `npm test` in `frontend`: 597/597 passing.
+- `npm test -- --coverage` in `frontend`: 597/597 passing, 64.94% global line coverage; changed critical views/libs covered by focused tests and E2E.
 - `npm run build` in `frontend`: passing; large chunk warning remains.
 - `npm run test:e2e` in `frontend`: 36/36 passing.
-- `node --test scripts/release-credentials.test.mjs scripts/deployment.test.mjs`: 16/16 passing.
+- `node --test scripts/deployment.test.mjs scripts/release-credentials.test.mjs scripts/release-operations.test.mjs`: 19/19 passing.
 - `npm audit --audit-level=moderate` in `api` and `frontend`: 0 vulnerabilities.
 - Static UI/security grep: no `div/span onClick`, no gradients, no `transition: all`, no paste-blocking handler, no mobile zoom disable.
 - Playwright screenshots inspected for Home, Academias, Personal and `/devadmin`.

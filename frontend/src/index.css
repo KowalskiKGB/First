@@ -1928,6 +1928,7 @@ body:has(.ai-wizard) #tabbar{display:none}
   --label-4:rgba(21,23,16,.20);
   --sep:#c8cdbf;
   --sep-op:rgba(70,78,61,.18);
+  --green:#356300;
   --workbook-signal:#b7f34a;
   --workbook-on:#101407;
   --workbook-soft:rgba(93,140,16,.10);

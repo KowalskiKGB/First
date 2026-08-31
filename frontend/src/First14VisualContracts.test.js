@@ -12,4 +12,8 @@ describe('First 1.4 visual accessibility contracts', () => {
   it('fits the compact finance history inside a phone panel', () => {
     expect(css).toMatch(/@media\s*\(max-width:600px\)[\s\S]*\.money-bars-table\{[^}]*min-width:100%/)
   })
+
+  it('uses a darker green for readable text in the light theme while preserving chartreuse actions', () => {
+    expect(css).toMatch(/:root\[data-theme="light"\]\s*\{[^}]*--green:#356300[^}]*--workbook-signal:#b7f34a/s)
+  })
 })
