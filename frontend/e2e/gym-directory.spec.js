@@ -150,7 +150,7 @@ test('denied automatic location leaves the manual UF and municipality flow usabl
   await page.goto('/#/academias')
 
   await expect(page.getByRole('button', { name: /Usar minha localização/ })).toHaveCount(0)
-  await expect(page.locator('.gym-directory-message')).toContainText(/não permitida|identificar sua localização/i)
+  await expect(page.locator('.gym-location-status')).toContainText(/não permitida|identificar sua localização/i)
   await page.locator('[name="gym-state"]').selectOption('CE')
   await expect(page.locator('[name="gym-city"]')).toBeEnabled()
   await page.locator('[name="gym-city"]').selectOption('Fortaleza')
@@ -177,7 +177,7 @@ test('automatic location timeout keeps the manual UF and municipality fallback u
   await page.goto('/#/academias')
 
   await expect(page.getByRole('button', { name: /Usar minha localização/ })).toHaveCount(0)
-  await expect(page.locator('.gym-directory-message')).toContainText(/identificar sua localização|timeout/i)
+  await expect(page.locator('.gym-location-status')).toContainText(/identificar sua localização|timeout/i)
   await page.locator('[name="gym-state"]').selectOption('CE')
   await expect(page.locator('[name="gym-city"]')).toBeEnabled()
   await page.locator('[name="gym-city"]').selectOption('Fortaleza')

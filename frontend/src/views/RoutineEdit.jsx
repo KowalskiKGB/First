@@ -90,11 +90,13 @@ export default function RoutineEdit() {
       const linkedPrev = i > 0 && e.sg && r.ex[i - 1].sg === e.sg
       return <div key={i}>
         {unitFirst.has(i) && <div className="ss-label"><Icon name="link" />{t('Superset')}</div>}
-        <div className={'item' + (inSS.has(i) ? ' in-ss' : '')} onClick={prescribed ? undefined : () => {
+        <div className={'item routine-exercise-item' + (inSS.has(i) ? ' in-ss' : '')}>
+          <button type="button" className="routine-exercise-open" disabled={prescribed} onClick={() => {
           exConfigSheet(ex, e, cfg => edit(x => { x[i] = { id: x[i].id, sg: x[i].sg, ...cfg } }), () => edit(x => { x.splice(i, 1); cleanupSg(x) }), r)
-        }}>
+          }}>
           <Thumb ex={ex} />
           <div className="grow"><div className="tt capitalize exercise-name">{exerciseName(ex)}</div><div className="ss">{exLine(e, S.unit)}</div></div>
+          </button>
           {!prescribed && <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 'none', alignItems: 'center' }}>
             {i > 0 && <button className={'iconbtn' + (linkedPrev ? ' on-ss' : '')} title={t('Superset with exercise above')} aria-label={t('Superset with exercise above')} style={{ width: 32, height: 28, borderRadius: 8, fontSize: 15 }} onClick={ev => { ev.stopPropagation(); toggleLink(i) }}><Icon name="link" /></button>}
             <div style={{ display: 'flex', gap: 2 }}>

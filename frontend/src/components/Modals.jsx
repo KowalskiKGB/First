@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { t } from '../lib/i18n.js'
 import { useUI } from '../store/useUI.js'
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
@@ -107,14 +108,14 @@ function Sheet({ sheet, active }) {
   if (sheet.kind === 'center') {
     return (
       <div>
-        <div className="mback" aria-hidden="true" onClick={() => { if (!sheet.locked) close() }} />
+        <button type="button" className="mback" aria-label={t('Close')} disabled={sheet.locked} onClick={() => { if (!sheet.locked) close() }} />
         <div className="center" {...dialogProps}>{sheet.render(close)}</div>
       </div>
     )
   }
   return (
     <div>
-      <div className="mback" aria-hidden="true" onClick={() => { if (!sheet.locked) close() }} />
+      <button type="button" className="mback" aria-label={t('Close')} disabled={sheet.locked} onClick={() => { if (!sheet.locked) close() }} />
       <div className="sheet" {...dialogProps} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         <div className="grab" />
         {sheet.render(close)}

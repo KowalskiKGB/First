@@ -362,6 +362,17 @@ body.resting #app{padding-bottom:calc(250px + var(--sab))}
 .item .tt{font-size:16px;font-weight:400;line-height:1.25;letter-spacing:-.009em}
 .item .ss{color:var(--label-2);font-size:13px;margin-top:2px}
 .item .grow{flex:1;min-width:0}
+.library-exercise-item{padding:6px 8px}
+.library-exercise-open{
+  display:flex;align-items:center;gap:12px;flex:1;min-width:0;
+  min-height:52px;padding:4px;text-align:left;border-radius:var(--r);color:inherit;
+}
+.routine-exercise-item{padding:0 12px 0 0;overflow:hidden}
+.routine-exercise-open{
+  display:flex;align-items:center;gap:12px;align-self:stretch;min-width:0;flex:1;
+  padding:10px 0 10px 12px;text-align:left;border-radius:var(--r);color:inherit;
+}
+.routine-exercise-open:disabled{cursor:default}
 .chev{color:var(--label);flex:none;font-size:15px;--icon-stroke:2.4}
 .tag{
   display:inline-flex;align-items:center;gap:3px;background:var(--surface-2);
@@ -2216,7 +2227,7 @@ textarea:focus-visible,
 }
 
 .dev-provider-list {
-  grid-template-columns:1fr;
+  grid-template-columns:repeat(3,minmax(0,1fr));
 }
 
 .dev-provider-card {
@@ -2273,7 +2284,14 @@ textarea:focus-visible,
 .workbook-trail li+li::before{content:"/";margin-right:7px;color:var(--label-3)}
 .workbook-trail-current{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-.dev-login>.btn:not(.primary),.dev-provider-card>label+.btn{justify-self:end;width:auto;min-height:36px;padding:4px 8px;border:0;background:transparent;color:var(--label-2)}
+.iconbtn{width:44px;height:44px;min-width:44px;min-height:44px}
+.dev-login>.btn:not(.primary),.dev-provider-card>label+.btn{justify-self:end;width:auto;min-height:44px;padding:8px;border:0;background:transparent;color:var(--label-2)}
+:root[data-theme="light"] #tabbar>button.on{color:#356300}
+:root[data-theme="light"] button:focus-visible,
+:root[data-theme="light"] a:focus-visible,
+:root[data-theme="light"] input:focus-visible,
+:root[data-theme="light"] select:focus-visible,
+:root[data-theme="light"] textarea:focus-visible{outline-color:#4b7200}
 
 @media (min-width:900px){
   .plan-layout{grid-template-columns:minmax(0,1.1fr) minmax(320px,.9fr)}
@@ -2284,6 +2302,11 @@ textarea:focus-visible,
   .home-weight-actions{flex-wrap:wrap;justify-content:flex-end}
   .home-ai-card-compact .home-ai-heading{grid-template-columns:38px minmax(0,1fr)}
   .home-ai-card-compact .plan-source-badge{grid-column:2;justify-self:start}
+}
+
+@media (max-width:600px){
+  .money-bars-table{min-width:100%;font-size:11px;table-layout:fixed}
+  .money-bars-table th,.money-bars-table td{padding:8px 4px;overflow-wrap:anywhere;white-space:normal}
 }
 
 .workbook-dashboard .personal-panel,
