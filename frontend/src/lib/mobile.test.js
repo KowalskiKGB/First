@@ -18,7 +18,23 @@ vi.mock('@capacitor/share', () => ({ Share: { share: native.share } }))
 import { setLang } from './i18n.js'
 import * as mobile from './mobile.js'
 
-const { nativeLoad, nativeSave, reminderNotifications, shareExport, syncReminder } = mobile
+const { nativeLoad, nativeSave, reminderNotifications, requestBrowserLocation, shareExport, syncReminder } = mobile
+
+describe('explicit browser location', () => {
+  it('resolves one in-memory coordinate read only after it is called', async () => {
+    const getCurrentPosition = vi.fn(success => success({ coords: { latitude: 0.034, longitude: -51.066, accuracy: 18 } }))
+
+    await expect(requestBrowserLocation({ getCurrentPosition })).resolves.toEqual({ latitude: 0.034, longitude: -51.066, accuracy: 18 })
+    expect(getCurrentPosition).toHaveBeenCalledOnce()
+  })
+
+  it('keeps manual locality available when permission is denied', async () => {
+    const denied = Object.assign(new Error('denied'), { code: 1 })
+    const getCurrentPosition = vi.fn((_success, error) => error(denied))
+
+    await expect(requestBrowserLocation({ getCurrentPosition })).rejects.toMatchObject({ code: 1 })
+  })
+})
 
 describe('reminderNotifications', () => {
   beforeAll(() => setLang('pt'))

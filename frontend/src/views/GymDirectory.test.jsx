@@ -52,6 +52,7 @@ const gyms = [
   {
     id: 'gym-x',
     name: 'Academia X',
+    networkName: 'Rede X',
     state: 'CE',
     city: 'Fortaleza',
     address: 'Rua ABC, 123',
@@ -62,6 +63,9 @@ const gyms = [
       { day: 0, closed: true },
     ],
     exerciseIds: ['0043', '0085'],
+    averageRating: 4.8,
+    reviewCount: 27,
+    tags: ['Preferida', 'Em alta'],
   },
   {
     id: 'gym-y',
@@ -122,5 +126,22 @@ describe('GymDirectory', () => {
     expect(markup).toContain('data-search-name="gym-exercise-search"')
     expect(markup).toContain('Não encontrou seu aparelho? Clique aqui para cadastrar')
     expect(markup).toContain('Selecionar academia')
+    expect(markup).toContain('aria-pressed="true"')
+    expect(markup).toContain('role="radiogroup"')
+    expect(markup.match(/type="radio"/g)).toHaveLength(5)
+    expect(markup).toContain('Sugerir correção')
+    expect(markup).toContain('Informar fechamento')
+    expect(markup).toContain('Avaliações da comunidade')
+  })
+
+  it('renders compact social filters and the explicit location action', () => {
+    const markup = renderToStaticMarkup(<GymDirectory gyms={gyms} authenticated={false} />)
+
+    expect(markup).toContain('Usar minha localização')
+    expect(markup).toContain('Todas')
+    expect(markup).toContain('Próximas')
+    expect(markup).toContain('Favoritas')
+    expect(markup).toContain('Em alta')
+    expect(markup).toContain('Não encontrou a academia? Crie aqui')
   })
 })

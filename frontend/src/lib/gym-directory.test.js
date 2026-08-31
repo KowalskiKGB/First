@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import { gymCities, gymInitialLocality, gymStates } from './gym-directory.js'
+import {
+  distanceKm,
+  filterGyms,
+  gymCities,
+  gymInitialLocality,
+  gymStates,
+  isGymOpen,
+  rankGyms,
+} from './gym-directory.js'
 
 const gyms = [
   { id: 'gym-ce', state: 'CE', city: 'Fortaleza' },
@@ -24,5 +32,42 @@ describe('gym directory localities', () => {
       { id: 2304400, name: 'Fortaleza' },
       { id: 2303709, name: 'Caucaia' },
     ])).toEqual(['Aquiraz', 'Caucaia', 'Fortaleza'])
+  })
+})
+
+describe('gym social discovery', () => {
+  const socialGyms = [
+    {
+      id: 'far-favorite', name: 'Smart Fit Centro', networkName: 'Smart Fit', state: 'AP', city: 'Macapá',
+      address: 'Rua A', neighborhood: 'Central', latitude: 0.04, longitude: -51.07,
+      tags: ['Preferida', 'Rede Smart Fit'], averageRating: 4.7, reviewCount: 31,
+    },
+    {
+      id: 'near-trending', name: 'Box Tucuju', state: 'AP', city: 'Macapá',
+      address: 'Avenida B', neighborhood: 'Buritizal', latitude: 0.001, longitude: -51.001,
+      tags: ['Em alta'], averageRating: 4.9, reviewCount: 12,
+    },
+  ]
+
+  it('calculates distance without mutating or persisting the user coordinates', () => {
+    const location = Object.freeze({ latitude: 0, longitude: -51 })
+
+    expect(distanceKm(location, socialGyms[1])).toBeCloseTo(0.16, 1)
+    expect(distanceKm({}, socialGyms[1])).toBeNull()
+    expect(location).toEqual({ latitude: 0, longitude: -51 })
+  })
+
+  it('searches network and neighborhood and applies the social chips', () => {
+    expect(filterGyms(socialGyms, { state: 'AP', city: 'Macapá', query: 'smart central' }).map(gym => gym.id)).toEqual(['far-favorite'])
+    expect(rankGyms(socialGyms, { filter: 'favorites' }).map(gym => gym.id)).toEqual(['far-favorite'])
+    expect(rankGyms(socialGyms, { filter: 'trending' }).map(gym => gym.id)).toEqual(['near-trending'])
+    expect(rankGyms(socialGyms, { filter: 'nearby', location: { latitude: 0, longitude: -51 } }).map(gym => gym.id)).toEqual(['near-trending', 'far-favorite'])
+  })
+
+  it('keeps favorites first in the default ranking and reports current opening state', () => {
+    expect(rankGyms(socialGyms, { filter: 'all', location: { latitude: 0, longitude: -51 } })[0].id).toBe('far-favorite')
+    expect(isGymOpen({ openingHours: [{ day: 1, open: '06:00', close: '22:00', closed: false }] }, new Date('2026-08-31T12:00:00-03:00'))).toBe(true)
+    expect(isGymOpen({ openingHours: [{ day: 1, open: '06:00', close: '22:00', closed: false }] }, new Date('2026-08-31T23:00:00-03:00'))).toBe(false)
+    expect(isGymOpen({ openingHours: [] }, new Date())).toBeNull()
   })
 })
