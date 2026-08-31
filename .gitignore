@@ -5,9 +5,6 @@
 !frontend/.env.mobile
 data/
 
-# Downloaded third-party exercise media
-media/
-
 # Dependencies and generated output
 node_modules/
 dist/
