@@ -15,6 +15,7 @@ const STATE_CODES = new Set(STATES.map(state => state.code));
 const STATE_BY_NAME = new Map(STATES.map(state => [state.name.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase(), state.code]));
 const NOMINATIM_REVERSE = 'https://nominatim.openstreetmap.org/reverse';
 const REVERSE_ERROR = 'Não foi possível identificar sua localização. Selecione manualmente.';
+const REVERSE_BUSY_ERROR = 'Muitas localizações em processamento. Selecione UF e município manualmente.';
 const REVERSE_ATTRIBUTION = '© OpenStreetMap contributors';
 
 export const isBrazilStateCode = value => STATE_CODES.has(value);
@@ -61,6 +62,7 @@ export function createBrazilLocationsRoutes({
   reverseUrl = NOMINATIM_REVERSE,
   reverseUserAgent = 'First gym directory/1.0 (+https://github.com/KowalskiKGB/First)',
   reverseMinIntervalMs = 1_000,
+  reverseMaxPending = 20,
   reverseAllowedHosts = ['nominatim.openstreetmap.org']
 }) {
   const reverseEndpoint = new URL(reverseUrl);
@@ -68,6 +70,7 @@ export function createBrazilLocationsRoutes({
   const allowedHosts = new Set((Array.isArray(reverseAllowedHosts) ? reverseAllowedHosts : String(reverseAllowedHosts).split(','))
     .map(host => String(host).trim().toLowerCase()).filter(Boolean));
   if (!allowedHosts.has(reverseEndpoint.hostname.toLowerCase())) throw new TypeError('reverse geocoder host is not allowlisted');
+  const maxPending = Math.max(1, Math.min(100, Number.parseInt(String(reverseMaxPending), 10) || 20));
   const cache = new Map();
   const inFlight = new Map();
   const failureUntil = new Map();
@@ -109,6 +112,9 @@ export function createBrazilLocationsRoutes({
     const key = `${latitude.toFixed(3)}:${longitude.toFixed(3)}`;
     if (reverseCache.has(key)) return Promise.resolve(reverseCache.get(key));
     if (reverseInFlight.has(key)) return reverseInFlight.get(key);
+    if (reverseInFlight.size >= maxPending) {
+      throw Object.assign(new Error('reverse geocoder queue full'), { code: 'REVERSE_QUEUE_FULL' });
+    }
     const runReverse = async () => {
       const delay = Math.max(0, nextReverseAt - now());
       if (delay) await new Promise(resolve => setTimeout(resolve, delay));
@@ -165,7 +171,8 @@ export function createBrazilLocationsRoutes({
       try {
         const locality = await loadReverse(latitude, longitude);
         return json(res, 200, { ...locality });
-      } catch {
+      } catch (error) {
+        if (error?.code === 'REVERSE_QUEUE_FULL') return json(res, 429, { error: REVERSE_BUSY_ERROR });
         return json(res, 502, { error: REVERSE_ERROR });
       }
     }

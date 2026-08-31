@@ -260,3 +260,47 @@ test('reverse geocoding serializes distinct rounded keys across the global upstr
   assert.ok(started[1] - started[0] >= interval - 5, `first interval was ${started[1] - started[0]}ms`);
   assert.ok(started[2] - started[1] >= interval - 5, `second interval was ${started[2] - started[1]}ms`);
 });
+
+test('reverse geocoding rejects excess unique work without penalizing cache-key coalescing', async () => {
+  let requests = 0;
+  let releaseFirst;
+  const successful = () => ({
+    ok: true,
+    json: async () => ({ address: { state: 'Amapá', city: 'Macapá' } })
+  });
+  const routes = createBrazilLocationsRoutes({
+    json,
+    reverseMinIntervalMs: 0,
+    reverseMaxPending: 2,
+    fetchImpl: async () => {
+      requests += 1;
+      if (requests === 1) return new Promise(resolve => { releaseFirst = resolve; });
+      return successful();
+    }
+  });
+
+  const first = invoke(routes, 'GET /api/location/reverse', '/api/location/reverse?latitude=0&longitude=-51');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const second = invoke(routes, 'GET /api/location/reverse', '/api/location/reverse?latitude=0.01&longitude=-51');
+  const coalesced = invoke(routes, 'GET /api/location/reverse', '/api/location/reverse?latitude=0.0001&longitude=-51.0001');
+  const excessRequest = invoke(routes, 'GET /api/location/reverse', '/api/location/reverse?latitude=0.02&longitude=-51');
+  const quickResult = await Promise.race([
+    excessRequest.then(response => ({ response })),
+    new Promise(resolve => setTimeout(() => resolve({ timeout: true }), 20))
+  ]);
+  assert.equal(requests, 1);
+
+  releaseFirst(successful());
+  const [firstResponse, secondResponse, coalescedResponse] = await Promise.all([first, second, coalesced]);
+  await excessRequest;
+  assert.deepEqual(quickResult, {
+    response: {
+      status: 429,
+      body: { error: 'Muitas localizações em processamento. Selecione UF e município manualmente.' }
+    }
+  });
+  assert.equal(firstResponse.status, 200);
+  assert.equal(secondResponse.status, 200);
+  assert.deepEqual(coalescedResponse.body, firstResponse.body);
+  assert.equal(requests, 2);
+});
