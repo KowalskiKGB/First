@@ -1,10 +1,37 @@
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
+import { relative, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 
 const root = new URL('../', import.meta.url)
 const read = path => readFileSync(new URL(path, root), 'utf8')
+const repoPath = url => relative(fileURLToPath(root), fileURLToPath(url)).split(sep).join('/')
+
+function runtimeImports(entry) {
+  const pending = [new URL(entry, root)]
+  const seen = new Set()
+  while (pending.length) {
+    const current = pending.pop()
+    const path = repoPath(current)
+    if (seen.has(path)) continue
+    seen.add(path)
+    for (const match of read(path).matchAll(/(?:from\s+|import\s+)['"](\.{1,2}\/[^'"]+)['"]/g)) {
+      const dependency = new URL(match[1], current)
+      assert.equal(existsSync(dependency), true, `${path} imports missing ${repoPath(dependency)}`)
+      pending.push(dependency)
+    }
+  }
+  return [...seen]
+}
+
+function dockerCopySources(dockerfile) {
+  return dockerfile.split(/\r?\n/).flatMap(line => {
+    const match = line.match(/^COPY\s+(?!.*--from=)(.+)$/)
+    return match ? match[1].trim().split(/\s+/).slice(0, -1) : []
+  })
+}
 
 test('the deployment template is complete and builds only this repository', () => {
   assert.equal(existsSync(new URL('.env.example', root)), true, '.env.example must exist')
@@ -139,6 +166,35 @@ test('the deployment template is complete and builds only this repository', () =
   assert.doesNotMatch(read('frontend/src/components/ErrorBoundary.jsx'), /openGym render error/i)
 })
 
+test('the API image contains its complete local runtime import graph', () => {
+  const dockerfile = read('api/Dockerfile')
+  const copySources = dockerCopySources(dockerfile)
+  for (const dependency of runtimeImports('api/server.js')) {
+    const copied = copySources.some(source => {
+      const normalized = source.replace(/\/$/, '')
+      const sourceUrl = new URL(normalized, root)
+      return existsSync(sourceUrl) && (statSync(sourceUrl).isDirectory()
+        ? dependency.startsWith(`${normalized}/`)
+        : dependency === normalized)
+    })
+    assert.equal(copied, true, `${dependency} is missing from api/Dockerfile`)
+  }
+
+  const dockerignore = read('.dockerignore')
+  assert.doesNotMatch(dockerignore, /^\/?data\/?$/m, 'blanket data ignore also excludes api/data')
+  assert.match(dockerignore, /^\/?data\/\*\*$/m, 'only root runtime data contents should be ignored')
+})
+
+test('reverse geocoder defaults are production-safe and identify this repository', () => {
+  const api = read('api/server.js')
+  assert.match(api, /First gym directory\/1\.0 \(\+https:\/\/github\.com\/KowalskiKGB\/First\)/)
+
+  const envExample = read('.env.example')
+  assert.match(envExample, /^NOMINATIM_REVERSE_URL=https:\/\/nominatim\.openstreetmap\.org\/reverse$/m)
+  assert.match(envExample, /^NOMINATIM_USER_AGENT=First gym directory\/1\.0 \(\+https:\/\/github\.com\/KowalskiKGB\/First\)$/m)
+  assert.match(envExample, /^NOMINATIM_ALLOWED_HOSTS=nominatim\.openstreetmap\.org$/m)
+})
+
 test('docker compose accepts the documented production-safe environment', () => {
   const result = spawnSync(
     'docker',
@@ -152,11 +208,17 @@ test('docker compose accepts the documented production-safe environment', () => 
         DEV_PANEL_USER: 'first_dev_test_only',
         DEV_PANEL_PASSWORD_HASH: 'scrypt:test-only-salt:test-only-hash-material',
         FIRST_BASIC_AUTH_USERS: 'first-test:{SHA}not-a-production-credential',
+        NOMINATIM_REVERSE_URL: 'https://geo.example.test/reverse',
+        NOMINATIM_USER_AGENT: 'First deployment test (+https://example.test)',
+        NOMINATIM_ALLOWED_HOSTS: 'geo.example.test',
       },
     },
   )
 
   assert.equal(result.status, 0, result.stderr || result.stdout)
+  assert.match(result.stdout, /NOMINATIM_REVERSE_URL: https:\/\/geo\.example\.test\/reverse/)
+  assert.match(result.stdout, /NOMINATIM_USER_AGENT: First deployment test \(\+https:\/\/example\.test\)/)
+  assert.match(result.stdout, /NOMINATIM_ALLOWED_HOSTS: geo\.example\.test/)
 })
 
 test('mobile media publication retries transient Windows directory locks', async () => {

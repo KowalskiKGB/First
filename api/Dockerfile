@@ -4,7 +4,8 @@ COPY api/package.json api/package-lock.json ./
 RUN apk add --no-cache su-exec \
   && npm ci --omit=dev \
   && npm cache clean --force
-COPY api/server.js api/personal.js api/gym-directory.js api/brazil-locations.js api/ai.js api/ai-jobs.js api/ai-routines.js api/ai-usage.js api/ai-providers.js api/dev-auth.js ./
+COPY api/server.js api/personal.js api/gym-directory.js api/gym-social.js api/brazil-locations.js api/ai.js api/ai-jobs.js api/ai-routines.js api/ai-usage.js api/ai-providers.js api/dev-auth.js ./
+COPY api/data ./data
 COPY api/domain ./domain
 COPY api/lib ./lib
 COPY frontend/src/lib/exercises-data.js ../frontend/src/lib/exercises-data.js
