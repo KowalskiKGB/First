@@ -145,10 +145,15 @@ test('provider requests remove only unsupported schema constraints without mutat
   const anthropic = JSON.parse(buildProviderRequest('anthropic', { apiKey: 'c', model: 'claude', prompt: 'ok', schema: AI_WORKOUT_SCHEMA }).options.body);
 
   assert.equal(hasSchemaKeyword(openai.text.format.schema, 'minLength'), true);
-  assert.equal(hasSchemaKeyword(gemini.generationConfig.responseFormat.text.schema, 'minLength'), false);
-  assert.equal(hasSchemaKeyword(gemini.generationConfig.responseFormat.text.schema, 'anyOf'), false);
-  assert.equal(hasSchemaKeyword(gemini.generationConfig.responseFormat.text.schema, 'nullable'), true);
-  assert.equal(hasSchemaKeyword(gemini.generationConfig.responseFormat.text.schema, 'minimum'), true);
+  const geminiSchema = gemini.generationConfig.responseFormat.text.schema;
+  for (const keyword of ['minimum', 'maximum', 'minItems', 'maxItems', 'minLength', 'maxLength', 'anyOf', 'nullable']) {
+    assert.equal(hasSchemaKeyword(geminiSchema, keyword), false, keyword);
+  }
+  assert.equal(hasSchemaKeyword(geminiSchema, 'additionalProperties'), true);
+  assert.deepEqual(
+    geminiSchema.properties.routines.items.properties.exercises.items.properties.repMin.type,
+    ['integer', 'null']
+  );
   for (const keyword of ['minimum', 'maximum', 'minLength', 'maxLength']) {
     assert.equal(hasSchemaKeyword(anthropic.output_config.format.schema, keyword), false, keyword);
   }

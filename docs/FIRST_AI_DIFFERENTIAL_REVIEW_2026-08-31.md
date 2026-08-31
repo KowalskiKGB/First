@@ -25,6 +25,7 @@ No Critical or High findings.
 - Gemini HTTP 400 credential failures are recognized only from an allowlist of Google `ErrorInfo.reason` values or fixed invalid/leaked-key phrases; the upstream body is never returned.
 - Gemini/OpenAI/Anthropic keys remain sent only in headers or request bodies already covered by provider adapter tests; model-list URLs do not contain keys.
 - Gemini generation follows the current REST `generationConfig.responseFormat.text` structured-output contract; the older fields are absent from the request.
+- Gemini receives the same closed workout shape with standard nullable type arrays, while redundant numeric/length limits are enforced by the server validator to keep the provider schema below its complexity ceiling.
 - Provider configuration payloads now use the rendered provider identity instead of stale draft state, preventing a fast provider switch from saving a key/model into the previous provider slot.
 
 ## Behavioral Notes
@@ -36,7 +37,7 @@ No Critical or High findings.
 
 ## Verification
 
-- `npm test` in `api`: 235 passed.
+- `npm test` in `api`: 236 passed.
 - `npm test` in `frontend`: 552 passed.
 - `npm run build` in `frontend`: passed, with the existing large chunk warning.
 - `npm run test:e2e` in `frontend`: 30 passed on an isolated port.

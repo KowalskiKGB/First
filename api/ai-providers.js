@@ -28,7 +28,7 @@ const PROVIDER_TEST_VALUE = Object.freeze({
 });
 const PROVIDER_TEST_PROMPT = `Retorne exatamente este AIWorkoutPlanV1 de diagnostico: ${JSON.stringify(PROVIDER_TEST_VALUE)}`;
 const UNSUPPORTED_SCHEMA_KEYS = Object.freeze({
-  gemini: new Set(['minLength', 'maxLength', 'anyOf']),
+  gemini: new Set(['minimum', 'maximum', 'minItems', 'maxItems', 'minLength', 'maxLength']),
   anthropic: new Set(['minimum', 'maximum', 'minLength', 'maxLength'])
 });
 
@@ -144,8 +144,12 @@ function schemaForProvider(provider, schema) {
     if (Array.isArray(value)) return value.map(copy);
     if (!value || typeof value !== 'object') return value;
     if (provider === 'gemini' && Array.isArray(value.anyOf)) {
-      const nullable = value.anyOf.find(item => item?.type && item.type !== 'null');
-      if (nullable) return { ...copy(nullable), nullable: true };
+      const typed = value.anyOf.filter(item => item?.type && item.type !== 'null');
+      const hasNull = value.anyOf.some(item => item?.type === 'null');
+      if (hasNull && typed.length === 1 && value.anyOf.length === 2) {
+        const adapted = copy(typed[0]);
+        return { ...adapted, type: [adapted.type, 'null'] };
+      }
     }
     return Object.fromEntries(Object.entries(value)
       .filter(([key]) => !unsupported.has(key))
