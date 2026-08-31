@@ -141,12 +141,14 @@ Read this before hosting First for anyone other than yourself.
   `NSLocationWhenInUseUsageDescription`; neither platform declares background location.
 - **Personal coordinates are transient.** The frontend holds them only in React memory to rank
   nearby gyms. It sends them only to `/api/location/reverse` to resolve UF/municipality; they are
-  not written to the collaboration JSON, workout data, AI context or analytics. A denial, timeout
-  or upstream failure leaves the manual UF/municipality flow available.
+  rounded to three decimal places before entering the request URL and are not written to the
+  collaboration JSON, workout data, AI context or analytics. Full precision never leaves screen
+  memory. A denial, timeout or upstream failure leaves the manual UF/municipality flow available.
 - **Reverse geocoding is constrained.** `NOMINATIM_REVERSE_URL` must use HTTPS and its hostname must
   appear in `NOMINATIM_ALLOWED_HOSTS`. Requests use `NOMINATIM_USER_AGENT`, round coordinates for
   an in-memory cache, coalesce identical work, serialize upstream calls at no more than one per
-  second and expose only a fixed public error. The default allowed host is
+  second, cap unique pending work at 20 and expose only fixed public errors. Excess work returns
+  `429` without reaching the provider. The default allowed host is
   `nominatim.openstreetmap.org`; custom hosts are never taken from a request.
 - **Public social projections minimize identity.** Review responses expose a shortened display
   name, never the account ID or e-mail. Contributor identity and source/audit metadata remain in

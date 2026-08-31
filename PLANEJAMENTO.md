@@ -504,7 +504,8 @@ ou contenção observada exigir.
 - Médias, votos, favoritos e tags são projeções calculadas. Avaliações `demo: true` aparecem
   identificadas, mas não participam de média, votos, `Em alta`, `Em baixa` ou ordenação social.
 - `NOMINATIM_REVERSE_URL`, `NOMINATIM_ALLOWED_HOSTS` e `NOMINATIM_USER_AGENT` configuram a
-  geocodificação. O endpoint exige HTTPS/allowlist e mantém cache somente em memória da réplica.
+  geocodificação. O endpoint exige HTTPS/allowlist, mantém cache somente em memória da réplica e
+  limita a 20 os trabalhos únicos em fila; o app arredonda a posição a três casas antes da URL.
 - O `/devadmin` separa as sessões Dev das contas do app e centraliza contribuições, diretório e
   avaliações. Conflitos de revisão retornam a versão atual para recarga segura antes de repetir.
 - Backup do volume, merge/push, deploy Coolify, smoke público e instalação ADB desta entrega não são

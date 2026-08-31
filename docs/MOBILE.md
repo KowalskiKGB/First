@@ -75,9 +75,9 @@ leitura automática ao abrir o app, monitoramento contínuo ou localização em 
   permissão em tempo de uso e o app funciona com UF/município manuais quando ela é negada.
 - iOS usa `NSLocationWhenInUseUsageDescription` com a justificativa em pt-BR. Não há chave de
   localização permanente ou em segundo plano.
-- Latitude/longitude ficam somente na memória da tela para ordenar academias. Uma leitura é enviada
-  ao endpoint de geocodificação reversa para obter UF e município, mas não é salva no estado local,
-  no JSON do servidor, na IA ou em analytics.
+- Latitude/longitude completas ficam somente na memória da tela para ordenar academias. O app
+  arredonda a posição a três casas antes de chamar a geocodificação reversa para obter UF e
+  município; ela não é salva no estado local, no JSON do servidor, na IA ou em analytics.
 - A lista mostra a atribuição do OpenStreetMap quando usa a geocodificação. Visitantes podem
   pesquisar, abrir e selecionar academia; favorito, avaliação e contribuição exigem login.
 

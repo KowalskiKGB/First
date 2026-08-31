@@ -26,10 +26,12 @@
 ### Localização, privacidade e moderação
 
 - Localização por ação explícita, com leitura única, preenchimento de UF/município, fallback manual
-  e distância calculada no cliente. Coordenadas pessoais não são persistidas nem enviadas à IA.
+  e distância calculada no cliente. A precisão completa fica em memória; a URL de geocodificação
+  recebe somente três casas. Coordenadas pessoais não são persistidas nem enviadas à IA.
 - Geocodificação reversa Nominatim limitada a HTTPS/hosts permitidos, com User-Agent configurável,
   cache em memória, coalescência, serialização de chamadas e erro público estável; a interface
-  mantém a atribuição OpenStreetMap.
+  mantém a atribuição OpenStreetMap. A fila aceita no máximo 20 chaves únicas e rejeita excesso
+  antes de chamar o provedor.
 - Console **Academias** do `/devadmin` dividido em Contribuições, Diretório e Avaliações, com
   comparação, confirmação, busca/filtro e ações auditáveis de aprovar/rejeitar,
   arquivar/restaurar e publicar/remover/restaurar.
