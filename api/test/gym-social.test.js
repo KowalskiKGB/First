@@ -88,18 +88,56 @@ test('gym social normalizers close malformed data while retaining valid optional
     review({ id: 'active-old', updatedAt: '2026-08-30T00:00:00.000Z' }),
     review({ id: 'active-new', updatedAt: '2026-08-31T00:00:00.000Z' })
   ]);
-  assert.deepEqual(retained.map(item => item.id), ['removed', 'active-new']);
+  assert.deepEqual(retained.map(item => item.id), ['active-new', 'removed']);
   assert.deepEqual(toggleGymFavorite([], {}), []);
-  assert.deepEqual(upsertGymReview(retained, { ...review(), rating: 9 }).map(item => item.id), ['removed', 'active-new']);
+  assert.deepEqual(upsertGymReview(retained, { ...review(), rating: 9 }).map(item => item.id), ['active-new', 'removed']);
+});
+
+test('gym social fix round caps review text and materializes nullable v4 gym defaults', () => {
+  assert.equal(normalizeGymReview({ ...review(), comment: 'x'.repeat(601) }).comment.length, 600);
+
+  const migrated = migrateCollaboration({ gymDirectory: [{
+    id: 'legacy', name: 'Legacy', state: 'AP', city: 'Macapá', address: 'Rua Legado, 1',
+    status: 'verified', openingHours: [], openingHoursNote: '', exerciseIds: [], createdAt: NOW, updatedAt: NOW
+  }] });
+  assert.deepEqual(migrated.gymDirectory[0], {
+    id: 'legacy', name: 'Legacy', state: 'AP', city: 'Macapá', address: 'Rua Legado, 1',
+    status: 'verified', visibility: 'public', latitude: null, longitude: null, source: null,
+    coordinateVerification: null, coordinateApproximate: false, approvedAt: null,
+    openingHours: [], openingHoursNote: '', exerciseIds: [], createdAt: NOW, updatedAt: NOW
+  });
 });
 
 test('Macapá seed has verified metadata and applies once per version without reviving tombstones', () => {
   assert.equal(MACAPA_GYM_SEED.length, 11);
+  const coordinateBounds = {
+    'gym-macapa-smart-fit': [0.03, 0.032, -51.064, -51.062],
+    'gym-macapa-maioral-tucuju': [0.073, 0.075, -51.057, -51.054],
+    'gym-macapa-energy-zona-norte': [0.077, 0.079, -51.072, -51.069],
+    'gym-macapa-energy-sport': [0.036, 0.038, -51.065, -51.062],
+    'gym-macapa-box-cross': [0.031, 0.033, -51.075, -51.072],
+    'gym-macapa-box-tucuju': [0.02, 0.022, -51.073, -51.07],
+    'gym-macapa-t30-intensity': [0.03, 0.032, -51.063, -51.06],
+    'gym-macapa-life-fit': [0.039, 0.042, -51.078, -51.075],
+    'gym-macapa-iron-men': [0.017, 0.02, -51.065, -51.062],
+    'gym-macapa-shape-fitness': [0.059, 0.061, -51.055, -51.052]
+  };
   for (const entry of MACAPA_GYM_SEED) {
-    assert.equal(Number.isFinite(entry.latitude), true, entry.id);
-    assert.equal(Number.isFinite(entry.longitude), true, entry.id);
-    assert.match(entry.source.url, /^https:\/\//, entry.id);
+    if (entry.coordinateApproximate) {
+      assert.equal(entry.id, 'gym-macapa-best-gym');
+      assert.equal(entry.latitude, null);
+      assert.equal(entry.longitude, null);
+    } else {
+      const [latMin, latMax, lonMin, lonMax] = coordinateBounds[entry.id];
+      assert.equal(Number.isFinite(entry.latitude) && entry.latitude >= latMin && entry.latitude <= latMax, true, entry.id);
+      assert.equal(Number.isFinite(entry.longitude) && entry.longitude >= lonMin && entry.longitude <= lonMax, true, entry.id);
+    }
+    assert.match(entry.source.url, /^https:\/\/(?:www\.)?openstreetmap\.org\/(?:node|way)\/|^https:\/\/nominatim\.openstreetmap\.org\/search\?/, entry.id);
+    assert.doesNotMatch(entry.source.url, /google\.com/i, entry.id);
     assert.ok(entry.source.label && entry.source.confidence && entry.source.verifiedAt, entry.id);
+    assert.match(entry.coordinateVerification.provider, /^OpenStreetMap/, entry.id);
+    assert.match(entry.coordinateVerification.url, /^https:\/\/(?:www\.)?openstreetmap\.org\/(?:node|way)\/|^https:\/\/nominatim\.openstreetmap\.org\/search\?/, entry.id);
+    assert.ok(entry.coordinateVerification.verifiedAt, entry.id);
   }
 
   const seeded = applyGymSeed({ gymDirectory: [], gymSeedTombstones: ['gym-macapa-smart-fit'] });
@@ -107,6 +145,16 @@ test('Macapá seed has verified metadata and applies once per version without re
   assert.equal(seeded.gymDirectory.some(item => item.id === 'gym-macapa-smart-fit'), false);
   assert.equal(seeded.gymDirectory.length, 10);
   assert.deepEqual(applyGymSeed(seeded), seeded);
+
+  const legacySeed = applyGymSeed({
+    gymSeedVersion: 'macapa-2026-08-31',
+    gymDirectory: [{
+      ...MACAPA_GYM_SEED[0], latitude: 0, longitude: 0,
+      source: { label: 'Google Maps', url: 'https://www.google.com/maps/search/?q=old', confidence: 'medium', verifiedAt: NOW }
+    }]
+  });
+  assert.equal(legacySeed.gymDirectory[0].latitude, MACAPA_GYM_SEED[0].latitude);
+  assert.equal(legacySeed.gymDirectory[0].source.url, MACAPA_GYM_SEED[0].source.url);
 });
 
 test('Macapá seed is applied by the production collaboration store exactly once', t => {
@@ -163,6 +211,52 @@ test('gym social projection excludes demos and PII and derives stable tags', () 
   assert.equal(JSON.stringify(result).includes('private-demo'), false);
   assert.equal(JSON.stringify(result).includes('latitude'), false);
   assert.equal(JSON.stringify(result).includes('longitude'), false);
+});
+
+test('gym social projection excludes hidden and archived gyms, keeps closed gyms, and ranks favorites first', () => {
+  const result = projectGymDirectory({
+    gyms: [
+      gym({ id: 'hidden', name: 'Hidden', visibility: 'hidden', latitude: 0.0301 }),
+      gym({ id: 'archived', name: 'Archived', status: 'archived', latitude: 0.0302 }),
+      gym({ id: 'closed', name: 'Closed', status: 'closed', latitude: 0.0303 }),
+      gym({ id: 'near', name: 'Near', latitude: 0.0304 }),
+      gym({ id: 'favorite-far', name: 'Favorite far', latitude: 0.08 })
+    ],
+    favorites: [{ gymId: 'favorite-far', userId: 'user-a', createdAt: NOW }],
+    userId: 'user-a', latitude: 0.03, longitude: -51.07, now: NOW
+  });
+
+  assert.deepEqual(result.map(item => item.id), ['favorite-far', 'closed', 'near']);
+  assert.equal(result.some(item => item.id === 'hidden' || item.id === 'archived'), false);
+});
+
+test('gym social projection chooses nearest tags by raw Haversine distance and rounds only DTO distance', () => {
+  const result = projectGymDirectory({
+    gyms: [
+      gym({ id: 'a-farthest', latitude: 0, longitude: 0.00049 }),
+      gym({ id: 'b-nearest', latitude: 0, longitude: 0.00046 }),
+      gym({ id: 'c-second', latitude: 0, longitude: 0.00047 }),
+      gym({ id: 'd-third', latitude: 0, longitude: 0.00048 })
+    ],
+    latitude: 0, longitude: 0, locality: { state: 'AP', city: 'Macapá' }, now: NOW
+  });
+
+  assert.deepEqual(result.filter(item => item.tags.includes('Perto de você')).map(item => item.id).sort(), ['b-nearest', 'c-second', 'd-third']);
+  assert.deepEqual(result.map(item => item.distanceKm), [0.1, 0.1, 0.1, 0.1]);
+});
+
+test('gym social migration caps removed history without dropping active reviews', () => {
+  const active = review({ id: 'active-first', gymId: 'gym-active', userId: 'active-user', updatedAt: '2026-01-01T00:00:00.000Z' });
+  const removed = Array.from({ length: 5001 }, (_, index) => review({
+    id: `removed-${String(index).padStart(4, '0')}`, gymId: `gym-removed-${index}`, userId: `user-removed-${index}`,
+    status: 'removed', updatedAt: new Date(Date.UTC(2026, 0, 2 + index)).toISOString()
+  }));
+  const migrated = migrateCollaboration({ gymReviews: [active, ...removed] });
+
+  assert.equal(migrated.gymReviews.length, 5000);
+  assert.equal(migrated.gymReviews.some(item => item.id === 'active-first'), true);
+  assert.equal(migrated.gymReviews.some(item => item.id === 'removed-0000'), false);
+  assert.equal(migrated.gymReviews.some(item => item.id === 'removed-5000'), true);
 });
 
 test('gym social projection derives hot and declining tags only from real published windows', () => {

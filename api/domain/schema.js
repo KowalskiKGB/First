@@ -2,7 +2,7 @@ import {
   normalizeGymFavorite,
   normalizeGymRecord,
   normalizeGymSeedTombstones,
-  retainOneActiveGymReview
+  retainGymReviews
 } from '../gym-social.js';
 
 const AGE_BANDS = new Set(['under14', '14to17', 'adult']);
@@ -367,7 +367,7 @@ export function migrateCollaboration(value) {
       .map(normalizeDirectoryGym).filter(Boolean),
     gymRequests: (Array.isArray(collaboration.gymRequests) ? collaboration.gymRequests : [])
       .map(normalizeGymRequest).filter(Boolean).slice(-2000),
-    gymReviews: retainOneActiveGymReview(collaboration.gymReviews).slice(-5000),
+    gymReviews: retainGymReviews(collaboration.gymReviews),
     gymFavorites: [...new Map((Array.isArray(collaboration.gymFavorites) ? collaboration.gymFavorites : [])
       .map(normalizeGymFavorite).filter(Boolean).map(item => [`${item.gymId}\u0000${item.userId}`, item])).values()],
     gymSeedTombstones: normalizeGymSeedTombstones(collaboration.gymSeedTombstones),

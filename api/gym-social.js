@@ -33,6 +33,19 @@ function source(value) {
   return { label, url, confidence: value.confidence, verifiedAt: timestamp(value.verifiedAt) };
 }
 
+function coordinateVerification(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const provider = text(value.provider, 120);
+  const url = text(value.url, 500);
+  if (!provider || !/^https:\/\//i.test(url)) return null;
+  return {
+    provider,
+    url,
+    verifiedAt: timestamp(value.verifiedAt),
+    confidence: CONFIDENCE.has(value.confidence) ? value.confidence : 'medium'
+  };
+}
+
 export function normalizeGymRecord(value) {
   const id = text(value?.id, 100);
   const name = text(value?.name, 120);
@@ -43,6 +56,13 @@ export function normalizeGymRecord(value) {
   const normalized = {
     id, name, state, city, address,
     status: GYM_STATUSES.has(value.status) ? value.status : 'unverified',
+    visibility: VISIBILITIES.has(value.visibility) ? value.visibility : 'public',
+    latitude: coordinate(value.latitude, -90, 90),
+    longitude: coordinate(value.longitude, -180, 180),
+    source: source(value.source),
+    coordinateVerification: coordinateVerification(value.coordinateVerification),
+    coordinateApproximate: value.coordinateApproximate === true,
+    approvedAt: timestamp(value.approvedAt),
     openingHours: openingHours(value.openingHours),
     openingHoursNote: text(value.openingHoursNote, 300),
     exerciseIds: list(value.exerciseIds, 200),
@@ -55,11 +75,6 @@ export function normalizeGymRecord(value) {
   if (networkName) normalized.networkName = networkName;
   if (neighborhood) normalized.neighborhood = neighborhood;
   if (postalCode) normalized.postalCode = postalCode;
-  if (Object.hasOwn(value, 'latitude')) normalized.latitude = coordinate(value.latitude, -90, 90);
-  if (Object.hasOwn(value, 'longitude')) normalized.longitude = coordinate(value.longitude, -180, 180);
-  if (Object.hasOwn(value, 'visibility')) normalized.visibility = VISIBILITIES.has(value.visibility) ? value.visibility : 'public';
-  if (Object.hasOwn(value, 'source')) normalized.source = source(value.source);
-  if (Object.hasOwn(value, 'approvedAt')) normalized.approvedAt = timestamp(value.approvedAt);
   return normalized;
 }
 
@@ -71,7 +86,7 @@ export function normalizeGymReview(value) {
   if (!id || !gymId || !userId || !Number.isInteger(rating) || rating < 1 || rating > 5) return null;
   const status = REVIEW_STATUSES.has(value.status) ? value.status : 'pending';
   const normalized = {
-    id, gymId, userId, rating, comment: text(value.comment, 1200), status,
+    id, gymId, userId, rating, comment: text(value.comment, 600), status,
     demo: value.demo === true, createdAt: timestamp(value.createdAt), updatedAt: timestamp(value.updatedAt)
   };
   const moderatedAt = timestamp(value.moderatedAt);
@@ -104,12 +119,35 @@ export function retainOneActiveGymReview(values) {
       if (!current || stamp(item) > stamp(current.item) || (stamp(item) === stamp(current.item) && index > current.index)) latest.set(key, { item, index });
     }
   });
-  return normalized.filter(item => item.status === 'removed' || latest.get(`${item.gymId}\u0000${item.userId}`)?.item === item);
+  const compare = (a, b) => stamp(b) - stamp(a) || a.id.localeCompare(b.id);
+  return [
+    ...[...latest.values()].map(item => item.item).sort(compare),
+    ...normalized.filter(item => item.status === 'removed').sort(compare)
+  ];
+}
+
+export function retainGymReviews(values, maxReviews = 5000) {
+  const retained = retainOneActiveGymReview(values);
+  const active = retained.filter(item => item.status !== 'removed');
+  const history = retained.filter(item => item.status === 'removed');
+  return [...active, ...history.slice(0, Math.max(0, maxReviews - active.length))];
 }
 
 export function applyGymSeed(value) {
   const collaboration = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-  const directory = Array.isArray(collaboration.gymDirectory) ? collaboration.gymDirectory.map(item => structuredClone(item)) : [];
+  const seedById = new Map(MACAPA_GYM_SEED.map(item => [item.id, item]));
+  const directory = (Array.isArray(collaboration.gymDirectory) ? collaboration.gymDirectory : []).map(item => {
+    const seed = seedById.get(item?.id);
+    if (!seed || !/^https:\/\/www\.google\.com\/maps\//i.test(item?.source?.url || '')) return structuredClone(item);
+    return {
+      ...structuredClone(item),
+      latitude: seed.latitude,
+      longitude: seed.longitude,
+      coordinateApproximate: seed.coordinateApproximate,
+      source: structuredClone(seed.source),
+      coordinateVerification: structuredClone(seed.coordinateVerification)
+    };
+  });
   const tombstones = normalizeGymSeedTombstones(collaboration.gymSeedTombstones);
   if (collaboration.gymSeedVersion === MACAPA_GYM_SEED_VERSION) return structuredClone(collaboration);
   const known = new Set(directory.map(item => item.id));
@@ -181,7 +219,8 @@ function sameLocality(gym, locality) {
 
 export function projectGymDirectory({ gyms, reviews, favorites, userId, latitude, longitude, locality, now = new Date().toISOString() } = {}) {
   const currentUser = text(userId, 100);
-  const normalizedGyms = (Array.isArray(gyms) ? gyms : []).map(normalizeGymRecord).filter(Boolean);
+  const normalizedGyms = (Array.isArray(gyms) ? gyms : []).map(normalizeGymRecord)
+    .filter(gym => gym && gym.visibility === 'public' && gym.status !== 'archived');
   const favoriteKeys = new Set((Array.isArray(favorites) ? favorites : []).map(normalizeGymFavorite).filter(Boolean)
     .filter(item => item.userId === currentUser).map(item => item.gymId));
   const projected = normalizedGyms.map(gym => {
@@ -197,13 +236,13 @@ export function projectGymDirectory({ gyms, reviews, favorites, userId, latitude
       state: gym.state, city: gym.city, address: gym.address,
       ...(gym.neighborhood ? { neighborhood: gym.neighborhood } : {}),
       ...(gym.postalCode ? { postalCode: gym.postalCode } : {}),
-      status: gym.status, visibility: gym.visibility || 'public',
+      status: gym.status, visibility: gym.visibility,
       openingHours: structuredClone(gym.openingHours), openingHoursNote: gym.openingHoursNote,
       exerciseIds: [...gym.exerciseIds], ...(gym.source ? { source: structuredClone(gym.source) } : {}),
       ...(gym.approvedAt ? { approvedAt: gym.approvedAt } : {}), createdAt: gym.createdAt, updatedAt: gym.updatedAt,
       averageRating: average === null ? null : Math.round(average * 10) / 10,
       reviewCount: published.length,
-      ...(distance === null ? {} : { distanceKm: Math.round(distance * 10) / 10 }),
+      distanceKm: distance,
       tags
     };
   });
@@ -214,5 +253,10 @@ export function projectGymDirectory({ gyms, reviews, favorites, userId, latitude
     ...(item.tags.includes('Preferida') ? ['Preferida'] : []),
     ...(nearIds.has(item.id) ? ['Perto de você'] : []),
     ...item.tags.filter(tag => tag !== 'Preferida')
-  ] })).sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity) || a.name.localeCompare(b.name, 'pt-BR') || a.id.localeCompare(b.id));
+  ] })).sort((a, b) => Number(b.tags.includes('Preferida')) - Number(a.tags.includes('Preferida')) ||
+    (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity) || a.name.localeCompare(b.name, 'pt-BR') || a.id.localeCompare(b.id))
+    .map(({ distanceKm, ...gym }) => ({
+      ...gym,
+      ...(distanceKm === null ? {} : { distanceKm: Math.round(distanceKm * 10) / 10 })
+    }));
 }

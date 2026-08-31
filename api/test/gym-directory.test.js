@@ -98,7 +98,10 @@ test('collaboration migration adds the moderated gym collections without losing 
   assert.equal(migrated.rev, 7);
   assert.deepEqual(migrated.legacyFlag, { keep: true });
   assert.deepEqual(migrated.profiles, legacy.profiles);
-  assert.deepEqual(migrated.gymDirectory, [gym()]);
+  assert.deepEqual(migrated.gymDirectory, [gym({
+    visibility: 'public', latitude: null, longitude: null, source: null,
+    coordinateVerification: null, coordinateApproximate: false, approvedAt: null
+  })]);
   assert.deepEqual(migrated.gymRequests, [pendingRequest()]);
   assert.deepEqual(migrateCollaboration(migrated), migrated);
 
