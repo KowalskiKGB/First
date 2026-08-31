@@ -26,7 +26,14 @@ export function PersonalHeader({ title, subtitle, backTo, action, eyebrow = 'Pro
     <header className="personal-header">
       {backTo ? <Link className="iconbtn" to={backTo} aria-label={t('Back')}><Icon name="chevronLeft" /></Link> : null}
       <div className="personal-header-copy">
-        <span className="personal-eyebrow">{t(eyebrow)}</span>
+        <nav className="workbook-trail" aria-label={t('Professional workspace')}>
+          <ol>
+            <li>{backTo
+              ? <Link className="personal-eyebrow" to="/personal">{t(eyebrow)}</Link>
+              : <span className="personal-eyebrow">{t(eyebrow)}</span>}</li>
+            <li className="workbook-trail-current" aria-current="page">{title}</li>
+          </ol>
+        </nav>
         <h1>{title}</h1>
         {subtitle ? <p>{subtitle}</p> : null}
       </div>

@@ -85,6 +85,9 @@ export default function GymDirectory({ gyms: providedGyms, selectedGymId = null,
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const localityTouched = useRef(false)
+  const localityVersion = useRef(0)
+  const autoLocationAttempted = useRef(false)
+  const locationMessageTimer = useRef(null)
   const returnFocus = useRef(null)
   const gymRequests = useRef(null)
   if (!gymRequests.current) gymRequests.current = createGymRequestGate()
@@ -144,6 +147,7 @@ export default function GymDirectory({ gyms: providedGyms, selectedGymId = null,
     }
     window.addEventListener('first:native-back', back); return () => window.removeEventListener('first:native-back', back)
   }, [backToList, detailId, newGymOpen])
+  useEffect(() => () => clearTimeout(locationMessageTimer.current), [])
 
   const locality = useMunicipalities(state, gyms)
   const requestLocality = useMunicipalities(newGymOpen ? newGym.state : '', gyms)
@@ -156,20 +160,37 @@ export default function GymDirectory({ gyms: providedGyms, selectedGymId = null,
     setDetailId(gym.id); setDetailGym(gym); setReviews([]); setMessage('')
     window.history.pushState({ firstGymDetail: gym.id }, '')
   }
-  const changeState = event => { localityTouched.current = true; setState(event.target.value); setCity(''); setQuery(''); setDetailId(null) }
-  const useLocation = async () => {
-    if (locationStatus === 'loading') return
-    setLocationStatus('loading'); setMessage('')
+  const touchLocality = () => {
+    clearTimeout(locationMessageTimer.current)
+    localityTouched.current = true
+    localityVersion.current += 1
+    setLocationStatus('manual')
+    setMessage('')
+  }
+  const changeState = event => { touchLocality(); setState(event.target.value); setCity(''); setQuery(''); setDetailId(null) }
+  const useLocation = useCallback(async () => {
+    if (locationStatus === 'locating') return
+    clearTimeout(locationMessageTimer.current)
+    const requestVersion = localityVersion.current
+    setLocationStatus('locating'); setMessage(t('Locating…'))
     try {
       const coordinates = await requestBrowserLocation()
       setLocation(coordinates)
       const localityResult = await api(reverseLocationPath(coordinates))
-      localityTouched.current = true; setState(localityResult.state || ''); setCity(localityResult.city || ''); setAttribution(localityResult.attribution || '')
+      if (localityVersion.current === requestVersion && !localityTouched.current) {
+        setState(localityResult.state || ''); setCity(localityResult.city || ''); setAttribution(localityResult.attribution || '')
+      }
       setLocationStatus('ready')
+      locationMessageTimer.current = setTimeout(() => setMessage(''), 30_000)
     } catch (error) {
       setLocationStatus('error'); setMessage(t(error?.code === 1 ? 'Location permission denied. Select it manually.' : error?.message || 'Could not identify your location. Select it manually.'))
     }
-  }
+  }, [locationStatus])
+  useEffect(() => {
+    if (autoLocationAttempted.current || localityTouched.current) return
+    autoLocationAttempted.current = true
+    void useLocation()
+  }, [useLocation])
   const requireAccount = action => {
     if (!authenticated) { openAccount(); return false }
     action?.(); return true
@@ -223,20 +244,21 @@ export default function GymDirectory({ gyms: providedGyms, selectedGymId = null,
     } catch (error) { if (error?.status === 401) openAccount(); else if (!await recoverConflict(error)) setMessage(t(error?.message || 'Could not send the request.')) } finally { setBusy(false) }
   }
 
-  if (detail) return <main className="narrow gym-directory gym-directory-detail-view"><GymDetail gym={detail} reviews={reviews} selected={selectedGymId === detail.id} authenticated={authenticated} busy={busy} onBack={backToList} onSelect={onSelect} onToggleFavorite={toggleFavorite} onSubmitReview={submitReview} onSubmitContribution={submitContribution} onRequireLogin={openAccount} />{message ? <p className="gym-directory-message" role="status">{message}</p> : null}</main>
+  const locationMessage = ['locating', 'error'].includes(locationStatus) ? message : ''
+  if (detail) return <main className="narrow gym-directory gym-directory-detail-view"><GymDetail gym={detail} reviews={reviews} selected={selectedGymId === detail.id} authenticated={authenticated} busy={busy} onBack={backToList} onSelect={onSelect} onToggleFavorite={toggleFavorite} onSubmitReview={submitReview} onSubmitContribution={submitContribution} onRequireLogin={openAccount} />{message ? <p className="gym-directory-message" role="status">{t(message)}</p> : null}</main>
 
   return <main className="narrow gym-directory">
     <header className="hdr gym-directory-header"><div><span className="personal-eyebrow">{t('Gym directory')}</span><h1>{t('Find your gym')}</h1><p>{t('Train where the community knows the floor.')}</p></div></header>
     <section className="gym-discovery" aria-label={t('Location')}>
-      <button type="button" className="gym-location-button" onClick={useLocation} disabled={locationStatus === 'loading'}><Icon name="target" /><span><strong>{locationStatus === 'loading' ? t('Locating…') : t('Use my location')}</strong><small>{t('Only while you choose. Never saved.')}</small></span></button>
-      <div className="gym-locality-fields"><label><span>{t('State')}</span><select name="gym-state" value={state} onChange={changeState}><option value="">{t('Select a state')}</option>{states.map(value => <option key={value} value={value}>{value}</option>)}</select></label><MunicipalityField name="gym-city" uf={state} city={city} locality={locality} onChange={value => { localityTouched.current = true; setCity(value); setQuery('') }} /></div>
+      <div className="gym-locality-fields"><label><span>{t('State')}</span><select name="gym-state" value={state} onChange={changeState}><option value="">{t('Select a state')}</option>{states.map(value => <option key={value} value={value}>{value}</option>)}</select></label><MunicipalityField name="gym-city" uf={state} city={city} locality={locality} onChange={value => { touchLocality(); setCity(value); setQuery('') }} /></div>
+      {locationMessage ? <p className={`gym-location-status is-${locationStatus}`} role={locationStatus === 'error' ? 'alert' : 'status'}><Icon name={locationStatus === 'error' ? 'info' : 'target'} />{t(locationMessage)}</p> : null}
       <label className="gym-directory-search"><span className="sr-only">{t('Search gyms')}</span><span className="search"><Icon name="search" /><input name="gym-search" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={`${t('Search name, network, neighborhood or address')}…`} autoComplete="off" disabled={!localityReady} /></span></label>
       {attribution ? <small className="gym-osm-attribution">{attribution}</small> : null}
     </section>
     <div className="gym-filter-chips" aria-label={t('Filter gyms')}>{FILTERS.map(([value, label]) => <button type="button" key={value} className={filter === value ? 'is-active' : ''} aria-pressed={filter === value} onClick={() => setFilter(value)}>{t(label)}</button>)}</div>
-    <section className="gym-results" aria-live="polite" aria-label={t('Gym results')}>{visibleGyms.map(gym => <GymCard key={gym.id} gym={gym} onOpen={event => openDetail(gym, event)} />)}{!localityReady ? <div className="card gym-empty"><Icon name="globe" /><p>{t('Choose a state and municipality to see nearby gyms.')}</p></div> : null}{localityReady && !visibleGyms.length ? <div className="card gym-empty"><Icon name="search" /><p>{t(filter === 'favorites' ? 'No favorite gyms here yet.' : filter === 'trending' ? 'No trending gyms here yet.' : filter === 'nearby' && !location ? 'Use your location to sort nearby gyms.' : 'No gyms found in this location.')}</p></div> : null}</section>
+    <section className="gym-results" aria-live="polite" aria-label={t('Gym results')}>{visibleGyms.map(gym => <GymCard key={gym.id} gym={gym} onOpen={event => openDetail(gym, event)} />)}{!localityReady ? <div className="card gym-empty"><Icon name="globe" /><p>{t('Choose a state and municipality to see nearby gyms.')}</p></div> : null}{localityReady && !visibleGyms.length ? <div className="card gym-empty"><Icon name="search" /><p>{t(filter === 'favorites' ? 'No favorite gyms here yet.' : filter === 'trending' ? 'No trending gyms here yet.' : filter === 'nearby' && !location ? 'Enable device location or choose manually.' : 'No gyms found in this location.')}</p></div> : null}</section>
     <button type="button" className="gym-new-request-action" onClick={openNewGym}>{t('Could not find the gym? Create it here')}</button>
     {newGymOpen ? <NewGymForm value={newGym} states={states} locality={requestLocality} busy={busy} onChange={setNewGym} onCancel={() => setNewGymOpen(false)} onSubmit={submitNewGym} /> : null}
-    {message ? <p className="gym-directory-message" role="status">{message}</p> : null}
+    {message && !locationMessage ? <p className="gym-directory-message" role="status">{t(message)}</p> : null}
   </main>
 }

@@ -2,7 +2,7 @@
   "appId": "com.kowalskikgb.first",
   "appName": "First",
   "webDir": "dist",
-  "backgroundColor": "#0c0e12",
+  "backgroundColor": "#090a08",
   "server": {
     "hostname": "first.rocketxsistemas.com.br",
     "androidScheme": "https"

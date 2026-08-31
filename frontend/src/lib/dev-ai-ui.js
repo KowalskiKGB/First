@@ -29,8 +29,10 @@ export function usageKpis(usage = {}) {
 }
 
 export function safeDevError(error, fallback) {
-  if (error?.status === 401 || error?.status === 403) return 'Invalid Dev credential.'
-  if (error?.status === 429) return 'Too many attempts. Try again later.'
+  if (error?.status === 401) return 'Invalid Dev credential.'
+  if (error?.status === 403) return error?.message === 'invalid origin' ? 'Open /devadmin from the configured production URL.' : 'Invalid Dev credential.'
+  if (error?.status === 429) return error?.message === 'too many dev login attempts' ? 'Too many Dev login attempts. Try again later.' : 'Too many attempts. Try again later.'
+  if (error?.status === 503 && error?.message === 'dev credentials not configured') return 'Dev credential is not configured on the server.'
   if (error?.status === 422 && error?.message === 'The provider credential was rejected.') return error.message
   const providerTestFailure = error?.status === 422 || error?.status === 502
   if (providerTestFailure && error?.message === 'AI provider request timeout.') return 'The provider took too long to respond.'

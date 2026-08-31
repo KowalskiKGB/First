@@ -1,3 +1,9 @@
+@import '@fontsource/barlow-condensed/latin-400.css';
+@import '@fontsource/barlow-condensed/latin-500.css';
+@import '@fontsource/barlow-condensed/latin-600.css';
+@import '@fontsource/barlow-condensed/latin-700.css';
+@import '@fontsource-variable/dm-sans/wght.css';
+
 /* ============================================================================
    openGym — design system
    ----------------------------------------------------------------------------
@@ -1863,4 +1869,449 @@ body:has(.ai-wizard) #tabbar{display:none}
   .dev-user-measurements dl{grid-template-columns:1fr}
   .dev-review-filters{grid-template-columns:1fr 1fr}
   .dev-confirmation>div,.dev-moderation-actions>.dev-provider-actions{grid-template-columns:1fr}
+}
+
+/* ============================================================================
+   First 1.4 visual identity
+   ---------------------------------------------------------------------------
+   Training logbook: compact rails, solid surfaces, restrained chartreuse.
+   This is an override layer only; JSX remains untouched.
+   ========================================================================== */
+
+:root {
+  --bg:#090a08;
+  --bg-el:#0d0f0c;
+  --surface:#11130f;
+  --surface-2:#22261f;
+  --surface-3:#2c3229;
+  --label:#f2f0e8;
+  --label-2:rgba(242,240,232,.68);
+  --label-3:rgba(242,240,232,.42);
+  --label-4:rgba(242,240,232,.22);
+  --sep:#3c4237;
+  --sep-op:rgba(60,66,55,.54);
+  --green:#b7f34a;
+  --workbook-signal:#b7f34a;
+  --workbook-on:#101407;
+  --workbook-soft:rgba(183,243,74,.10);
+  --workbook-line:rgba(183,243,74,.38);
+  --r-sm:8px;
+  --r:10px;
+  --r-lg:14px;
+  --r-xl:16px;
+  --r-card:12px;
+  --font-display:'Barlow Condensed','Arial Narrow','Roboto Condensed',Impact,sans-serif;
+  --font-body:'DM Sans Variable','DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --font-data:'DM Sans Variable','DM Sans',ui-monospace,SFMono-Regular,Consolas,monospace;
+}
+
+:root[data-theme="light"] {
+  --bg:#f3f1e8;
+  --bg-el:#f8f7f0;
+  --surface:#fffef8;
+  --surface-2:#ebece2;
+  --surface-3:#dfe3d7;
+  --label:#151710;
+  --label-2:rgba(21,23,16,.68);
+  --label-3:rgba(21,23,16,.44);
+  --label-4:rgba(21,23,16,.20);
+  --sep:#c8cdbf;
+  --sep-op:rgba(70,78,61,.18);
+  --workbook-signal:#b7f34a;
+  --workbook-on:#101407;
+  --workbook-soft:rgba(93,140,16,.10);
+  --workbook-line:rgba(93,140,16,.38);
+}
+
+body {
+  font-family:var(--font-body);
+  letter-spacing:-.01em;
+  background:var(--bg);
+}
+
+.hdr h1,
+.t-title,
+.t-large,
+.home-streak,
+.home-ai-heading h2,
+.gym-directory-header h1,
+.personal-header h1,
+.personal-metric-value,
+.dev-page h1,
+.dev-provider-head h3,
+.dev-user-measurements dd,
+.tile .v,
+.stat-v {
+  font-family:var(--font-display);
+  font-weight:600;
+  letter-spacing:.015em;
+}
+
+.hdr p,
+.sub,
+.muted,
+.client-facts,
+.personal-eyebrow,
+.status-badge,
+.tag,
+.pill,
+.dev-provider-meta,
+.dev-comparison-head>* {
+  font-family:var(--font-data);
+  letter-spacing:.01em;
+}
+
+.card,
+.tile,
+.item,
+.sheet,
+.login-card,
+.ai-card,
+.dev-card,
+.panel,
+.personal-panel,
+.personal-client-card,
+.student-context,
+.gym-result,
+.gym-profile-card,
+.gym-directory-card,
+.gym-community-card,
+.home-gym-card,
+.home-week-card,
+.home-ai-card,
+.workout-card,
+.workbook-page,
+.workbook-dashboard {
+  border:var(--hair) solid var(--sep-op);
+  border-radius:var(--r-card);
+  box-shadow:none;
+}
+
+.sheet,
+.login-card,
+.dev-login,
+.dev-request-detail,
+.dev-user-detail,
+.personal-panel,
+.workbook-page {
+  background:var(--surface);
+}
+
+.btn,
+.field,
+.input,
+.search,
+.seg,
+.chip,
+.pill,
+.tag,
+.status-badge,
+.dev-console-tabs,
+.dev-gym-tabs,
+.dev-review-filters button,
+.model-results button,
+.tabbar a {
+  border-radius:var(--r);
+}
+
+.btn,
+button,
+a,
+.item,
+.tile,
+.chip,
+.tabbar a,
+.gym-result,
+.home-gym-card,
+.personal-client-card,
+.client-row,
+.model-results button {
+  transition:transform var(--fast) var(--ease), opacity var(--fast) var(--ease), color var(--fast) var(--ease), border-color var(--fast) var(--ease);
+}
+
+.btn:active,
+button:active,
+.item:active,
+.tile:active,
+.chip:active,
+.tabbar a:active,
+.gym-result:active,
+.home-gym-card:active,
+.personal-client-card:active,
+.client-row:active {
+  transform:translateY(1px) scale(.985);
+}
+
+.btn,
+button,
+input,
+select,
+textarea,
+.field,
+.input,
+.tabbar a,
+.chip,
+.pill,
+.model-results button,
+.dev-review-filters button {
+  min-height:44px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.field:focus-visible,
+.input:focus-visible,
+.chip:focus-visible,
+.pill:focus-visible,
+.item:focus-visible,
+.tabbar a:focus-visible {
+  outline:2px solid var(--workbook-signal);
+  outline-offset:3px;
+  box-shadow:none;
+}
+
+.btn.primary,
+.btn.acc,
+.tabbar a.on,
+.seg button.on,
+.dev-console-tabs button[aria-selected="true"],
+.dev-gym-tabs button[aria-selected="true"],
+.model-results button[aria-pressed="true"],
+.dev-review-filters button[aria-pressed="true"] {
+  border-color:var(--workbook-line);
+  background:var(--workbook-soft);
+  color:var(--label);
+}
+
+.btn.primary,
+.btn.acc {
+  border-color:var(--workbook-signal);
+  background:var(--workbook-signal);
+  color:var(--workbook-on);
+}
+
+.hdr,
+.home-hero,
+.gym-directory-header,
+.personal-header,
+.dev-page>.hdr {
+  border-bottom:var(--hair) solid var(--sep-op);
+}
+
+.home-dashboard,
+.plan-page,
+.workout-page,
+.library-page,
+.settings-page,
+.gym-directory,
+.personal-page,
+.dev-page {
+  color:var(--label);
+}
+
+.home-week-card,
+.workbook-trail,
+.plan-week-list,
+.history-list,
+.personal-schedule,
+.dev-console-split>.client-list {
+  position:relative;
+}
+
+.home-week-card::before,
+.workbook-trail::before,
+.plan-week-list::before,
+.history-list::before,
+.personal-schedule::before,
+.dev-console-split>.client-list::before {
+  content:"";
+  position:absolute;
+  inset:10px auto 10px 12px;
+  width:2px;
+  border-radius:2px;
+  background:var(--sep-op);
+  pointer-events:none;
+}
+
+.week,
+.home-week-rail,
+.workbook-trail ol,
+.personal-schedule-list {
+  border-top:var(--hair) solid var(--sep-op);
+  border-bottom:var(--hair) solid var(--sep-op);
+}
+
+.wday,
+.home-week-day,
+.personal-schedule-item,
+.history-list .item,
+.plan-week-list .item {
+  box-shadow:inset 3px 0 0 var(--sep-op);
+}
+
+.wday.on,
+.wday.done,
+.home-week-day.is-active,
+.personal-schedule-item.is-active,
+.history-list .item.done,
+.plan-week-list .item.done {
+  box-shadow:inset 3px 0 0 var(--workbook-signal);
+}
+
+.home-dashboard {
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+
+.home-ai-card {
+  background:var(--surface);
+}
+
+.home-ai-card .btn,
+.ai-card .btn,
+.dev-provider-card .btn {
+  justify-content:center;
+}
+
+.home-gym-card,
+.gym-result,
+.exercise-catalog-picker>.list>.item,
+.personal-client-card,
+.client-row {
+  background:var(--surface);
+}
+
+.gym-result .gym-monogram,
+.home-gym-icon,
+.thumb,
+.icn,
+.personal-avatar {
+  border-radius:var(--r);
+}
+
+.gym-status,
+.plan-source-badge,
+.status-badge {
+  min-height:24px;
+  padding-inline:8px;
+  border:var(--hair) solid var(--sep-op);
+  background:var(--surface-2);
+}
+
+.ai-card,
+.dev-card,
+.dev-provider-card,
+.personal-panel {
+  background:var(--surface);
+}
+
+.ai-card::before,
+.dev-card::before,
+.personal-panel::before {
+  content:none;
+}
+
+.dev-provider-list {
+  grid-template-columns:1fr;
+}
+
+.dev-provider-card {
+  max-width:840px;
+}
+
+.dev-console-tabs,
+.dev-gym-tabs {
+  background:var(--bg-el);
+  border-color:var(--sep-op);
+}
+
+.dev-console-split>.client-list,
+.exercise-catalog-picker>.list,
+.gym-results,
+.personal-client-list {
+  scrollbar-color:var(--workbook-line) transparent;
+}
+
+#tabbar>button.on{color:var(--workbook-signal)}
+#tabbar>.start .cir{background:var(--workbook-signal);color:var(--workbook-on)}
+#tabbar>.start.rec .cir{background:var(--orange);color:#111}
+
+.home-week-card{overflow:hidden;padding:0}
+.home-today-primary,.home-week-card>.today-row{min-height:82px;padding:16px;border-bottom:var(--hair) solid var(--sep-op)}
+.home-week-nav{padding:8px 10px 2px}
+.home-week-rail{margin:0;padding:8px 10px 12px}
+.home-evolution-link{display:inline-flex;align-items:center;gap:5px;min-height:44px;padding-inline:8px}
+.home-ai-card-compact{display:grid;gap:10px;padding:14px;border:var(--hair) solid var(--sep-op);border-radius:var(--r-card)}
+.home-ai-card-compact .home-ai-heading{grid-template-columns:40px minmax(0,1fr) auto;gap:10px}
+.home-ai-card-compact .home-ai-icon{width:40px;height:40px;border-radius:var(--r)}
+.home-ai-card-compact .home-ai-heading h2{font-size:22px}
+.home-ai-card-compact .home-ai-heading p{margin-top:2px;line-height:1.35}
+.home-ai-readiness-compact{padding:0;border:0;background:transparent}
+.home-ai-readiness-compact .home-ai-readiness-head{padding-block:8px;border-block:var(--hair) solid var(--sep-op)}
+
+.gym-location-status{display:flex;align-items:center;gap:8px;margin:0;padding:8px 10px;border-left:2px solid var(--workbook-signal);color:var(--label-2);font-size:12px}
+.gym-location-status.is-locating .icn,.gym-location-status.is-locating svg{animation:location-pulse 900ms var(--ease) infinite alternate}
+.gym-location-status.is-error{border-left-color:var(--orange);color:var(--label)}
+@keyframes location-pulse{from{opacity:.45;transform:scale(.94)}to{opacity:1;transform:scale(1)}}
+
+.app-view>.sticky-view-header{position:sticky;z-index:20;top:0;background:var(--bg)}
+.library-search.sticky-view-toolbar{position:sticky;z-index:19;top:72px;background:var(--bg);padding-block:8px}
+.plan-layout{align-items:start}
+.plan-schedule-column,.plan-routines-column{min-width:0}
+.plan-ai-secondary{margin-top:16px}
+.sticky-workout-actions{position:sticky;z-index:18;bottom:calc(76px + var(--sab));padding:8px;background:var(--bg-el);border:var(--hair) solid var(--sep-op);border-radius:var(--r-card)}
+.workout-finish-action{width:100%}
+
+.workbook-trail{margin-bottom:5px}
+.workbook-trail::before{inset:3px auto 3px 0}
+.workbook-trail ol{display:flex;align-items:center;gap:7px;margin:0;padding:0 0 6px 12px;list-style:none}
+.workbook-trail li{display:flex;align-items:center;min-width:0;color:var(--label-2);font:500 11px/1.2 var(--font-data);text-transform:uppercase;letter-spacing:.08em}
+.workbook-trail li+li::before{content:"/";margin-right:7px;color:var(--label-3)}
+.workbook-trail-current{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.dev-login>.btn:not(.primary),.dev-provider-card>label+.btn{justify-self:end;width:auto;min-height:36px;padding:4px 8px;border:0;background:transparent;color:var(--label-2)}
+
+@media (min-width:900px){
+  .plan-layout{grid-template-columns:minmax(0,1.1fr) minmax(320px,.9fr)}
+}
+
+@media (max-width:520px){
+  .home-weight-heading{align-items:flex-start}
+  .home-weight-actions{flex-wrap:wrap;justify-content:flex-end}
+  .home-ai-card-compact .home-ai-heading{grid-template-columns:38px minmax(0,1fr)}
+  .home-ai-card-compact .plan-source-badge{grid-column:2;justify-self:start}
+}
+
+.workbook-dashboard .personal-panel,
+.workbook-page .personal-panel,
+.personal-dashboard .personal-panel {
+  box-shadow:inset 0 1px 0 var(--sep-op);
+}
+
+@media (hover:hover) {
+  .btn:hover,
+  .item:hover,
+  .tile:hover,
+  .chip:hover,
+  .home-gym-card:hover,
+  .gym-result:hover,
+  .personal-client-card:hover,
+  .client-row:hover {
+    transform:translateY(-1px);
+    box-shadow:inset 0 0 0 1px var(--sep);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation:none!important;
+    transition:none!important;
+    scroll-behavior:auto!important;
+  }
 }

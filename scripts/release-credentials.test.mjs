@@ -127,7 +127,7 @@ test('generator can rotate only the Dev credential without requiring an AI maste
 
     const credentials = readFileSync(credentialsPath, 'utf8')
     const handoff = JSON.parse(readFileSync(handoffPath, 'utf8'))
-    const username = /- UsuÃ¡rio: ([^\r\n]+)/.exec(credentials)?.[1]
+    const username = /- Usuário: ([^\r\n]+)/.exec(credentials)?.[1]
     const password = /- Senha: ([^\r\n]+)/.exec(credentials)?.[1]
 
     assert.equal(credentials.includes('`'), false, 'copyable credentials should not include Markdown delimiters')

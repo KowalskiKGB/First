@@ -1387,4 +1387,12 @@ export default {
   'stale revision': 'Os dados foram atualizados. Tente novamente.',
   'server error': 'Não foi possível concluir a operação.',
   'too many gym requests': 'Muitas solicitações. Tente novamente mais tarde.',
+  'Show password': 'Mostrar senha',
+  'Hide password': 'Ocultar senha',
+  'Show API key': 'Mostrar chave de API',
+  'Hide API key': 'Ocultar chave de API',
+  'Open /devadmin from the configured production URL.': 'Abra /devadmin pela URL oficial do sistema.',
+  'Too many Dev login attempts. Try again later.': 'Muitas tentativas de acesso Dev. Tente novamente mais tarde.',
+  'Dev credential is not configured on the server.': 'A credencial Dev não está configurada no servidor.',
+  'Enable device location or choose manually.': 'Ative a localização do aparelho ou escolha manualmente.',
 }

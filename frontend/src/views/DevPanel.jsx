@@ -80,12 +80,14 @@ export function ModelChoices({ models, selected, onSelect }) {
 }
 
 export function DevLogin({ busy, values, onChange, onSubmit, error = '' }) {
+  const [showPassword, setShowPassword] = useState(false)
   return (
     <form className="dev-card dev-login" onSubmit={onSubmit} aria-labelledby="dev-login-title">
       <div className="dev-card-head"><Icon name="shield" /><div><h2 id="dev-login-title">{t('Dev credential')}</h2><p>{t('Use the dedicated Dev credential. Student and Personal accounts are not required.')}</p></div></div>
       {error ? <p className="form-error" role="alert">{error}</p> : null}
-      <label><span>{t('Username')}</span><TextField name="dev-username" value={values.username} onChange={event => onChange({ ...values, username: event.target.value })} autoComplete="username" spellCheck={false} required /></label>
-      <label><span>{t('Password')}</span><TextField name="dev-password" value={values.password} onChange={event => onChange({ ...values, password: event.target.value })} type="password" autoComplete="current-password" required /></label>
+      <label><span>{t('Username')}</span><TextField name="dev-username" value={values.username} onChange={event => onChange({ ...values, username: event.target.value })} autoComplete="username" autoCapitalize="none" spellCheck={false} required /></label>
+      <label><span>{t('Password')}</span><TextField name="dev-password" value={values.password} onChange={event => onChange({ ...values, password: event.target.value })} type={showPassword ? 'text' : 'password'} autoComplete="current-password" autoCapitalize="none" spellCheck={false} required /></label>
+      <Button type="button" onClick={() => setShowPassword(value => !value)}>{showPassword ? t('Hide password') : t('Show password')}</Button>
       <Button variant="primary" icon="key" disabled={busy}>{busy ? t('Checking…') : t('Open Dev panel')}</Button>
     </form>
   )
@@ -360,6 +362,7 @@ function ProviderCard({ definition, slot, onChanged }) {
   const [modelState, setModelState] = useState('idle')
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
+  const [showApiKey, setShowApiKey] = useState(false)
 
   useEffect(() => { setDraft(emptyProviderDraft(slot)) }, [slot.provider, slot.selectedModel, slot.keyFingerprint, slot.testedAt])
   useEffect(() => {
@@ -439,7 +442,8 @@ function ProviderCard({ definition, slot, onChanged }) {
         {modelState === 'empty' ? <p className="model-empty" role="status">{t('No compatible model was returned.')}</p> : null}
         {visibleModels.length ? <ModelChoices models={visibleModels} selected={draft.selectedModel} onSelect={selectedModel => setDraft({ ...draft, selectedModel })} /> : null}
       </div>
-      <label><span>{t('New API key')}</span><TextField name={`${definition.provider}-api-key`} value={draft.apiKey} onChange={event => setDraft({ ...draft, apiKey: event.target.value })} type="password" autoComplete="new-password" spellCheck={false} placeholder={slot.configured ? t('Key configured') : t('Paste a key to configure')} /></label>
+      <label><span>{t('New API key')}</span><TextField name={`${definition.provider}-api-key`} value={draft.apiKey} onChange={event => setDraft({ ...draft, apiKey: event.target.value })} type={showApiKey ? 'text' : 'password'} autoComplete="new-password" autoCapitalize="none" spellCheck={false} placeholder={slot.configured ? t('Key configured') : t('Paste a key to configure')} /></label>
+      <Button type="button" onClick={() => setShowApiKey(value => !value)}>{showApiKey ? t('Hide API key') : t('Show API key')}</Button>
       <p className="dev-secret-note"><Icon name="lock" />{t('The saved key is never displayed again.')}</p>
       <div className="dev-provider-actions">
         <Button disabled={!!busy}>{busy === 'save' ? t('Saving…') : t('Save configuration')}</Button>
@@ -583,9 +587,10 @@ export default function DevPanel() {
   const unlock = async event => {
     event.preventDefault(); setBusy(true); setError('')
     try {
-      await api('/api/dev/login', { method: 'POST', body: JSON.stringify(login) })
+      await api('/api/dev/login', { method: 'POST', body: JSON.stringify({ username: login.username.trim(), password: login.password.trim() }) })
       setLogin(value => ({ ...value, password: '' })); setSession(value => ({ ...(value || {}), unlocked: true }))
-      await loadDashboard(window)
+      try { await loadDashboard(window) }
+      catch { setError(t('Some console data could not be loaded.')) }
     } catch (requestError) { setError(t(safeDevError(requestError, 'Invalid Dev credential.'))) }
     finally { setBusy(false) }
   }

@@ -84,11 +84,11 @@ export default function Settings() {
     },
   })
 
-  return <div className="narrow">
-    <div className="hdr">
+  return <main className="narrow settings-page app-view">
+    <header className="hdr settings-header sticky-view-header">
       <button className="iconbtn" onClick={() => nav('/home')} aria-label={t('Home')}><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, marginLeft: 10 }}><h1>{t('Settings')}</h1></div>
-    </div>
+    </header>
 
     {/* Authentication starts on Home; Settings only edits an existing profile. */}
     {DEMO ? <Section title={t('Demo')}>
@@ -99,6 +99,7 @@ export default function Settings() {
           onClick={() => window.open(REPO, '_blank', 'noopener')} />
       </Section> : user ? <Section title={t('Profile')}>
         <Row icon="personCircle" iconTint="var(--acc)" title={user.name} subtitle={user.email || t('Email not informed')} accessory="chevron" onClick={editProfile} />
+        <Row className="profile-evolution-link" icon="chart" iconTint="var(--blue)" title={t('Evolution')} accessory="chevron" onClick={() => nav('/stats')} />
         {user.admin && <Row icon="wrench" iconTint="var(--indigo)" title={t('Admin dashboard')} accessory="chevron" onClick={() => nav('/admin')} />}
         <Row icon="signOut" iconTint="var(--red)" title={t('Sign out')} danger onClick={() => confirmSheet({ title: t('Sign out?'), message: t('Your data is synced to your profile first, then cleared from this device.'), confirmText: t('Sign out'), danger: true, onConfirm: () => { signOut(); nav('/home') } })} />
         <Row icon="shield" iconTint="var(--red)" title={t('Sign out everywhere')} subtitle={t('Ends this profile’s sessions on all your devices.')} danger onClick={signOutEverywhere} />
@@ -222,7 +223,7 @@ export default function Settings() {
       <a href={REPO} target="_blank" rel="noopener">código-fonte</a> · dados de exercícios: hasaneyldrm/exercises-dataset (MIT)
       {mediaEnabled && <><br />mídia visual: <a href="https://gymvisual.com/" target="_blank" rel="noopener noreferrer">© Gym visual</a></>}
     </div>
-  </div>
+  </main>
 }
 
 // The whole point is that the two scales are one judgement counted from opposite ends, and a

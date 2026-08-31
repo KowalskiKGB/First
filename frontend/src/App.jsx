@@ -198,7 +198,7 @@ function applyPrefs(theme, accent) {
   de.dataset.theme = theme === 'light' ? 'light' : 'dark'
   de.dataset.accent = ACCENTS[accent] ? accent : 'lime'
   const meta = document.querySelector('meta[name="theme-color"]')
-  if (meta) meta.content = de.dataset.theme === 'light' ? '#f2f2f7' : '#000000'
+  if (meta) meta.content = de.dataset.theme === 'light' ? '#f3f1e8' : '#090a08'
 }
 
 function Shell() {
@@ -308,9 +308,13 @@ function StudentApp() {
 function DevAdminApp() {
   useLang()
   useEffect(() => {
-    applyPrefs('dark', 'lime')
+    const colorScheme = window.matchMedia?.('(prefers-color-scheme: light)')
+    const applySystemTheme = event => applyPrefs((event?.matches ?? colorScheme?.matches) ? 'light' : 'dark', 'lime')
+    applySystemTheme()
+    colorScheme?.addEventListener?.('change', applySystemTheme)
     document.documentElement.lang = DEFAULT_LANG === 'pt' ? 'pt-BR' : DEFAULT_LANG
     void setLang(DEFAULT_LANG)
+    return () => colorScheme?.removeEventListener?.('change', applySystemTheme)
   }, [])
   return <><DevPanel /><Toast /></>
 }

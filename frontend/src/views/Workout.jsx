@@ -26,8 +26,8 @@ function StartChooser() {
   const todayOvr = S.dayPlan[todayISO()] !== undefined
   const scheduledIds = new Set(todayOptions.map(option => option.routineId))
   const others = S.routines.filter(routine => !scheduledIds.has(routine.id))
-  return <div className="narrow">
-    <div className="hdr"><div><h1>{t('Start workout')}</h1><div className="sub">{t(DAYN[new Date().getDay()])} — {todayR ? t('today is {0}', todayR.name) : t('rest day, but no one’s stopping you')}</div></div></div>
+  return <main className="narrow workout-page workout-start-page app-view">
+    <header className="hdr workout-header sticky-view-header"><div><h1>{t('Start workout')}</h1><div className="sub">{t(DAYN[new Date().getDay()])} — {todayR ? t('today is {0}', todayR.name) : t('rest day, but no one’s stopping you')}</div></div></header>
     {todayR && <div className="card" style={{ borderColor: 'var(--acc)' }}>
       <h2 className="accent">{t("Today's plan")}{todayOvr ? ' · ' + t('rescheduled') : ''}</h2>
       <SessionOptions options={todayOptions} onSelect={startFlow} />
@@ -40,7 +40,7 @@ function StartChooser() {
     <div style={{ height: 14 }} />
     <Button icon="shuffle" onClick={() => startFlow(null)}>{t('Freestyle workout (pick as you go)')}</Button>
     {!S.routines.length && <><div style={{ height: 10 }} /><Button variant="primary" onClick={() => nav('/plan')}>{t('Build a plan first')}</Button></>}
-  </div>
+  </main>
 }
 
 /* ---------- elapsed clock (isolated so the workout tree doesn't re-render every second) ---------- */
@@ -258,12 +258,12 @@ function ActiveWorkout() {
     }
   }, [])
 
-  return <div className="narrow">
-    <div className="hdr">
+  return <main className="narrow workout-page workout-active-page app-view">
+    <header className="hdr workout-header sticky-view-header">
       <button className="iconbtn" aria-label={t('Discard')} onClick={() => confirmSheet({ title: t('Discard workout?'), message: t('The sets you logged in this session will be lost.'), confirmText: t('Discard'), danger: true, onConfirm: () => { update(s => { s.active = null }); stopRest(); nav('/home') } })}><Icon name="xmark" /></button>
       <div style={{ textAlign: 'center' }}><div style={{ fontWeight: 600 }}>{A.name}</div><div className="sub"><Elapsed start={A.start} /> · {t('{0} sets', done + '/' + total)}</div></div>
       <button className="iconbtn" style={{ color: 'var(--acc)' }} aria-label={t('Finish')} onClick={finishWorkout}><Icon name="check" /></button>
-    </div>
+    </header>
     <div className="wprog"><i style={{ width: (total ? done / total * 100 : 0) + '%' }} /></div>
 
     {A.entries.length ? <>
@@ -283,7 +283,7 @@ function ActiveWorkout() {
     </> : <div className="empty"><div className="ico"><Icon name="shuffle" /></div>{t('Freestyle workout — add your first exercise.')}</div>}
 
     <div style={{ height: 12 }} />
-    <div className="row">
+    <div className="row workout-step-actions sticky-workout-actions">
       <Button icon="chevronLeft" disabled={unitIdx <= 0} onClick={() => update(s => { s.active.cur = units[unitIdx - 1][0] })}>{t('Prev')}</Button>
       <Button trailingIcon="chevronRight" disabled={unitIdx < 0 || unitIdx >= units.length - 1} onClick={() => update(s => { s.active.cur = units[unitIdx + 1][0] })}>{t('Next')}</Button>
     </div>
@@ -298,12 +298,12 @@ function ActiveWorkout() {
     {(() => {
       const exDone = A.entries.filter(e => e.sets.length && e.sets.every(s => s.done)).length
       const allDone = A.entries.length > 0 && exDone === A.entries.length
-      return <button className={allDone ? 'btn primary' : 'btn ghost dim'} onClick={finishWorkout}>
+      return <button className={(allDone ? 'btn primary' : 'btn ghost dim') + ' workout-finish-action'} onClick={finishWorkout}>
         {allDone ? t('Finish workout') : t('Finish workout early · {0} exercises', exDone + '/' + A.entries.length)}
       </button>
     })()}
     <div style={{ height: 40 }} />
-  </div>
+  </main>
 }
 
 export default function Workout() {

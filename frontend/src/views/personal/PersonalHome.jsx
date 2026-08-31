@@ -49,7 +49,7 @@ export default function PersonalHome() {
   const urgentCount = kpis.priorities?.urgent || 0
 
   return (
-    <main className="personal-page personal-dashboard">
+    <main className="personal-page personal-dashboard workbook-page">
       <PersonalHeader
         title={t('Personal command center')}
         subtitle={t('Today’s students, time and cash flow in one operational view.')}

@@ -19,7 +19,7 @@ export default function TabBar({ onStart }) {
   if (loc.pathname === '/dev') return null
   const trainerPortal = context === 'trainer' && canEnterPersonal({ user, isGuest, mobile: MOBILE, profile, ownerId })
   const cur = loc.pathname.split('/')[1] || 'home'
-  const on = k => cur === k || (cur === 'history' && k === 'stats') || (cur === 'settings' && k === 'home')
+  const on = k => cur === k || (cur === 'settings' && k === 'home')
 
   const startWorkout = () => {
     if (S.active) { nav('/workout'); return }
@@ -48,7 +48,7 @@ export default function TabBar({ onStart }) {
         <span className="cir"><Icon name={S.active ? 'play' : 'dumbbell'} /></span>
         <span>{S.active ? t('Resume') : t('Start')}</span>
       </button>
-      <Tab k="stats" icon="chart" to="/stats" label={t('Stats')} />
+      <Tab k="academias" icon="globe" to="/academias" label={t('Gyms')} />
       <Tab k="library" icon="list" to="/library" label={t('Exercises')} />
     </nav>
   )

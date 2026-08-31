@@ -114,12 +114,6 @@ export default function Home() {
     </header>
 
     <section className="card home-week-card" aria-labelledby="home-week-label">
-      <div className="home-week-nav">
-        <button className="iconbtn" onClick={() => setWeekOffset(value => value - 1)} aria-label={t('Previous week')}><Icon name="chevronLeft" /></button>
-        <span id="home-week-label">{weekLabel}</span>
-        <button className="iconbtn" onClick={() => setWeekOffset(value => value + 1)} aria-label={t('Next week')}><Icon name="chevronRight" /></button>
-      </div>
-      <div className="week home-week-rail">{strip}</div>
       <button type="button" className="today-row" onClick={onToday}>
         <div className="row home-today-copy">
           <span className={`lrow-i ${S.active ? 'home-session-active' : routine ? 'home-session-ready' : 'home-session-rest'}`}>
@@ -134,6 +128,12 @@ export default function Home() {
           : routine ? <span className="tag acc">{t('Start')}</span>
             : <Icon name="plus" className="chev" />}
       </button>
+      <div className="home-week-nav">
+        <button className="iconbtn" onClick={() => setWeekOffset(value => value - 1)} aria-label={t('Previous week')}><Icon name="chevronLeft" /></button>
+        <span id="home-week-label">{weekLabel}</span>
+        <button className="iconbtn" onClick={() => setWeekOffset(value => value + 1)} aria-label={t('Next week')}><Icon name="chevronRight" /></button>
+      </div>
+      <div className="week home-week-rail">{strip}</div>
     </section>
 
     <Link className={`card home-gym-card${selectedGym ? ' is-selected' : ''}`} to="/academias">
@@ -147,32 +147,11 @@ export default function Home() {
       <Icon name="chevronRight" />
     </Link>
 
-    <section className="home-ai-card" aria-labelledby="home-ai-title">
-      <div className="home-ai-heading">
-        <span className="home-ai-icon"><Icon name="sparkles" /></span>
-        <div>
-          <span className="personal-eyebrow">{t('Your weekly routine')}</span>
-          <h2 id="home-ai-title">{t('Weekly workout with AI')}</h2>
-          <p>{S.aiLastGeneration
-            ? t('Version {0} is active. Update only when you choose.', S.aiLastGeneration.version)
-            : user ? t('Measurements, goals and gym equipment in four short steps.') : t('Sign in to generate a workout with AI.')}</p>
-        </div>
-        <span className="plan-source-badge source-ai">IA</span>
-      </div>
-
-      {user ? <div className="home-ai-readiness">
-        <div className="home-ai-readiness-head"><span>{t('Data and measurements')}</span><strong>{t(readinessCount === readiness.length ? 'Ready to generate' : 'Complete your profile')}</strong></div>
-        <ul>{readiness.map(([label, complete]) => <li key={label} className={complete ? 'is-complete' : ''}><Icon name={complete ? 'check' : 'plus'} /><span>{label}</span></li>)}</ul>
-      </div> : <div className="home-ai-guest-note"><Icon name="shield" /><span>{t('Your workouts. Your weights. Your profile.')}</span></div>}
-
-      <Button variant="primary" icon="sparkles" onClick={onAi}>{t('Build workout with AI')}</Button>
-      {!S.routines.length && !S.active ? <button type="button" className="text-action home-manual-link" onClick={() => nav('/plan')}>{t('Build my own plan')}</button> : null}
-    </section>
-
     <section className="card home-weight-card">
       <div className="row between home-weight-heading">
         <h2>{t('Body weight')}</h2>
         <div className="row home-weight-actions">
+          <Link className="text-action home-evolution-link" to="/stats"><Icon name="chart" />{t('Evolution')}</Link>
           <Button size="sm" icon="target" style={S.targetW ? { color: 'var(--yellow)' } : undefined} onClick={goalSheet}>{S.targetW ? fmtNum(S.targetW) : t('Goal')}</Button>
           <Button size="sm" icon="plus" onClick={() => bwSheet()}>{t('Log')}</Button>
         </div>
@@ -200,5 +179,26 @@ export default function Home() {
       </div>
       <Icon name="calendar" className="chev" />
     </button>
+
+    <section className="home-ai-card home-ai-card-compact" aria-labelledby="home-ai-title">
+      <div className="home-ai-heading">
+        <span className="home-ai-icon"><Icon name="sparkles" /></span>
+        <div>
+          <span className="personal-eyebrow">{t('Your weekly routine')}</span>
+          <h2 id="home-ai-title">{t('Weekly workout with AI')}</h2>
+          <p>{S.aiLastGeneration
+            ? t('Version {0} is active. Update only when you choose.', S.aiLastGeneration.version)
+            : user ? t('Measurements, goals and gym equipment in four short steps.') : t('Sign in to generate a workout with AI.')}</p>
+        </div>
+        <span className="plan-source-badge source-ai">IA</span>
+      </div>
+
+      {user ? <div className="home-ai-readiness home-ai-readiness-compact">
+        <div className="home-ai-readiness-head"><span>{t('Data and measurements')}</span><strong>{t(readinessCount === readiness.length ? 'Ready to generate' : 'Complete your profile')}</strong></div>
+      </div> : <div className="home-ai-guest-note"><Icon name="shield" /><span>{t('Your workouts. Your weights. Your profile.')}</span></div>}
+
+      <Button variant="tinted" icon="sparkles" onClick={onAi}>{t('Build workout with AI')}</Button>
+      {!S.routines.length && !S.active ? <button type="button" className="text-action home-manual-link" onClick={() => nav('/plan')}>{t('Build my own plan')}</button> : null}
+    </section>
   </div>
 }

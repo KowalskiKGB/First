@@ -82,12 +82,14 @@ describe('Dev AI panel UI contracts', () => {
       providers: [{ provider: 'openai', configured: false, selectedModel: '', testStatus: 'untested' }],
       usage: {}, window: '7d', selectedProvider: 'openai', onWindow: vi.fn(), onLogout: vi.fn(),
     })
-    const apiKey = findElements(dashboard, element => element.props.name === 'openai-api-key')[0]
+    const provider = findElements(dashboard, element => element.props.definition?.provider === 'openai')[0]
+    const apiKeyForm = provider.type(provider.props)
+    const apiKey = findElements(apiKeyForm, element => element.props.name === 'openai-api-key')[0]
 
     expect(apiKey.props.autoComplete).toBe('new-password')
     expect(apiKey.props.autoCapitalize).toBe('none')
     expect(apiKey.props.spellCheck).toBe(false)
-    expect(renderToStaticMarkup(dashboard)).toContain('Show API key')
+    expect(renderToStaticMarkup(apiKeyForm)).toContain('Show API key')
   })
 
   it('always renders all three provider slots without exposing a key value', () => {
@@ -298,7 +300,8 @@ describe('Dev AI panel UI contracts', () => {
 
   it('unlocks the Dev session, refreshes usage and logs out', async () => {
     const session = { unlocked: false }
-    const login = { username: 'first_dev_test', password: 'temporary' }
+    const login = { username: '  first_dev_test  ', password: '  temporary  ' }
+    const submittedLogin = { username: 'first_dev_test', password: 'temporary' }
     harness.reset([session, login, [], '7d', {}, false, ''])
     harness.api.mockImplementation(async path => {
       if (path === '/api/dev/ai/providers') return { providers: [{ provider: 'openai' }] }
@@ -309,7 +312,7 @@ describe('Dev AI panel UI contracts', () => {
     const loginView = byTypeName(panel, 'DevLogin')
 
     await loginView.props.onSubmit({ preventDefault: vi.fn() })
-    expect(harness.api).toHaveBeenCalledWith('/api/dev/login', { method: 'POST', body: JSON.stringify(login) })
+    expect(harness.api).toHaveBeenCalledWith('/api/dev/login', { method: 'POST', body: JSON.stringify(submittedLogin) })
     expect(harness.setters[0]).toHaveBeenCalled()
     expect(harness.setters[2]).toHaveBeenCalledWith([{ provider: 'openai' }])
     const clearPassword = harness.setters[1].mock.calls.map(([value]) => value).find(value => typeof value === 'function')

@@ -75,18 +75,18 @@ export default function Plan() {
     navigate('/plan', { state: { openAi: true }, replace: true })
   }
 
-  return <>
-    <div className="hdr"><div><h1>{t('Plan')}</h1><div className="sub">{t('Your weekly routine')}</div></div><button className="iconbtn" onClick={planToolsSheet} aria-label={t('Share your plan')} title={t('Share your plan')}><Icon name="upload" /></button></div>
-    <div className="cols"><div>
-      <AiPlanCard openSignal={openAiSignal} />
-      <h4 className="sec">{t('Week schedule')}</h4>
+  return <main className="plan-page app-view">
+    <header className="hdr plan-header sticky-view-header"><div><h1>{t('Plan')}</h1><div className="sub">{t('Your weekly routine')}</div></div><button className="iconbtn" onClick={planToolsSheet} aria-label={t('Share your plan')} title={t('Share your plan')}><Icon name="upload" /></button></header>
+    <div className="cols plan-layout"><section className="plan-schedule-column" aria-labelledby="plan-week-title">
+      <h4 id="plan-week-title" className="sec">{t('Week schedule')}</h4>
       <div className="list plan-week-list">{[1, 2, 3, 4, 5, 6, 0].map(day => {
         const options = scheduledRoutineOptionsForWeekday(state, day)
         return <button type="button" key={day} className="item" onClick={() => dayAssignSheet(day)}><div className="grow"><div className="tt">{t(DAYN[day])}</div><div className="ss">{options.length ? options.map((option, index) => <span key={`${option.sourceType}-${option.planId || 'local'}-${option.routineId}-${option.version || 0}`}>{index ? ' · ' : ''}<span className={`plan-source-badge source-${option.sourceType}`}>{optionSource(option.sourceType)}</span> {routineName(option.routine)}</span>) : t('Rest day')}</div></div><Icon name="chevronRight" className="chev" /></button>
       })}</div>
-    </div><div>
-      <div className="row between plan-routine-heading"><h4 className="sec">{t('Routines')}</h4><Button size="sm" variant="tinted" icon="plus" onClick={addRoutine}>{t('New')}</Button></div>
+      <div className="plan-ai-secondary"><AiPlanCard openSignal={openAiSignal} /></div>
+    </section><section className="plan-routines-column" aria-labelledby="plan-routines-title">
+      <div className="row between plan-routine-heading"><h4 id="plan-routines-title" className="sec">{t('Routines')}</h4><Button size="sm" variant="tinted" icon="plus" onClick={addRoutine}>{t('New')}</Button></div>
       {state.routines.length ? <div className="list">{state.routines.map(routine => <Link key={routine.id} className="item" to={`/plan/r/${routine.id}`}><span className="lrow-i"><Icon name={glyphOf(routine.emoji)} /></span><div className="grow"><div className="tt">{routineName(routine)}</div><div className="ss">{exCount(routine.ex.length)} · <span className={`plan-source-badge source-${sourceClass(routine)}`}>{routineSource(routine)}</span></div></div><Icon name="chevronRight" className="chev" /></Link>)}</div> : <div className="plan-empty-actions"><div className="empty"><div className="ico"><Icon name="clipboard" /></div>{t('No routines yet.')}<br />{t('Generate with AI or create a routine manually.')}</div><Button variant="primary" icon="sparkles" onClick={openAi}>{t('Build workout with AI')}</Button><Button onClick={addRoutine}>{t('Build my own plan')}</Button></div>}
-    </div></div>
-  </>
+    </section></div>
+  </main>
 }
