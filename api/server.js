@@ -1097,6 +1097,7 @@ const routes = {
     if (!devAuth.authenticate(username, password)) {
       return json(res, 401, { error: 'invalid dev credentials' });
     }
+    devLoginAttempts.delete(attemptKey);
     json(res, 200, { ok: true }, { 'Set-Cookie': devAuth.sessionCookie(username) });
   },
 

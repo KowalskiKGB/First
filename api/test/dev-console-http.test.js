@@ -159,6 +159,23 @@ async function devCookie(url) {
   return cookieFrom(response, 'firstdev');
 }
 
+test('successful Dev logins do not consume the failed-login budget', async t => {
+  const { url } = await startServer(t);
+  const login = password => fetch(`${url}/api/dev/login`, {
+    method: 'POST',
+    headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: DEV_USER, password })
+  });
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    assert.equal((await login(DEV_PASSWORD)).status, 200, `successful attempt ${attempt + 1}`);
+  }
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    assert.equal((await login(`wrong-${attempt}`)).status, 401, `failed attempt ${attempt + 1}`);
+  }
+  assert.equal((await login('wrong-throttled')).status, 429);
+});
+
 const devReads = [
   '/api/dev/users',
   '/api/dev/user?id=student-a',
