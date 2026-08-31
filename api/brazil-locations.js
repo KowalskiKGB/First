@@ -59,7 +59,7 @@ export function createBrazilLocationsRoutes({
   failureCooldownMs = 60_000,
   now = () => Date.now(),
   reverseUrl = NOMINATIM_REVERSE,
-  reverseUserAgent = 'First gym directory/1.0 (+https://github.com/rafael/first)',
+  reverseUserAgent = 'First gym directory/1.0 (+https://github.com/KowalskiKGB/First)',
   reverseMinIntervalMs = 1_000,
   reverseAllowedHosts = ['nominatim.openstreetmap.org']
 }) {

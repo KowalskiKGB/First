@@ -186,8 +186,9 @@ test('the API image contains its complete local runtime import graph', () => {
 })
 
 test('reverse geocoder defaults are production-safe and identify this repository', () => {
-  const api = read('api/server.js')
-  assert.match(api, /First gym directory\/1\.0 \(\+https:\/\/github\.com\/KowalskiKGB\/First\)/)
+  for (const path of ['api/server.js', 'api/brazil-locations.js']) {
+    assert.match(read(path), /First gym directory\/1\.0 \(\+https:\/\/github\.com\/KowalskiKGB\/First\)/, path)
+  }
 
   const envExample = read('.env.example')
   assert.match(envExample, /^NOMINATIM_REVERSE_URL=https:\/\/nominatim\.openstreetmap\.org\/reverse$/m)
