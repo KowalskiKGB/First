@@ -9,6 +9,35 @@
 - Painel Dev movido para a página isolada `/devadmin`, acessível apenas pela credencial Dev própria,
   sem depender de sessão ou papel administrativo do aplicativo.
 
+### Rede social de academias
+
+- Diretório social responsivo com pesquisa por nome, rede, bairro e endereço, filtros de próximas,
+  favoritas e em alta, detalhe com horários/aparelhos/rota e seleção de academia também para guest.
+- Seed versionado com 11 academias de Macapá/AP, fonte HTTPS, confiança, data e evidência de
+  coordenadas por registro (uma marcada como aproximada). O seed é idempotente, preserva registros
+  arquivados e respeita tombstones.
+- Favoritos por aluno, estrelas, comentário opcional e edição da única avaliação ativa de cada
+  aluno por academia. Médias, votos e tags são calculados sem contadores mutáveis.
+- Seis avaliações fictícias de teste são exibidas como **Demonstração** e usam perfil de
+  demonstração; não entram em média, votos, ranking ou tags automáticas.
+- Usuários autenticados podem criar academias e sugerir correções, aparelhos do catálogo oficial ou
+  fechamento. Todas as contribuições estruturais aguardam revisão e fechamento nunca é automático.
+
+### Localização, privacidade e moderação
+
+- Localização por ação explícita, com leitura única, preenchimento de UF/município, fallback manual
+  e distância calculada no cliente. Coordenadas pessoais não são persistidas nem enviadas à IA.
+- Geocodificação reversa Nominatim limitada a HTTPS/hosts permitidos, com User-Agent configurável,
+  cache em memória, coalescência, serialização de chamadas e erro público estável; a interface
+  mantém a atribuição OpenStreetMap.
+- Console **Academias** do `/devadmin` dividido em Contribuições, Diretório e Avaliações, com
+  comparação, confirmação, busca/filtro e ações auditáveis de aprovar/rejeitar,
+  arquivar/restaurar e publicar/remover/restaurar.
+- Android recebeu somente permissões coarse/fine de localização em uso; iOS recebeu a justificativa
+  `NSLocationWhenInUseUsageDescription`. Não há permissão ou rastreamento em segundo plano.
+- Back do Android fecha detalhe e formulário antes de sair da tela, e ações sociais recuperam
+  conflito de revisão sem apagar o texto ou a seleção ainda não enviados.
+
 ## v1.3.0 — 2026-08-29
 
 ### Painel profissional do personal

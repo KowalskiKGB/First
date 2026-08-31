@@ -65,6 +65,22 @@ adb shell monkey -p com.kowalskikgb.first 1
 `adb devices` deve listar um aparelho como `device`. Se aparecer `unauthorized`, desbloqueie o
 telefone e aceite a chave RSA antes de repetir a instalação.
 
+## Localização e academias próximas
+
+O diretório solicita localização somente quando a pessoa toca em **Usar minha localização**. A
+implementação usa `navigator.geolocation.getCurrentPosition`; não há plugin nativo adicional,
+leitura automática ao abrir o app, monitoramento contínuo ou localização em segundo plano.
+
+- Android declara `ACCESS_COARSE_LOCATION` e `ACCESS_FINE_LOCATION`. O sistema continua pedindo a
+  permissão em tempo de uso e o app funciona com UF/município manuais quando ela é negada.
+- iOS usa `NSLocationWhenInUseUsageDescription` com a justificativa em pt-BR. Não há chave de
+  localização permanente ou em segundo plano.
+- Latitude/longitude ficam somente na memória da tela para ordenar academias. Uma leitura é enviada
+  ao endpoint de geocodificação reversa para obter UF e município, mas não é salva no estado local,
+  no JSON do servidor, na IA ou em analytics.
+- A lista mostra a atribuição do OpenStreetMap quando usa a geocodificação. Visitantes podem
+  pesquisar, abrir e selecionar academia; favorito, avaliação e contribuição exigem login.
+
 ## Mídia e licença
 
 Metadados e textos do `hasaneyldrm/exercises-dataset` permanecem sob licença MIT. As instruções
@@ -87,3 +103,18 @@ local continua disponível como guest e recursos colaborativos/IA aguardam a pr�
 Depois de instalar o APK, valide: shell sem tela branca, login por passkey, Plano com card de IA,
 rotina manual preservada, seletor de sessão quando houver plano manual/IA ou Personal no mesmo dia,
 e ausência de erro visível ao voltar para Home.
+
+## Smoke do diretório social no Android
+
+Depois que a etapa final gerar e instalar o APK desta entrega, valide em um aparelho real:
+
+1. abrir **Academias** sem conta, escolher AP/Macapá, pesquisar, abrir detalhe e selecionar;
+2. tocar em **Usar minha localização**, aceitar a permissão e confirmar ordenação por proximidade;
+3. negar a permissão e confirmar que UF/município manuais continuam utilizáveis;
+4. entrar com uma conta, favoritar, publicar/editar uma avaliação e enviar uma contribuição;
+5. usar o botão Voltar do Android no detalhe/formulário e confirmar que ele retorna à tela anterior
+   em vez de encerrar o app;
+6. conferir que avaliações fictícias exibem **Demonstração** e não alteram média nem votos.
+
+Este guia não registra deploy, smoke em produção ou `adb install -r` desta entrega como concluídos;
+essas evidências devem vir da verificação final executada contra o artefato publicado.

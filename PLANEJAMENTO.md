@@ -27,7 +27,7 @@ WebAuthn/passkeys, arquivos JSON, Vitest, `node:test`, Playwright, nginx e Docke
 - A UI permanece sem gradientes; acessibilidade por teclado, contraste, viewport móvel e redução de movimento são critérios de aceite.
 - `LICENSE`, `NOTICE.md`, a oferta do código correspondente e as atribuições de terceiros permanecem.
 
-## Estado até a versão 1.3.0
+## Estado do código atual
 
 - [x] Código importado em histórico Git independente, sem remote ou relação de fork.
 - [x] Segredos e dados de runtime removidos do versionamento.
@@ -51,16 +51,25 @@ WebAuthn/passkeys, arquivos JSON, Vitest, `node:test`, Playwright, nginx e Docke
   edição de perfil para quem está autenticado.
 - [x] IA restrita a alunos autenticados; o modo convidado continua disponível para treinos locais.
 
-- [x] Diretório público de academias por UF/município/busca, com horários, endereço e inventário
-  exibido pelo catálogo real de exercícios.
-- [x] Solicitação autenticada de novas academias/aparelhos, fila de moderação no Painel Dev e
-  aprovação somente por IDs canônicos do catálogo.
-- [x] Painel Dev compacto com cadastro de APIs de IA, solicitações de academia/aparelhos e lista
-  operacional de usuários com último acesso/presença.
+- [x] Diretório social público de academias por UF/município/busca, com horários, endereço,
+  inventário pelo catálogo real de exercícios, detalhe, rota externa e seleção também para guest.
+- [x] Seed versionado de 11 academias de Macapá/AP com fonte, confiança e evidência de coordenadas
+  (uma marcada como aproximada); seis avaliações fictícias aparecem como demonstração e não alteram
+  métricas.
+- [x] Localização opt-in por leitura única, fallback manual, geocodificação reversa Nominatim
+  cacheada/serializada e distância calculada no cliente sem persistir a coordenada do usuário.
+- [x] Favoritos privados por aluno, estrelas, comentários e uma avaliação ativa por
+  aluno/academia; conteúdo com contato ou URL aguarda moderação.
+- [x] Criação de academia e contribuições de correção, aparelho ou fechamento autenticadas; dados
+  estruturais só chegam ao público após revisão Dev e fechamento nunca é automático.
+- [x] Painel Dev compacto com cadastro de APIs de IA, lista operacional de usuários e console de
+  academias em Contribuições/Diretório/Avaliações, incluindo arquivamento e restauração.
+- [x] Capacitor com localização somente em uso, sem rastreamento em segundo plano; o botão do app é
+  a única origem da solicitação de permissão.
 
 ### Entregue, parcial e futuro
 
-| Área | Situação em 1.3.0 | Limite atual |
+| Área | Situação no código atual | Limite atual |
 |---|---|---|
 | T1 — armazenamento e revisões | Entregue | O JSON exige uma única réplica da API. |
 | T2 — papéis, vínculo, grants e inbox | Entregue | Web Push depende de inscrição e conectividade; a inbox persistida é a fonte da verdade. |
@@ -71,6 +80,7 @@ WebAuthn/passkeys, arquivos JSON, Vitest, `node:test`, Playwright, nginx e Docke
 | T7 — novos starters, notas e anilhas | Planejado | Upper/lower, full-body, 5×5, notas por exercício e calculadora de anilhas ainda não foram implementados. |
 | T8 — percentage/training-max | Planejado | A programação 5/3/1-style sobre o motor de progressão ainda não foi implementada. |
 | T9 — tradução, segurança e release | Parcial | pt-BR, hardening, E2E, build Docker/APK e passkey Android com DAL estão cobertos; smoke no deploy público e instalação física final permanecem operacionais. |
+| Rede social de academias | Entregue no código | Lista social e moderação usam o JSON de instância única; backup, deploy, smoke de produção e reinstalação ADB desta entrega ainda são etapas operacionais pendentes. |
 
 Os checklists abaixo preservam o plano técnico original. A tabela acima é o registro factual da
 entrega; itens marcados como parciais ou planejados não devem ser interpretados como concluídos.
@@ -440,6 +450,12 @@ O roadmap termina somente quando todos os fluxos E2E passam, código novo manté
   e leitura autorizada do plano IA.
 - [x] Diretório/moderação de academias: aluno escolhe academia mesmo sem login; sugestões de novas
   academias ou aparelhos exigem login, ficam pendentes e só entram no diretório após revisão Dev.
+- [x] Camada social de academias: favoritos, avaliações/edições, comentários, tags derivadas,
+  criação, correção e indicação de fechamento, sem expor autoria interna na projeção pública.
+- [x] Descoberta por localização opt-in: coordenadas ficam em memória no cliente, Nominatim resolve
+  somente UF/município e o fluxo manual continua disponível em qualquer falha.
+- [x] Moderação Dev reversível: comparação da contribuição, diretório arquivável/restaurável e
+  avaliações publicáveis/removíveis/restauráveis com auditoria.
 - [x] Seleção de aparelhos unificada pelo catálogo de exercícios, com busca, filtros e imagens; o
   sistema não mantém listas paralelas inventadas de equipamentos.
 - [ ] Billing/plano pago de IA: estrutura de uso existe, mas cobrança, limite comercial e checkout
@@ -477,3 +493,18 @@ O roadmap termina somente quando todos os fluxos E2E passam, código novo manté
 O teto atual continua deliberado: uma única réplica Node com JSON, sem billing, sem fallback e sem
 qualquer chave comercial embutida. Migração de store ou nova infraestrutura só entra quando escala
 ou contenção observada exigir.
+
+### Operação da rede social de academias
+
+- O seed `macapa-2026-09-02-social-1` adiciona 11 academias de Macapá/AP e seis avaliações de
+  demonstração somente uma vez. IDs conhecidos e tombstones preservam decisões posteriores do Dev.
+- `gymReviews` conserva no máximo uma avaliação não removida por aluno/academia; o armazenamento
+  retém as ativas e limita o histórico total a 5.000 registros.
+- Médias, votos, favoritos e tags são projeções calculadas. Avaliações `demo: true` aparecem
+  identificadas, mas não participam de média, votos, `Em alta`, `Em baixa` ou ordenação social.
+- `NOMINATIM_REVERSE_URL`, `NOMINATIM_ALLOWED_HOSTS` e `NOMINATIM_USER_AGENT` configuram a
+  geocodificação. O endpoint exige HTTPS/allowlist e mantém cache somente em memória da réplica.
+- O `/devadmin` separa as sessões Dev das contas do app e centraliza contribuições, diretório e
+  avaliações. Conflitos de revisão retornam a versão atual para recarga segura antes de repetir.
+- Backup do volume, merge/push, deploy Coolify, smoke público e instalação ADB desta entrega não são
+  declarados concluídos aqui; pertencem à etapa final de entrega e verificação.

@@ -86,10 +86,18 @@ Read this before hosting First for anyone other than yourself.
   with an independent `AI_CONFIG_MASTER_KEY` containing exactly 32 random bytes represented by
   64 hexadecimal characters. If that key is missing or malformed, the core app still starts, but
   provider save/test/model-list/activation fails closed and generation remains unavailable.
-- **Gym equipment changes are moderated.** The public gym directory can be searched without a
-  session, but new gym/equipment requests require a signed-in student, remain pending, and only a
-  Dev session can approve or reject them. Approval stores catalogue exercise IDs from the canonical
-  exercise database; free text from the requester is never treated as publishable equipment.
+- **Gym community writes are authenticated and bounded.** The public gym directory can be searched,
+  opened and selected without a session. Favoriting, reviewing and contributing require a signed-in
+  student, an exact trusted Origin (or the expected native marker) and optimistic `rev` control.
+  Structural contributions are limited to 20 per hour and review creates/edits to 30 per hour, by
+  student and resolved client address; favorite toggles use a separate 60-per-hour limit.
+- **Structural gym changes are moderated.** New gyms, corrections, equipment additions and closure
+  reports remain pending until a Dev session approves or rejects them. Equipment is stored only as
+  IDs from the canonical exercise catalogue. Approving a closure report records the moderation
+  decision but never closes the gym automatically.
+- **Gym and review removal is reversible.** Dev "delete" actions archive a gym or mark a review as
+  removed while retaining moderator, timestamp and optional reason. Archived gyms and removed
+  reviews disappear from public projections and can be restored from `/devadmin`.
 - **Dev user views are administrative projections.** `/devadmin` can list registered users, online
   status, last access and selected training/profile metadata for operations. Password hashes,
   provider keys, session cookies and full credential material are not returned to the browser.
@@ -124,6 +132,29 @@ Read this before hosting First for anyone other than yourself.
 - **Jobs do not silently retry.** One active job is allowed per student, requests are idempotent,
   and an interrupted `running` job is marked failed after restart. Provider failure never triggers
   another provider or changes the current plan.
+
+### Gym directory privacy and location
+
+- **Location is opt-in and foreground-only.** Web and Capacitor request one
+  `navigator.geolocation.getCurrentPosition` reading only after the user presses “Usar minha
+  localização”. Android declares coarse/fine foreground location and iOS declares
+  `NSLocationWhenInUseUsageDescription`; neither platform declares background location.
+- **Personal coordinates are transient.** The frontend holds them only in React memory to rank
+  nearby gyms. It sends them only to `/api/location/reverse` to resolve UF/municipality; they are
+  not written to the collaboration JSON, workout data, AI context or analytics. A denial, timeout
+  or upstream failure leaves the manual UF/municipality flow available.
+- **Reverse geocoding is constrained.** `NOMINATIM_REVERSE_URL` must use HTTPS and its hostname must
+  appear in `NOMINATIM_ALLOWED_HOSTS`. Requests use `NOMINATIM_USER_AGENT`, round coordinates for
+  an in-memory cache, coalesce identical work, serialize upstream calls at no more than one per
+  second and expose only a fixed public error. The default allowed host is
+  `nominatim.openstreetmap.org`; custom hosts are never taken from a request.
+- **Public social projections minimize identity.** Review responses expose a shortened display
+  name, never the account ID or e-mail. Contributor identity and source/audit metadata remain in
+  the Dev projection. Reviews marked `demo: true` are visibly labelled as demonstrations and are
+  excluded from averages, vote counts, ranking and automatic trend tags.
+- **Seeded gyms are traceable and do not resurrect.** The Macapá seed stores an HTTPS source,
+  confidence and verification date for every gym. It is versioned and idempotent; existing
+  archived records and tombstones keep a seeded gym from being re-created on restart.
 
 ### Retention, logging and incidents
 
