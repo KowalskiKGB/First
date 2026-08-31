@@ -1,7 +1,9 @@
 import {
   normalizeGymFavorite,
   normalizeGymRecord,
+  normalizeGymReviewSeedTombstones,
   normalizeGymSeedTombstones,
+  isSeededGymReviewId,
   retainGymReviews
 } from '../gym-social.js';
 
@@ -360,6 +362,7 @@ export const INITIAL_COLLABORATION = {
   gymReviews: [],
   gymFavorites: [],
   gymSeedTombstones: [],
+  gymReviewSeedTombstones: [],
   gymSeedVersion: null,
   aiPlans: [],
   aiJobs: [],
@@ -371,9 +374,13 @@ export function migrateCollaboration(value) {
   const legacyCollections = Object.keys(INITIAL_COLLABORATION)
     .filter(key => ![
       'schemaVersion', 'rev', 'connections', 'trainingProfiles', 'gymProfiles',
-      'gymDirectory', 'gymRequests', 'gymReviews', 'gymFavorites', 'gymSeedTombstones', 'gymSeedVersion',
+      'gymDirectory', 'gymRequests', 'gymReviews', 'gymFavorites', 'gymSeedTombstones', 'gymReviewSeedTombstones', 'gymSeedVersion',
       'aiPlans', 'aiJobs', 'aiUsage'
     ].includes(key));
+  const gymReviews = Array.isArray(collaboration.gymReviews) ? collaboration.gymReviews : [];
+  const removedSeedReviewIds = gymReviews
+    .filter(item => item?.status === 'removed' && isSeededGymReviewId(item?.id))
+    .map(item => item.id);
 
   return {
     ...collaboration,
@@ -387,10 +394,14 @@ export function migrateCollaboration(value) {
       .map(normalizeDirectoryGym).filter(Boolean),
     gymRequests: (Array.isArray(collaboration.gymRequests) ? collaboration.gymRequests : [])
       .map(normalizeGymRequest).filter(Boolean).slice(-2000),
-    gymReviews: retainGymReviews(collaboration.gymReviews),
+    gymReviews: retainGymReviews(gymReviews),
     gymFavorites: [...new Map((Array.isArray(collaboration.gymFavorites) ? collaboration.gymFavorites : [])
       .map(normalizeGymFavorite).filter(Boolean).map(item => [`${item.gymId}\u0000${item.userId}`, item])).values()],
     gymSeedTombstones: normalizeGymSeedTombstones(collaboration.gymSeedTombstones),
+    gymReviewSeedTombstones: normalizeGymReviewSeedTombstones([
+      ...normalizeGymReviewSeedTombstones(collaboration.gymReviewSeedTombstones),
+      ...removedSeedReviewIds
+    ]),
     gymSeedVersion: text(collaboration.gymSeedVersion, 100) || null,
     aiPlans: retainedPlans(collaboration.aiPlans),
     aiJobs: (Array.isArray(collaboration.aiJobs) ? collaboration.aiJobs : []).map(normalizeAiJob).filter(Boolean).slice(-2000),

@@ -42,6 +42,7 @@ test('creates the collaboration document from its initial schema', (t) => {
     gymReviews: [],
     gymFavorites: [],
     gymSeedTombstones: [],
+    gymReviewSeedTombstones: [],
     gymSeedVersion: null,
     aiPlans: [],
     aiJobs: [],

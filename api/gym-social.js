@@ -116,6 +116,9 @@ export function normalizeGymFavorite(value) {
 }
 
 export const normalizeGymSeedTombstones = value => list(value, 2000);
+export const normalizeGymReviewSeedTombstones = value => list(value, 2000);
+const seededReviewIds = new Set(MACAPA_GYM_REVIEW_SEED.map(item => item.id));
+export const isSeededGymReviewId = id => seededReviewIds.has(text(id, 100));
 
 const stamp = value => Date.parse(value?.updatedAt || value?.createdAt || '') || 0;
 
@@ -167,14 +170,20 @@ export function applyGymSeed(value) {
   const additions = MACAPA_GYM_SEED.filter(item => !known.has(item.id) && !blocked.has(item.id)).map(item => structuredClone(item));
   const reviews = Array.isArray(collaboration.gymReviews) ? collaboration.gymReviews : [];
   const knownReviews = new Set(reviews.map(item => item?.id));
+  const reviewTombstones = new Set([
+    ...normalizeGymReviewSeedTombstones(collaboration.gymReviewSeedTombstones),
+    ...reviews.filter(item => item?.status === 'removed' && seededReviewIds.has(item?.id)).map(item => item.id)
+  ]);
   const availableGyms = new Set([...directory, ...additions].map(item => item.id));
   const reviewAdditions = MACAPA_GYM_REVIEW_SEED
-    .filter(item => availableGyms.has(item.gymId) && !knownReviews.has(item.id)).map(item => structuredClone(item));
+    .filter(item => availableGyms.has(item.gymId) && !knownReviews.has(item.id) && !reviewTombstones.has(item.id))
+    .map(item => structuredClone(item));
   return {
     ...structuredClone(collaboration),
     gymDirectory: [...directory, ...additions],
     gymReviews: [...structuredClone(reviews), ...reviewAdditions],
     gymSeedTombstones: tombstones,
+    gymReviewSeedTombstones: [...reviewTombstones],
     gymSeedVersion: MACAPA_GYM_SEED_VERSION
   };
 }

@@ -497,7 +497,8 @@ ou contenção observada exigir.
 ### Operação da rede social de academias
 
 - O seed `macapa-2026-09-02-social-1` adiciona 11 academias de Macapá/AP e seis avaliações de
-  demonstração somente uma vez. IDs conhecidos e tombstones preservam decisões posteriores do Dev.
+  demonstração somente uma vez. IDs conhecidos, `gymSeedTombstones` e
+  `gymReviewSeedTombstones` preservam decisões posteriores do Dev.
 - `gymReviews` conserva no máximo uma avaliação não removida por aluno/academia; o armazenamento
   retém as ativas e limita o histórico total a 5.000 registros.
 - Médias, votos, favoritos e tags são projeções calculadas. Avaliações `demo: true` aparecem

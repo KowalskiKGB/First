@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { INITIAL_COLLABORATION, migrateCollaboration } from '../domain/schema.js';
+import { MACAPA_GYM_REVIEW_SEED } from '../data/macapa-gyms.js';
 
 const NOW = '2026-08-30T12:00:00.000Z';
 const gym = (overrides = {}) => ({
@@ -477,6 +478,22 @@ test('Dev applies structured corrections, archives and restores gyms, and modera
   assert.equal(restoredReview.status, 200);
   const reviews = await invoke(f.routes, 'GET /api/dev/gym-reviews', { devUsername: 'first_dev_test' });
   assert.equal(reviews.body.reviews[0].status, 'published');
+});
+
+test('Dev removal of a seeded demo review persists a seed tombstone', async () => {
+  const demoReview = MACAPA_GYM_REVIEW_SEED[0];
+  const f = await fixture(source({
+    gymDirectory: [gym({ id: demoReview.gymId })],
+    gymReviews: [demoReview]
+  }));
+
+  const removed = await invoke(f.routes, 'PUT /api/dev/gym-review', {
+    devUsername: 'first_dev_test',
+    body: { rev: 0, id: demoReview.id, status: 'removed', reason: 'Demo removida' }
+  });
+
+  assert.equal(removed.status, 200);
+  assert.deepEqual(f.store.read().gymReviewSeedTombstones, [demoReview.id]);
 });
 
 test('closure requests require Dev review and approval never closes the gym automatically', async () => {

@@ -152,9 +152,10 @@ Read this before hosting First for anyone other than yourself.
   name, never the account ID or e-mail. Contributor identity and source/audit metadata remain in
   the Dev projection. Reviews marked `demo: true` are visibly labelled as demonstrations and are
   excluded from averages, vote counts, ranking and automatic trend tags.
-- **Seeded gyms are traceable and do not resurrect.** The Macapá seed stores an HTTPS source,
-  confidence and verification date for every gym. It is versioned and idempotent; existing
-  archived records and tombstones keep a seeded gym from being re-created on restart.
+- **Seeded gyms and demo reviews are traceable and do not resurrect.** The Macapá seed stores an
+  HTTPS source, confidence and verification date for every gym. It is versioned and idempotent;
+  existing archived records and tombstones keep a seeded gym or removed seeded demo review from
+  being re-created on restart or future seed migration.
 
 ### Retention, logging and incidents
 

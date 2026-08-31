@@ -176,7 +176,7 @@ test('Macapá seed has verified metadata and applies once per version without re
 });
 
 test('Macapá social seed adds labeled demo reviews once and never revives a removed review', () => {
-  assert.ok(MACAPA_GYM_REVIEW_SEED.length >= 3);
+  assert.ok(MACAPA_GYM_REVIEW_SEED.length >= 6);
   assert.equal(MACAPA_GYM_REVIEW_SEED.every(item => item.demo === true && item.status === 'published'), true);
   assert.equal(MACAPA_GYM_REVIEW_SEED.every(item => item.userId.startsWith('demo-first-')), true);
   assert.equal(MACAPA_GYM_REVIEW_SEED.every(item => item.comment.startsWith('Demonstração —')), true);
@@ -198,6 +198,28 @@ test('Macapá social seed adds labeled demo reviews once and never revives a rem
   });
   assert.equal(reseeded.gymReviews.filter(item => item.id === removed.id).length, 1);
   assert.equal(reseeded.gymReviews.find(item => item.id === removed.id).status, 'removed');
+
+  const migrated = migrateCollaboration({
+    ...seeded,
+    gymReviews: [
+      removed,
+      ...Array.from({ length: 5001 }, (_, index) => review({
+        id: `removed-filler-${index}`,
+        gymId: `gym-filler-${index}`,
+        userId: `user-filler-${index}`,
+        status: 'removed',
+        updatedAt: new Date(Date.UTC(2027, 0, 2 + index)).toISOString()
+      }))
+    ]
+  });
+  assert.equal(migrated.gymReviews.some(item => item.id === removed.id), false);
+  assert.deepEqual(migrated.gymReviewSeedTombstones, [removed.id]);
+  const futureSeed = applyGymSeed({
+    ...migrated,
+    gymSeedVersion: 'macapa-future-seed',
+    gymReviews: migrated.gymReviews.filter(item => item.id !== removed.id)
+  });
+  assert.equal(futureSeed.gymReviews.some(item => item.id === removed.id), false);
 });
 
 test('Macapá seed is applied by the production collaboration store exactly once', t => {

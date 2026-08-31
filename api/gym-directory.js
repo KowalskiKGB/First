@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { AI_EXERCISES } from './ai.js';
 import { isBrazilStateCode } from './brazil-locations.js';
-import { projectGymDirectory, toggleGymFavorite, upsertGymReview } from './gym-social.js';
+import { isSeededGymReviewId, projectGymDirectory, toggleGymFavorite, upsertGymReview } from './gym-social.js';
 import { RevisionConflictError } from './lib/json-store.js';
 
 const REQUEST_KINDS = new Set(['gym', 'equipment', 'correction', 'closure']);
@@ -417,8 +417,12 @@ export function createGymDirectoryRoutes({
       const moderatedAt = now();
       const updated = store.update(body.rev, state => {
         if (!state.gymReviews.some(review => review.id === id)) throw fail('review not found', 404);
+        const reviewSeedTombstones = status === 'removed' && isSeededGymReviewId(id)
+          ? [...new Set([...(state.gymReviewSeedTombstones || []), id])]
+          : state.gymReviewSeedTombstones;
         return {
           ...state,
+          gymReviewSeedTombstones: reviewSeedTombstones,
           gymReviews: state.gymReviews.map(review => review.id === id ? {
             ...review, status, updatedAt: moderatedAt, moderatedAt, moderatedBy: reviewer, ...(reason ? { moderationReason: reason } : {})
           } : review)
