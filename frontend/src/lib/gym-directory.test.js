@@ -1,14 +1,33 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  createGymRequestGate,
   distanceKm,
   filterGyms,
   gymCities,
   gymInitialLocality,
+  gymListPath,
   gymStates,
   isGymOpen,
   rankGyms,
 } from './gym-directory.js'
+
+describe('gym directory request coordination', () => {
+  it('never puts user coordinates in the public gym-list URL', () => {
+    expect(gymListPath()).toBe('/api/gyms?limit=100')
+  })
+
+  it('aborts and invalidates an older list request when a newer one starts', () => {
+    const gate = createGymRequestGate()
+    const first = gate.begin()
+    const second = gate.begin()
+
+    expect(first.signal.aborted).toBe(true)
+    expect(first.isCurrent()).toBe(false)
+    expect(second.signal.aborted).toBe(false)
+    expect(second.isCurrent()).toBe(true)
+  })
+})
 
 const gyms = [
   { id: 'gym-ce', state: 'CE', city: 'Fortaleza' },

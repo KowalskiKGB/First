@@ -114,7 +114,8 @@ test('collaboration migration adds the moderated gym collections without losing 
 test('public directory needs no session and filters by UF, city and free-text query', async () => {
   const second = gym({
     id: 'gym-fortaleza-aldeota', name: 'Movimento Aldeota', address: 'Avenida Santos Dumont, 2000',
-    status: 'verified', exerciseIds: ['0001', '0003'], createdBy: 'student-secret'
+    status: 'verified', latitude: -3.735, longitude: -38.49,
+    exerciseIds: ['0001', '0003'], createdBy: 'student-secret'
   });
   const third = gym({ id: 'gym-sp', name: 'Academia Centro Paulista', state: 'SP', city: 'São Paulo' });
   const f = await fixture(source({ gymDirectory: [gym(), second, third], gymRequests: [pendingRequest()] }));
@@ -125,6 +126,10 @@ test('public directory needs no session and filters by UF, city and free-text qu
 
   assert.equal(list.status, 200);
   assert.deepEqual(list.body.gyms.map(item => item.id), ['gym-fortaleza-aldeota']);
+  assert.deepEqual(
+    { latitude: list.body.gyms[0].latitude, longitude: list.body.gyms[0].longitude },
+    { latitude: second.latitude, longitude: second.longitude }
+  );
   assert.equal(JSON.stringify(list.body).includes('student-secret'), false);
   assert.equal(JSON.stringify(list.body).includes('student-a'), false);
 
@@ -136,6 +141,10 @@ test('public directory needs no session and filters by UF, city and free-text qu
   const detail = await invoke(f.routes, 'GET /api/gym', { url: '/api/gym?id=gym-fortaleza-aldeota' });
   assert.equal(detail.status, 200);
   assert.deepEqual(detail.body.gym.exerciseIds, ['0001', '0003']);
+  assert.deepEqual(
+    { latitude: detail.body.gym.latitude, longitude: detail.body.gym.longitude },
+    { latitude: second.latitude, longitude: second.longitude }
+  );
   assert.deepEqual(detail.body.gym.openingHours, second.openingHours);
   assert.equal(detail.body.gym.openingHoursNote, '');
   assert.equal('createdBy' in detail.body.gym, false);

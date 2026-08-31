@@ -1,5 +1,6 @@
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('../lib/i18n.js', () => ({
@@ -152,5 +153,10 @@ describe('GymDirectory', () => {
     expect(markup).toContain('Favoritas')
     expect(markup).toContain('Em alta')
     expect(markup).toContain('Não encontrou a academia? Crie aqui')
+  })
+
+  it('gives the detail back control a 44px touch target', () => {
+    const css = readFileSync(new URL('../index.css', import.meta.url), 'utf8')
+    expect(css).toMatch(/\.gym-detail-nav \.iconbtn\{[^}]*min-width:44px[^}]*min-height:44px/)
   })
 })

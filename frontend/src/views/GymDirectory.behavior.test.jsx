@@ -109,4 +109,17 @@ describe('GymContributionForm payloads', () => {
     closure.props.onSubmit({ preventDefault: vi.fn() })
     expect(closureSubmit).toHaveBeenCalledWith({ note: 'Placa de encerramento na porta' })
   })
+
+  it('starts equipment without a copied gym name and omits an empty equipment name', () => {
+    const initial = GymContributionForm({ kind: 'equipment', gym, onCancel: vi.fn(), onSubmit: vi.fn() })
+    const nameInput = findElements(initial, element => element.props.name === 'name')[0]
+    expect(nameInput.props.value).toBe('')
+
+    hooks.reset([{ name: '  ', networkName: '', address: '', neighborhood: '', note: 'Sala principal', exerciseIds: ['0043'] }])
+    const onSubmit = vi.fn()
+    const form = GymContributionForm({ kind: 'equipment', gym, onCancel: vi.fn(), onSubmit })
+    form.props.onSubmit({ preventDefault: vi.fn() })
+
+    expect(onSubmit).toHaveBeenCalledWith({ note: 'Sala principal', exerciseIds: ['0043'] })
+  })
 })

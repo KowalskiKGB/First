@@ -227,8 +227,7 @@ test('gym social projection excludes demos and PII and derives stable tags', () 
   assert.equal(first.distanceKm > 0, true);
   assert.equal(JSON.stringify(result).includes('user-a'), false);
   assert.equal(JSON.stringify(result).includes('private-demo'), false);
-  assert.equal(JSON.stringify(result).includes('latitude'), false);
-  assert.equal(JSON.stringify(result).includes('longitude'), false);
+  assert.deepEqual({ latitude: first.latitude, longitude: first.longitude }, { latitude: 0.035, longitude: -51.07 });
 });
 
 test('gym social projection excludes hidden and archived gyms, keeps closed gyms, and ranks favorites first', () => {
