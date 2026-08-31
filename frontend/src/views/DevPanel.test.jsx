@@ -841,6 +841,23 @@ describe('Dev operations console contracts', () => {
     expect(markup).not.toContain('scrypt-secret-hash')
     expect(markup).not.toContain('provider-secret')
   })
+
+  it('keeps the registered-user panel stable while its first result is still loading', () => {
+    const dashboard = DevDashboard({
+      providers,
+      usage: {},
+      window: '7d',
+      section: 'users',
+      users: [],
+      selectedUserId: '',
+      selectedUser: null,
+      onSelectUser: vi.fn(),
+      onWindow: vi.fn(),
+      onLogout: vi.fn(),
+    })
+
+    expect(renderToStaticMarkup(dashboard)).toContain('No registered users.')
+  })
 })
 
 function hooksResetForDashboard(error = '') {

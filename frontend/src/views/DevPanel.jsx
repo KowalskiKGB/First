@@ -310,13 +310,14 @@ export function GymConsole({
 
 function UserConsole({ users = [], selectedUserId, selectedUser, onSelectUser }) {
   const listed = users.find(item => item.id === selectedUserId) || users[0]
-  const detailAccount = selectedUser?.user?.id === listed?.id ? selectedUser.user : listed
-  const profile = selectedUser?.user?.id === listed?.id ? selectedUser.trainingProfile || {} : listed?.profile || {}
-  const gym = selectedUser?.user?.id === listed?.id ? selectedUser.gymProfile || {} : listed?.gymProfile || {}
-  const latestWeight = selectedUser?.user?.id === listed?.id && selectedUser.bodyweight?.length
+  const hasSelectedDetail = Boolean(listed?.id && selectedUser?.user?.id === listed.id)
+  const detailAccount = hasSelectedDetail ? selectedUser.user : listed
+  const profile = hasSelectedDetail ? selectedUser.trainingProfile || {} : listed?.profile || {}
+  const gym = hasSelectedDetail ? selectedUser.gymProfile || {} : listed?.gymProfile || {}
+  const latestWeight = hasSelectedDetail && selectedUser.bodyweight?.length
     ? selectedUser.bodyweight[selectedUser.bodyweight.length - 1]?.w
     : profile.weightKg
-  const measurements = selectedUser?.user?.id === listed?.id && Array.isArray(selectedUser.measurements)
+  const measurements = hasSelectedDetail && Array.isArray(selectedUser.measurements)
     ? selectedUser.measurements
     : []
   return <section id="dev-panel-users" role="tabpanel" aria-labelledby="dev-users-title" className="personal-panel">
