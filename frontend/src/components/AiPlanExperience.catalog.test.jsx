@@ -42,6 +42,7 @@ vi.mock('../lib/i18n.js', () => ({
   t: (value, ...args) => args.reduce((text, arg, index) => text.replaceAll(`{${index}}`, arg), translations[value] || value),
 }))
 vi.mock('./Icon.jsx', () => ({ default: ({ name }) => <i data-icon={name} /> }))
+vi.mock('./Media.jsx', () => ({ Thumb: ({ ex }) => <span data-thumb={ex.id} /> }))
 vi.mock('./ui.jsx', () => ({
   Button: ({ children, ...props }) => <button {...props}>{children}</button>,
   NumberField: props => <input name={props.name} />,

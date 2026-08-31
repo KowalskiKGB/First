@@ -12,6 +12,7 @@ const gym = (overrides = {}) => ({
   address: 'Rua ABC, 10 - Centro',
   status: 'unverified',
   openingHours: [{ day: 1, open: '06:00', close: '22:00', closed: false }],
+  openingHoursNote: '',
   exerciseIds: ['0001'],
   createdAt: NOW,
   updatedAt: NOW,
@@ -133,6 +134,7 @@ test('public directory needs no session and filters by UF, city and free-text qu
   assert.equal(detail.status, 200);
   assert.deepEqual(detail.body.gym.exerciseIds, ['0001', '0003']);
   assert.deepEqual(detail.body.gym.openingHours, second.openingHours);
+  assert.equal(detail.body.gym.openingHoursNote, '');
   assert.equal('createdBy' in detail.body.gym, false);
 });
 
@@ -174,6 +176,38 @@ test('only an authenticated student can queue an equipment suggestion and it doe
   assert.deepEqual(f.store.read().gymRequests[0].payload.exerciseIds, ['0003', '0001']);
 });
 
+test('equipment suggestions are rate-limited per authenticated account', async () => {
+  const f = await fixture(source());
+  for (let index = 0; index < 20; index += 1) {
+    const created = await invoke(f.routes, 'POST /api/gym-requests', {
+      user: { id: 'student-a' },
+      body: {
+        rev: index,
+        kind: 'equipment',
+        gymId: 'gym-fortaleza-centro',
+        payload: { name: `Sugestão ${index}`, exerciseIds: ['0003'] }
+      }
+    });
+    assert.equal(created.status, 200);
+  }
+
+  const limited = await invoke(f.routes, 'POST /api/gym-requests', {
+    user: { id: 'student-a' },
+    body: {
+      rev: 20,
+      kind: 'equipment',
+      gymId: 'gym-fortaleza-centro',
+      payload: { name: 'Sugestão excedente', exerciseIds: ['0003'] }
+    }
+  });
+
+  assert.deepEqual({ status: limited.status, body: limited.body }, {
+    status: 429,
+    body: { error: 'too many gym requests' }
+  });
+  assert.equal(f.store.read().gymRequests.length, 20);
+});
+
 test('Dev lists private requests, approves their exercise snapshot and can reject without publishing', async () => {
   const equipment = pendingRequest({ payload: { name: 'Hack squat', exerciseIds: ['0003', '0001'] } });
   const newGym = pendingRequest({
@@ -209,4 +243,35 @@ test('Dev lists private requests, approves their exercise snapshot and can rejec
   assert.equal(rejected.status, 200);
   assert.equal(rejected.body.request.status, 'rejected');
   assert.equal(f.store.read().gymDirectory.some(item => item.name === 'Academia Nova'), false);
+});
+
+test('Dev-approved gym suggestions preserve catalogue exercises and textual opening hours', async () => {
+  const f = await fixture(source());
+  const created = await invoke(f.routes, 'POST /api/gym-requests', {
+    user: { id: 'student-a' },
+    body: {
+      rev: 0,
+      kind: 'gym',
+      payload: {
+        name: 'Academia Nova',
+        state: 'CE',
+        city: 'Fortaleza',
+        address: 'Rua Nova, 20',
+        openingHours: [],
+        openingHoursNote: 'Segunda a sexta, 6:00 às 22:00',
+        exerciseIds: ['0002', '0003']
+      }
+    }
+  });
+  assert.equal(created.status, 200);
+
+  const approved = await invoke(f.routes, 'POST /api/dev/gym-requests/review', {
+    devUsername: 'first_dev_test',
+    body: { rev: 1, requestId: created.body.request.id, status: 'approved' }
+  });
+
+  assert.equal(approved.status, 200);
+  const published = f.store.read().gymDirectory.find(item => item.name === 'Academia Nova');
+  assert.equal(published.openingHoursNote, 'Segunda a sexta, 6:00 às 22:00');
+  assert.deepEqual(published.exerciseIds, ['0002', '0003']);
 });

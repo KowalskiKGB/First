@@ -93,22 +93,25 @@ for (const viewport of VIEWPORTS) test(`Personal edits the authorized AI profile
   await expect(page.locator('.ai-plan-dossier .tt', { hasText: 'Abdominal 3/4' })).toBeVisible()
 
   const profileForm = page.getByRole('form', { name: 'Editar perfil de treino para IA' })
-  await profileForm.locator('[name="personal-ai-goal"]').fill('Força e mobilidade')
-  await expect(profileForm.getByRole('button', { name: 'Remover Abdominal 3/4' })).toBeVisible()
-  await expect(profileForm.getByRole('button', { name: 'Remover Flexão lateral a 45°' })).toBeVisible()
-  await profileForm.getByRole('button', { name: 'Remover Abdominal 3/4' }).click()
+  await profileForm.getByRole('button', { name: 'Força', exact: true }).click()
+  const favoritePicker = profileForm.locator('.exercise-catalog-picker').nth(0)
+  const avoidedPicker = profileForm.locator('.exercise-catalog-picker').nth(1)
+  await expect(favoritePicker.locator('[data-exercise-id="0001"]')).toHaveAttribute('aria-pressed', 'true')
+  await expect(avoidedPicker.locator('[data-exercise-id="0002"]')).toHaveAttribute('aria-pressed', 'true')
+  await favoritePicker.locator('[data-exercise-id="0001"]').click()
   await profileForm.getByRole('button', { name: 'Salvar perfil de treino' }).click()
-  await expect(profileForm.locator('[name="personal-ai-goal"]')).toHaveValue('Força e mobilidade')
+  await expect(profileForm.getByRole('button', { name: 'Força', exact: true })).toHaveAttribute('aria-pressed', 'true')
 
   const gymForm = page.getByRole('form', { name: 'Editar academia do aluno' })
   await gymForm.getByRole('button', { name: 'Adicionar máquina' }).click()
   await gymForm.getByLabel('Nome da máquina').fill('Crossover duplo')
   await gymForm.getByLabel('Categoria').fill('Polia')
-  await gymForm.getByPlaceholder('Buscar exercício…').fill('agachamento')
-  await gymForm.locator('.exercise-preference-results button').first().click()
+  const machinePicker = gymForm.locator('.machine-row .exercise-catalog-picker')
+  await machinePicker.locator('input[type="search"]').fill('agachamento')
+  await machinePicker.locator('button[data-exercise-id]').first().click()
   await gymForm.getByRole('button', { name: 'Salvar academia' }).click()
 
-  expect(fixtures.writes.find(write => write.pathname === '/api/personal/training-profile').body).toMatchObject({ clientId: 'client-1', rev: 7, goal: 'Força e mobilidade', favoriteExerciseIds: [], avoidedExerciseIds: ['0002'] })
+  expect(fixtures.writes.find(write => write.pathname === '/api/personal/training-profile').body).toMatchObject({ clientId: 'client-1', rev: 7, goal: 'strength', favoriteExerciseIds: [], avoidedExerciseIds: ['0002'] })
   expect(fixtures.writes.find(write => write.pathname === '/api/personal/gym').body).toMatchObject({
     clientId: 'client-1', rev: 8,
     specificMachines: [{ name: 'Crossover duplo', category: 'Polia', exerciseIds: [expect.any(String)] }],
@@ -130,15 +133,15 @@ test('Personal recovers from one profile revision conflict without losing the dr
 
   await page.goto('/#/personal/alunos/client-1/ia')
   const profileForm = page.getByRole('form', { name: 'Editar perfil de treino para IA' })
-  await profileForm.locator('[name="personal-ai-goal"]').fill('Força e mobilidade')
+  await profileForm.getByRole('button', { name: 'Força', exact: true }).click()
   await profileForm.getByRole('button', { name: 'Salvar perfil de treino' }).click()
   await expect(page.getByText('Os dados foram atualizados; mantenha este formulário aberto e repita a ação.')).toBeVisible()
-  await expect(profileForm.locator('[name="personal-ai-goal"]')).toHaveValue('Força e mobilidade')
+  await expect(profileForm.getByRole('button', { name: 'Força', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await profileForm.getByRole('button', { name: 'Salvar perfil de treino' }).click()
 
   expect(fixtures.writes).toEqual([expect.objectContaining({
     pathname: '/api/personal/training-profile',
-    body: expect.objectContaining({ clientId: 'client-1', rev: 8, goal: 'Força e mobilidade' }),
+    body: expect.objectContaining({ clientId: 'client-1', rev: 8, goal: 'strength' }),
   })])
   await page.screenshot({ path: testInfo.outputPath('personal-ai-conflict-tablet.png'), fullPage: true, animations: 'disabled', caret: 'hide' })
   expect(errors.console).toEqual([expect.stringContaining('409 (Conflict)')])

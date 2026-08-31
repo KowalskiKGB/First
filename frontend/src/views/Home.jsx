@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 import Icon from '../components/Icon.jsx'
 import LineChart from '../components/LineChart.jsx'
@@ -83,9 +83,10 @@ export default function Home() {
     [t('Current weight'), Boolean(bw?.w)],
     [t('Height (cm)'), Boolean(profile.heightCm)],
     [t('Primary goal'), Boolean(String(profile.goal || '').trim())],
-    [t('Available equipment'), Boolean(profile.equipment?.length)],
+    [t('Available equipment'), Boolean(profile.equipment?.length || profile.availableExerciseIds?.length || profile.specificMachines?.some(machine => machine?.exerciseIds?.length))],
   ]
   const readinessCount = readiness.filter(([, complete]) => complete).length
+  const selectedGym = S.selectedGym
 
   const onToday = () => {
     if (S.active) nav('/workout')
@@ -103,7 +104,7 @@ export default function Home() {
   return <div className="narrow home-dashboard">
     <header className="hdr home-header">
       <div>
-        <h1>{user?.name ? t('Hello, {0}', user.name) : t('Sign in')}</h1>
+        <h1>{user?.name ? t('Hello, {0}', user.name) : t('Hello!')}</h1>
         <div className="sub">{today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}</div>
       </div>
       <div className="home-header-actions">
@@ -135,6 +136,17 @@ export default function Home() {
       </button>
     </section>
 
+    <Link className={`card home-gym-card${selectedGym ? ' is-selected' : ''}`} to="/academias">
+      <span className="home-gym-icon"><Icon name="globe" /></span>
+      <span className="home-gym-copy">
+        <span className="personal-eyebrow">{t('Your gym')}</span>
+        <strong>{selectedGym?.name || t('Select your gym')}</strong>
+        {selectedGym ? <span>{selectedGym.city} / {selectedGym.state}{' \u00b7 '}{t('{0} available exercises', selectedGym.exerciseIds?.length || 0)}</span>
+          : <span>{t('See hours and equipment before building your workout.')}</span>}
+      </span>
+      <Icon name="chevronRight" />
+    </Link>
+
     <section className="home-ai-card" aria-labelledby="home-ai-title">
       <div className="home-ai-heading">
         <span className="home-ai-icon"><Icon name="sparkles" /></span>
@@ -149,7 +161,7 @@ export default function Home() {
       </div>
 
       {user ? <div className="home-ai-readiness">
-        <div className="home-ai-readiness-head"><span>{t('Data and measurements')}</span><strong>{readinessCount}/4</strong></div>
+        <div className="home-ai-readiness-head"><span>{t('Data and measurements')}</span><strong>{t(readinessCount === readiness.length ? 'Ready to generate' : 'Complete your profile')}</strong></div>
         <ul>{readiness.map(([label, complete]) => <li key={label} className={complete ? 'is-complete' : ''}><Icon name={complete ? 'check' : 'plus'} /><span>{label}</span></li>)}</ul>
       </div> : <div className="home-ai-guest-note"><Icon name="shield" /><span>{t('Your workouts. Your weights. Your profile.')}</span></div>}
 

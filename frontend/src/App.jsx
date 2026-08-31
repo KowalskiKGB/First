@@ -19,6 +19,7 @@ import Modals from './components/Modals.jsx'
 import Toast from './components/Toast.jsx'
 import RestTimer from './components/RestTimer.jsx'
 import Home from './views/Home.jsx'
+import GymDirectory from './views/GymDirectory.jsx'
 import Plan from './views/Plan.jsx'
 import RoutineEdit from './views/RoutineEdit.jsx'
 import Workout from './views/Workout.jsx'
@@ -208,6 +209,7 @@ function Shell() {
   const loadCollaboration = useCollaboration(s => s.load)
   const programs = useCollaboration(s => s.programs)
   const syncPersonalPrograms = useStore(s => s.syncPersonalPrograms)
+  const selectGym = useStore(s => s.selectGym)
   const langV = useLang()   // re-renders the whole shell when the language (pack) changes
   useEffect(() => { setNav(navigate) }, [navigate])
   useEffect(() => { applyPrefs(S.theme, S.accent) }, [S.theme, S.accent])
@@ -252,6 +254,7 @@ function Shell() {
         <ErrorBoundary>
           <Routes>
             <Route path="/home" element={<Home />} />
+            <Route path="/academias" element={<GymDirectory selectedGymId={S.selectedGym?.id || null} onSelect={selectGym} authenticated={!!user && !isGuest} />} />
             <Route path="/plan" element={<Plan />} />
             <Route path="/plan/r/:id" element={<RoutineEdit />} />
             <Route path="/workout" element={<Workout />} />

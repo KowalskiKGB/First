@@ -53,6 +53,11 @@ const isMonth = value => {
 const isInstant = value => typeof value === 'string' &&
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) &&
   isDate(value.slice(0, 10)) && Number.isFinite(new Date(value).getTime());
+const optionalInstant = (value, name) => {
+  if (value == null) return null;
+  if (!isInstant(value)) throw fail(`invalid ${name}`);
+  return value;
+};
 const boundedInteger = (value, min, max, fallback) => {
   const number = Number(value);
   return Number.isInteger(number) ? Math.max(min, Math.min(max, number)) : fallback;
@@ -104,6 +109,40 @@ function trainingProfilePayload(data) {
 function gymProfilePayload(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) throw fail('invalid gym profile');
   if (!Array.isArray(data.specificMachines) || data.specificMachines.length > 40) throw fail('invalid specific machines');
+  const directoryGymId = data.directoryGymId == null ? '' : requireText(data.directoryGymId, 'directory gym id', 100);
+  let directorySnapshot;
+  if (data.directorySnapshot != null) {
+    const snapshot = data.directorySnapshot;
+    if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) throw fail('invalid gym directory snapshot');
+    const state = requireText(snapshot.state, 'gym state', 2, true).toUpperCase();
+    if (!/^[A-Z]{2}$/.test(state)) throw fail('invalid gym state');
+    if (!['unverified', 'verified', 'partner'].includes(snapshot.status)) throw fail('invalid gym status');
+    if (!Array.isArray(snapshot.openingHours) || snapshot.openingHours.length > 7) throw fail('invalid opening hours');
+    const openingHours = snapshot.openingHours.map(entry => {
+      if (!entry || !Number.isInteger(entry.day) || entry.day < 0 || entry.day > 6 || typeof entry.closed !== 'boolean') {
+        throw fail('invalid opening hours');
+      }
+      const open = entry.closed && entry.open == null ? '' : requireText(entry.open, 'opening time', 5);
+      const close = entry.closed && entry.close == null ? '' : requireText(entry.close, 'closing time', 5);
+      const validTime = value => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+      if (!entry.closed && (!validTime(open) || !validTime(close))) throw fail('invalid opening hours');
+      return { day: entry.day, open, close, closed: entry.closed };
+    });
+    const id = requireText(snapshot.id, 'gym snapshot id', 100, true);
+    if (directoryGymId && directoryGymId !== id) throw fail('gym snapshot mismatch');
+    directorySnapshot = {
+      id,
+      name: requireText(snapshot.name, 'gym snapshot name', 120, true),
+      state,
+      city: requireText(snapshot.city, 'gym snapshot city', 100, true),
+      address: requireText(snapshot.address, 'gym snapshot address', 240, true),
+      status: snapshot.status,
+      openingHours,
+      exerciseIds: requireStringList(snapshot.exerciseIds, 'gym snapshot exercises', 200),
+      createdAt: optionalInstant(snapshot.createdAt, 'gym creation date'),
+      updatedAt: optionalInstant(snapshot.updatedAt, 'gym update date')
+    };
+  }
   return {
     name: requireText(data.name, 'gym name', 120, true),
     genericEquipment: requireStringList(data.genericEquipment, 'generic equipment', 60),
@@ -112,9 +151,15 @@ function gymProfilePayload(data) {
       return {
         name: requireText(machine.name, 'machine name', 100, true),
         category: requireText(machine.category, 'machine category', 80),
-        exerciseIds: requireStringList(machine.exerciseIds, 'machine exercises', 60)
+        exerciseIds: requireStringList(
+          machine.exerciseIds,
+          'machine exercises',
+          machine.category === 'exercise-catalog' ? 200 : 60
+        )
       };
-    })
+    }),
+    ...(directoryGymId || directorySnapshot ? { directoryGymId: directoryGymId || directorySnapshot.id } : {}),
+    ...(directorySnapshot ? { directorySnapshot } : {})
   };
 }
 const projectTrainingProfile = profile => profile ? {
@@ -141,6 +186,8 @@ const projectGymProfile = gym => gym ? {
   name: gym.name,
   genericEquipment: [...gym.genericEquipment],
   specificMachines: gym.specificMachines.map(machine => ({ ...machine, exerciseIds: [...machine.exerciseIds] })),
+  ...(gym.directoryGymId ? { directoryGymId: gym.directoryGymId } : {}),
+  ...(gym.directorySnapshot ? { directorySnapshot: structuredClone(gym.directorySnapshot) } : {}),
   createdAt: gym.createdAt,
   updatedAt: gym.updatedAt
 } : null;

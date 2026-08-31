@@ -168,8 +168,10 @@ describe('professional Personal views SSR', () => {
     expect(markup).toContain('Controle o movimento.')
     expect(markup).toContain('Favorite exercises')
     expect(markup).toContain('Exercises to avoid')
-    expect(markup).toContain('Remove Abdominal 3/4')
-    expect(markup).toContain('Remove Flexão lateral a 45°')
+    expect(markup).toContain('name="personal-ai-favorite-exercises"')
+    expect(markup).toContain('name="personal-ai-avoided-exercises"')
+    expect(markup).toContain('data-exercise-id="0001"')
+    expect(markup).toContain('data-exercise-id="0002"')
   })
 
   it('orders the read-only AI schedule from Monday through Sunday', () => {

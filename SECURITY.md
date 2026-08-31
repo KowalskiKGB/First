@@ -86,6 +86,13 @@ Read this before hosting First for anyone other than yourself.
   with an independent `AI_CONFIG_MASTER_KEY` containing exactly 32 random bytes represented by
   64 hexadecimal characters. If that key is missing or malformed, the core app still starts, but
   provider save/test/model-list/activation fails closed and generation remains unavailable.
+- **Gym equipment changes are moderated.** The public gym directory can be searched without a
+  session, but new gym/equipment requests require a signed-in student, remain pending, and only a
+  Dev session can approve or reject them. Approval stores catalogue exercise IDs from the canonical
+  exercise database; free text from the requester is never treated as publishable equipment.
+- **Dev user views are administrative projections.** `/devadmin` can list registered users, online
+  status, last access and selected training/profile metadata for operations. Password hashes,
+  provider keys, session cookies and full credential material are not returned to the browser.
 - **Only one tested provider is active.** OpenAI, Gemini and Anthropic each have a fixed slot with
   selected model, fingerprint, test status and metrics. A provider can be activated only after a
   successful structured-output test for the saved model/key. Custom provider hosts are rejected;

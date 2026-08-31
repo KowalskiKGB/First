@@ -77,6 +77,25 @@ describe('Brazilian Portuguese defaults', () => {
     expect(aiWorkspaceKeys.map(key => pt[key]).join(' ')).not.toMatch(/Ã|Â|�/)
   })
 
+  it('translates the gym directory and Dev moderation workspace', () => {
+    const keys = [
+      'Gym directory',
+      'Find your gym',
+      'Search exercises…',
+      'Could not find your equipment? Click here to register it',
+      'Equipment requests',
+      'Registered users',
+      'Last access',
+      'Select your gym',
+      'Body recomposition',
+      'Conditioning',
+      'General health',
+    ]
+
+    expect(keys.every(key => typeof pt[key] === 'string' && pt[key].trim() && pt[key] !== key)).toBe(true)
+    expect(keys.map(key => pt[key]).join(' ')).not.toMatch(/Ã|Â|�/)
+  })
+
   it('translates every student account validation message', () => {
     const accountValidationKeys = [
       'unsupported fields',

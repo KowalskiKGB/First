@@ -18,6 +18,9 @@ const LEGACY_JOB_STAGES = Object.freeze({
   completed: 'applying'
 });
 const USAGE_STATUSES = new Set(['success', 'failed']);
+const GYM_STATUSES = new Set(['unverified', 'verified', 'partner']);
+const GYM_REQUEST_KINDS = new Set(['gym', 'equipment', 'correction']);
+const GYM_REQUEST_STATUSES = new Set(['pending', 'approved', 'rejected']);
 const CONNECTION_GRANTS = [
   'plansWrite', 'workoutsRead', 'progressRead', 'measurementsWrite',
   'liveActivityRead', 'trainingProfileWrite', 'aiPlanRead'
@@ -31,6 +34,93 @@ const stringList = (value, maxItems, maxLength = 100) => [...new Set(
 )];
 const days = value => [...new Set((Array.isArray(value) ? value : [])
   .filter(day => Number.isInteger(day) && day >= 0 && day <= 6))].slice(0, 7).sort((a, b) => a - b);
+
+function normalizeOpeningHours(value) {
+  const validTime = value => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+  return (Array.isArray(value) ? value : []).slice(0, 7).flatMap(entry => {
+    if (!entry || !Number.isInteger(entry.day) || entry.day < 0 || entry.day > 6) return [];
+    const closed = entry.closed === true;
+    const open = text(entry.open, 5);
+    const close = text(entry.close, 5);
+    if (!closed && (!validTime(open) || !validTime(close))) return [];
+    return [{ day: entry.day, open, close, closed }];
+  });
+}
+
+function normalizeDirectoryGym(value) {
+  const id = text(value?.id, 100);
+  const name = text(value?.name, 120);
+  const state = text(value?.state, 2).toUpperCase();
+  const city = text(value?.city, 100);
+  const address = text(value?.address, 240);
+  if (!id || !name || !/^[A-Z]{2}$/.test(state) || !city || !address) return null;
+  return {
+    id,
+    name,
+    state,
+    city,
+    address,
+    status: GYM_STATUSES.has(value.status) ? value.status : 'unverified',
+    openingHours: normalizeOpeningHours(value.openingHours),
+    openingHoursNote: text(value.openingHoursNote, 300),
+    exerciseIds: stringList(value.exerciseIds, 200),
+    createdAt: timestamp(value.createdAt),
+    updatedAt: timestamp(value.updatedAt)
+  };
+}
+
+function normalizeGymRequestPayload(value, kind) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const exerciseIds = stringList(value.exerciseIds, 200);
+  const note = text(value.note, 500);
+  if (kind === 'gym') {
+    const name = text(value.name, 120);
+    const state = text(value.state, 2).toUpperCase();
+    const city = text(value.city, 100);
+    const address = text(value.address, 240);
+    if (!name || !/^[A-Z]{2}$/.test(state) || !city || !address) return null;
+    return {
+      name,
+      state,
+      city,
+      address,
+      openingHours: normalizeOpeningHours(value.openingHours),
+      openingHoursNote: text(value.openingHoursNote, 300),
+      exerciseIds,
+      ...(note ? { note } : {})
+    };
+  }
+  const name = text(value.name, 100);
+  if (!name && !note && !exerciseIds.length) return null;
+  return {
+    ...(name ? { name } : {}),
+    ...(note ? { note } : {}),
+    exerciseIds
+  };
+}
+
+function normalizeGymRequest(value) {
+  const id = text(value?.id, 100);
+  const kind = GYM_REQUEST_KINDS.has(value?.kind) ? value.kind : '';
+  const status = GYM_REQUEST_STATUSES.has(value?.status) ? value.status : '';
+  const submittedByUserId = text(value?.submittedByUserId, 100);
+  const gymId = text(value?.gymId, 100);
+  const payload = normalizeGymRequestPayload(value?.payload, kind);
+  if (!id || !kind || !status || !submittedByUserId || !payload || (kind !== 'gym' && !gymId)) return null;
+  const reviewedAt = timestamp(value.reviewedAt);
+  const reviewedBy = text(value.reviewedBy, 100);
+  return {
+    id,
+    kind,
+    status,
+    ...(gymId ? { gymId } : {}),
+    submittedByUserId,
+    payload,
+    createdAt: timestamp(value.createdAt),
+    ...(reviewedAt ? { reviewedAt } : {}),
+    ...(reviewedBy ? { reviewedBy } : {})
+  };
+}
 
 function normalizeTrainingProfile(value) {
   const studentId = text(value?.studentId, 100);
@@ -62,6 +152,8 @@ function normalizeTrainingProfile(value) {
 function normalizeGymProfile(value) {
   const studentId = text(value?.studentId, 100);
   if (!studentId) return null;
+  const directoryGymId = text(value.directoryGymId, 100);
+  const directorySnapshot = normalizeDirectoryGym(value.directorySnapshot);
   return {
     studentId,
     name: text(value.name, 120),
@@ -72,9 +164,11 @@ function normalizeGymProfile(value) {
       return [{
         name,
         category: text(machine.category, 80),
-        exerciseIds: stringList(machine.exerciseIds, 60)
+        exerciseIds: stringList(machine.exerciseIds, machine.category === 'exercise-catalog' ? 200 : 60)
       }];
     }),
+    ...(directoryGymId ? { directoryGymId } : {}),
+    ...(directorySnapshot ? { directorySnapshot } : {}),
     createdAt: timestamp(value.createdAt),
     updatedAt: timestamp(value.updatedAt)
   };
@@ -178,6 +272,7 @@ function normalizeAiJob(value) {
     status: legacyStatus,
     stage: JOB_STAGES.has(stage) ? stage : legacyStatus === 'applied' ? 'applying' : 'organizing',
     publicError: text(value.publicError, 240) || null,
+    failureCode: text(value.failureCode, 80) || null,
     contextHash: text(value.contextHash, 128),
     planVersion: Number.isInteger(value.planVersion) && value.planVersion > 0 ? value.planVersion : null,
     createdAt: timestamp(value.createdAt),
@@ -238,7 +333,7 @@ function retainedPlans(values) {
 }
 
 export const INITIAL_COLLABORATION = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   rev: 0,
   profiles: [],
   connections: [],
@@ -252,6 +347,8 @@ export const INITIAL_COLLABORATION = {
   receivables: [],
   trainingProfiles: [],
   gymProfiles: [],
+  gymDirectory: [],
+  gymRequests: [],
   aiPlans: [],
   aiJobs: [],
   aiUsage: []
@@ -260,16 +357,23 @@ export const INITIAL_COLLABORATION = {
 export function migrateCollaboration(value) {
   const collaboration = value && typeof value === 'object' && !Array.isArray(value) ? structuredClone(value) : {};
   const legacyCollections = Object.keys(INITIAL_COLLABORATION)
-    .filter(key => !['schemaVersion', 'rev', 'connections', 'trainingProfiles', 'gymProfiles', 'aiPlans', 'aiJobs', 'aiUsage'].includes(key));
+    .filter(key => ![
+      'schemaVersion', 'rev', 'connections', 'trainingProfiles', 'gymProfiles',
+      'gymDirectory', 'gymRequests', 'aiPlans', 'aiJobs', 'aiUsage'
+    ].includes(key));
 
   return {
     ...collaboration,
-    schemaVersion: 2,
+    schemaVersion: 3,
     rev: Number.isInteger(collaboration.rev) && collaboration.rev >= 0 ? collaboration.rev : 0,
     ...Object.fromEntries(legacyCollections.map(key => [key, Array.isArray(collaboration[key]) ? collaboration[key] : []])),
     connections: (Array.isArray(collaboration.connections) ? collaboration.connections : []).map(normalizeConnection),
     trainingProfiles: onePerStudent(collaboration.trainingProfiles, normalizeTrainingProfile),
     gymProfiles: onePerStudent(collaboration.gymProfiles, normalizeGymProfile),
+    gymDirectory: (Array.isArray(collaboration.gymDirectory) ? collaboration.gymDirectory : [])
+      .map(normalizeDirectoryGym).filter(Boolean),
+    gymRequests: (Array.isArray(collaboration.gymRequests) ? collaboration.gymRequests : [])
+      .map(normalizeGymRequest).filter(Boolean).slice(-2000),
     aiPlans: retainedPlans(collaboration.aiPlans),
     aiJobs: (Array.isArray(collaboration.aiJobs) ? collaboration.aiJobs : []).map(normalizeAiJob).filter(Boolean).slice(-2000),
     aiUsage: (Array.isArray(collaboration.aiUsage) ? collaboration.aiUsage : []).map(normalizeAiUsage).filter(Boolean).slice(-2000)

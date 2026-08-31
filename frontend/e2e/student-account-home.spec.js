@@ -68,7 +68,7 @@ test('student Home invites login, registers profile data, gates AI and exposes p
   })))
 
   await page.goto('/#/home')
-  await expect(page.getByRole('heading', { name: 'Fazer login' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1 })).toContainText(/^Ol/)
   await expect(page.getByRole('button', { name: 'Fazer login' })).toBeVisible()
   await expect(page.getByText('Esta semana', { exact: true })).toHaveCount(1)
   expect(await page.locator('.home-week-day-card').first().evaluate(element => getComputedStyle(element).flexDirection)).toBe('column')
@@ -115,7 +115,7 @@ test('student Home invites login, registers profile data, gates AI and exposes p
   await expect(page.locator('[name="ai-height"]')).toHaveValue('177')
   await page.getByRole('button', { name: '18 anos ou mais' }).click()
   await page.getByRole('button', { name: 'Continuar' }).click()
-  await expect(page.locator('[name="ai-goal"]')).toHaveValue('both')
+  await expect(page.getByRole('button', { name: /Recomposi/ })).toHaveAttribute('aria-pressed', 'true')
 
   await page.goto('/#/settings')
   await expect(page.getByRole('heading', { name: 'Perfil' })).toBeVisible()

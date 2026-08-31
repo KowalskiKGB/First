@@ -80,6 +80,29 @@ test('student persists profile, gym and measurements then reads only their AI co
   assert.equal(context.body.completeness.eligible, true);
 });
 
+test('catalogue-backed gym profiles retain up to two hundred exact exercise ids', async t => {
+  const f = fixture(t, state());
+  const exerciseIds = Array.from({ length: 120 }, (_, index) => `catalogue-${index}`);
+  const body = {
+    rev: 0,
+    name: 'Academia Catálogo',
+    genericEquipment: [],
+    specificMachines: [{ name: 'Catálogo da academia', category: 'exercise-catalog', exerciseIds }],
+    directoryGymId: 'gym-catalogue',
+    directorySnapshot: {
+      id: 'gym-catalogue', name: 'Academia Catálogo', state: 'CE', city: 'Fortaleza', address: 'Rua A, 10',
+      status: 'unverified', openingHours: [{ day: 0, closed: true }], exerciseIds
+    }
+  };
+
+  const response = await invoke(f, 'PUT /api/ai/gym', { user: { id: 'student-a' }, body });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body.gym.specificMachines[0].exerciseIds, exerciseIds);
+  assert.deepEqual(response.body.gym.directorySnapshot.openingHours, [{ day: 0, open: '', close: '', closed: true }]);
+  assert.deepEqual(f.read().gymProfiles[0].specificMachines[0].exerciseIds, exerciseIds);
+});
+
 test('student AI context exposes only ten retained own AI versions in descending order', async t => {
   const aiPlans = Array.from({ length: 12 }, (_, index) => {
     const version = index + 1;

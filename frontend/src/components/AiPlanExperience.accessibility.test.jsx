@@ -31,6 +31,7 @@ vi.mock('../lib/i18n.js', () => ({
   t: (value, ...args) => args.reduce((text, arg, index) => text.replaceAll(`{${index}}`, arg), value),
 }))
 vi.mock('./Icon.jsx', () => ({ default: ({ name }) => <i data-icon={name} /> }))
+vi.mock('./Media.jsx', () => ({ Thumb: ({ ex }) => <span data-thumb={ex.id} /> }))
 vi.mock('./ui.jsx', () => ({
   Button: ({ children, ...props }) => <button {...props}>{children}</button>,
   NumberField: props => <input {...props} onChange={undefined} />,
@@ -199,7 +200,7 @@ describe('AiWizard accessibility', () => {
     findElements(first.tree, node => node.props?.name === 'ai-waistCm')[0].props.onChange(0)
 
     const second = wizardStep(2)
-    findElements(second.tree, node => node.props?.name === 'ai-goal')[0].props.onChange({ target: { value: 'Mobilidade' } })
+    findElementByChild(second.tree, 'Gain muscle').props.onClick()
     findElements(second.tree, node => node.props?.name === 'ai-minutes')[0].props.onChange(60)
     findElements(second.tree, node => node.type === 'button' && node.props?.['aria-pressed'] === false)[0].props.onClick()
     const priorities = findElements(second.tree, node => node.props?.legend === 'Training priorities')[0]
@@ -208,8 +209,8 @@ describe('AiWizard accessibility', () => {
     const third = wizardStep(3)
     findElements(third.tree, node => node.props?.name === 'ai-gym-name')[0].props.onChange({ target: { value: 'Academia Norte' } })
     const equipment = findElements(third.tree, node => node.props?.legend === 'Available equipment')[0]
-    findElements(equipment.type(equipment.props), node => node.type === 'button' && node.props?.['aria-pressed'] === true)[0].props.onClick()
-    findElements(third.tree, node => node.props?.machines === draft.specificMachines)[0].props.onChange([])
+    equipment.props.onChange(['0003'])
+    findElements(third.tree, node => node.type?.name === 'MachineEditor')[0].props.onChange([])
     findElements(third.tree, node => node.props?.name === 'ai-favorite-exercises')[0].props.onChange(['0001'])
     findElements(third.tree, node => node.props?.name === 'ai-avoided-exercises')[0].props.onChange(['0002'])
     findElements(third.tree, node => node.props?.name === 'ai-limitations')[0].props.onChange({ target: { value: 'Sem impacto' } })

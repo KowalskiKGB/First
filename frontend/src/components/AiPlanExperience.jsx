@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
-import { EXDB } from '../lib/exercises-data.js'
-import { AI_EQUIPMENT, AI_EXPERIENCE, AI_TARGET_AREAS } from '../lib/ai-plan.js'
+import { AI_EXPERIENCE, AI_GOALS, AI_TARGET_AREAS, aiGoalLabel, catalogExerciseIds, editableSpecificMachines, withCatalogExerciseIds } from '../lib/ai-plan.js'
 import { jobPresentation, providerDisplayName, validateWizardStep } from '../lib/ai-product.js'
 import { DAYN } from '../lib/format.js'
-import { dateLocale, exerciseName, t } from '../lib/i18n.js'
+import { dateLocale, t } from '../lib/i18n.js'
+import ExerciseCatalogPicker from './ExerciseCatalogPicker.jsx'
 import Icon from './Icon.jsx'
-import { Button, NumberField, SearchField, Segmented, TextArea, TextField } from './ui.jsx'
+import { Button, NumberField, Segmented, TextArea, TextField } from './ui.jsx'
 
 const STEPS = [
   ['Data and measurements', 'Body data used to calibrate the week.'],
@@ -30,23 +30,6 @@ function ToggleGrid({ legend, values, options, onChange, error }) {
   )
 }
 
-function ExercisePicker({ title, name, selected, onChange, error }) {
-  const [query, setQuery] = useState('')
-  const results = useMemo(() => {
-    const needle = query.trim().toLocaleLowerCase('pt-BR')
-    if (needle.length < 2) return []
-    return EXDB.filter(exercise => `${exerciseName(exercise)} ${exercise.n}`.toLocaleLowerCase('pt-BR').includes(needle)).slice(0, 12)
-  }, [query])
-  const toggle = id => onChange(selected.includes(id) ? selected.filter(value => value !== id) : [...selected, id])
-  return (
-    <div className="exercise-preference-picker">
-      <label><span>{title}</span><SearchField name={name} value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} clearLabel={t('Clear search')} autoComplete="off" placeholder={t('Search exercise…')} aria-invalid={!!error} aria-describedby={error ? `ai-error-${error.name}` : undefined} />{error ? <FieldError errors={{ [error.name]: error.message }} name={error.name} /> : null}</label>
-      {results.length ? <div className="exercise-preference-results">{results.map(exercise => <button type="button" key={exercise.id} aria-pressed={selected.includes(exercise.id)} onClick={() => toggle(exercise.id)}>{exerciseName(exercise)}</button>)}</div> : null}
-      {selected.length ? <p>{t('{0} selected', selected.length)}</p> : null}
-    </div>
-  )
-}
-
 export function MachineEditor({ machines, onChange, errors = {} }) {
   const add = () => onChange([...machines, { name: '', category: '', exerciseIds: [] }])
   const patch = (index, value) => onChange(machines.map((machine, current) => current === index ? { ...machine, ...value } : machine))
@@ -62,7 +45,7 @@ export function MachineEditor({ machines, onChange, errors = {} }) {
           <div className="machine-row" key={index}>
             <label><span>{t('Machine name')}</span><TextField name={`specific-machine-name-${index}`} autoComplete="off" value={machine.name} onChange={event => patch(index, { name: event.target.value })} aria-invalid={!!nameError} aria-describedby={nameError ? `ai-error-specificMachineName${index}` : undefined} /><FieldError errors={errors} name={`specificMachineName${index}`} /></label>
             <label><span>{t('Category')}</span><TextField name={`specific-machine-category-${index}`} autoComplete="off" value={machine.category} onChange={event => patch(index, { category: event.target.value })} aria-invalid={!!categoryError} aria-describedby={categoryError ? `ai-error-specificMachineCategory${index}` : undefined} /><FieldError errors={errors} name={`specificMachineCategory${index}`} /></label>
-            <ExercisePicker name={`specific-machine-exercises-${index}`} title={t('Supported exercises')} selected={machine.exerciseIds} onChange={exerciseIds => patch(index, { exerciseIds })} error={exerciseError ? { name: `specificMachineExercises${index}`, message: exerciseError } : null} />
+            <ExerciseCatalogPicker name={`specific-machine-exercises-${index}`} searchName={`specific-machine-exercises-${index}`} title={t('Supported exercises')} selectedIds={machine.exerciseIds} onChange={exerciseIds => patch(index, { exerciseIds })} error={exerciseError ? { name: `specificMachineExercises${index}`, message: exerciseError } : null} />
             <button type="button" className="text-action" onClick={() => onChange(machines.filter((_, current) => current !== index))}>{t('Remove machine')}</button>
           </div>
         )
@@ -88,7 +71,7 @@ function StepOne({ draft, onDraft, errors, unit = 'kg' }) {
 function StepTwo({ draft, onDraft, errors }) {
   const toggleDay = day => onDraft({ availableDays: draft.availableDays.includes(day) ? draft.availableDays.filter(value => value !== day) : [...draft.availableDays, day].sort() })
   return <div className="ai-wizard-fields">
-    <label><span>{t('Primary goal')}</span><TextField name="ai-goal" autoComplete="off" value={draft.goal} onChange={event => onDraft({ goal: event.target.value })} aria-invalid={!!errors.goal} aria-describedby={errors.goal ? 'ai-error-goal' : undefined} /><FieldError errors={errors} name="goal" /></label>
+    <fieldset className="ai-choice-group" aria-describedby={errors.goal ? 'ai-error-goal' : undefined}><legend>{t('Primary goal')}</legend><div className="ai-toggle-grid">{AI_GOALS.map(([value, label]) => <button type="button" key={value} aria-pressed={draft.goal === value} onClick={() => onDraft({ goal: value })}>{t(label)}</button>)}</div><FieldError errors={errors} name="goal" /></fieldset>
     <fieldset className="ai-choice-group" aria-describedby={errors.experience ? 'ai-error-experience' : undefined}><legend>{t('Experience')}</legend><Segmented value={draft.experience} onChange={experience => onDraft({ experience })} options={AI_EXPERIENCE.map(([value, label]) => ({ value, label: t(label) }))} /><FieldError errors={errors} name="experience" /></fieldset>
     <fieldset className="ai-choice-group" aria-describedby={errors.availableDays ? 'ai-error-availableDays' : undefined}><legend>{t('Available days')}</legend><div className="ai-days">{[1, 2, 3, 4, 5, 6, 0].map(day => <button type="button" key={day} aria-pressed={draft.availableDays.includes(day)} onClick={() => toggleDay(day)}>{t(DAYN[day])}</button>)}</div><FieldError errors={errors} name="availableDays" /></fieldset>
     <label><span>{t('Minutes per session')}</span><NumberField name="ai-minutes" autoComplete="off" value={draft.minutesPerSession} decimal={false} onChange={minutesPerSession => onDraft({ minutesPerSession })} aria-invalid={!!errors.minutesPerSession} aria-describedby={errors.minutesPerSession ? 'ai-error-minutesPerSession' : undefined} /><FieldError errors={errors} name="minutesPerSession" /></label>
@@ -97,18 +80,22 @@ function StepTwo({ draft, onDraft, errors }) {
 }
 
 function StepThree({ draft, onDraft, errors }) {
+  const availableExerciseIds = catalogExerciseIds(draft)
+  const specificMachines = editableSpecificMachines(draft.specificMachines)
+  const selectAvailableExercises = ids => onDraft({ availableExerciseIds: [...ids], specificMachines: withCatalogExerciseIds(draft.specificMachines, ids) })
+  const updateSpecificMachines = machines => onDraft({ specificMachines: withCatalogExerciseIds(machines, availableExerciseIds) })
   return <div className="ai-wizard-fields">
     <label><span>{t('Gym')}</span><TextField name="ai-gym-name" autoComplete="off" value={draft.gymName} onChange={event => onDraft({ gymName: event.target.value })} aria-invalid={!!errors.gymName} aria-describedby={errors.gymName ? 'ai-error-gymName' : undefined} /><FieldError errors={errors} name="gymName" /></label>
-    <ToggleGrid legend={t('Available equipment')} values={draft.genericEquipment} options={AI_EQUIPMENT.map(([value, label]) => [value, label])} onChange={genericEquipment => onDraft({ genericEquipment })} error={errors.genericEquipment ? { name: 'genericEquipment', message: errors.genericEquipment } : null} />
-    <MachineEditor machines={draft.specificMachines} onChange={specificMachines => onDraft({ specificMachines })} errors={errors} />
-    <div className="exercise-picker-grid"><ExercisePicker name="ai-favorite-exercises" title={t('Favorite exercises')} selected={draft.favoriteExerciseIds} onChange={favoriteExerciseIds => onDraft({ favoriteExerciseIds })} error={errors.favoriteExerciseIds ? { name: 'favoriteExerciseIds', message: errors.favoriteExerciseIds } : null} /><ExercisePicker name="ai-avoided-exercises" title={t('Exercises to avoid')} selected={draft.avoidedExerciseIds} onChange={avoidedExerciseIds => onDraft({ avoidedExerciseIds })} error={errors.avoidedExerciseIds ? { name: 'avoidedExerciseIds', message: errors.avoidedExerciseIds } : null} /></div>
+    <ExerciseCatalogPicker name="ai-equipment-search" searchName="ai-equipment-search" legend={t('Available equipment')} selectedIds={availableExerciseIds} onChange={selectAvailableExercises} error={errors.genericEquipment ? { name: 'genericEquipment', message: errors.genericEquipment } : null} />
+    <MachineEditor machines={specificMachines} onChange={updateSpecificMachines} errors={errors} />
+    <div className="exercise-picker-grid"><ExerciseCatalogPicker name="ai-favorite-exercises" searchName="ai-favorite-exercises" title={t('Favorite exercises')} selectedIds={draft.favoriteExerciseIds} onChange={favoriteExerciseIds => onDraft({ favoriteExerciseIds })} error={errors.favoriteExerciseIds ? { name: 'favoriteExerciseIds', message: errors.favoriteExerciseIds } : null} /><ExerciseCatalogPicker name="ai-avoided-exercises" searchName="ai-avoided-exercises" title={t('Exercises to avoid')} selectedIds={draft.avoidedExerciseIds} onChange={avoidedExerciseIds => onDraft({ avoidedExerciseIds })} error={errors.avoidedExerciseIds ? { name: 'avoidedExerciseIds', message: errors.avoidedExerciseIds } : null} /></div>
     <label><span>{t('Limitations and observations')}</span><TextArea name="ai-limitations" autoComplete="off" value={draft.limitations} onChange={event => onDraft({ limitations: event.target.value })} aria-invalid={!!errors.limitations} aria-describedby={errors.limitations ? 'ai-error-limitations' : undefined} /><FieldError errors={errors} name="limitations" /></label>
   </div>
 }
 
 function StepFour({ draft, onDraft, errors }) {
   return <div className="ai-wizard-fields">
-    <div className="ai-review-grid"><div><span>{t('Goal')}</span><strong>{draft.goal}</strong></div><div><span>{t('Schedule')}</span><strong>{t('{0} days · {1} min', draft.availableDays.length, draft.minutesPerSession)}</strong></div><div><span>{t('Gym')}</span><strong>{draft.gymName}</strong></div><div><span>{t('Equipment')}</span><strong>{t('{0} categories', draft.genericEquipment.length)}</strong></div></div>
+    <div className="ai-review-grid"><div><span>{t('Goal')}</span><strong>{t(aiGoalLabel(draft.goal))}</strong></div><div><span>{t('Schedule')}</span><strong>{t('{0} days · {1} min', draft.availableDays.length, draft.minutesPerSession)}</strong></div><div><span>{t('Gym')}</span><strong>{draft.gymName}</strong></div><div><span>{t('Equipment')}</span><strong>{t('{0} selected', catalogExerciseIds(draft).length)}</strong></div></div>
     <div className="ai-safety-note"><Icon name="shield" /><p>{draft.ageBand === 'under14' ? t('The plan will prioritize technique, supervision and conservative loads.') : t('The model never defines absolute loads; progression uses your training history.')}</p></div>
     <label className="consent-row"><input type="checkbox" name="ai-consent" checked={draft.consent} onChange={event => onDraft({ consent: event.target.checked })} aria-invalid={!!errors.consent} aria-describedby={errors.consent ? 'ai-error-consent' : undefined} /><span><strong>{t('I authorize these data to be used for this generation.')}</strong><small>{t('Name, contact, finances and private Personal notes are not sent.')}</small></span></label><FieldError errors={errors} name="consent" />
     {draft.ageBand !== 'adult' ? <><label className="consent-row"><input type="checkbox" name="ai-guardian-consent" checked={draft.guardianConsent === true} onChange={event => onDraft({ guardianConsent: event.target.checked })} aria-invalid={!!errors.guardianConsent} aria-describedby={errors.guardianConsent ? 'ai-error-guardianConsent' : undefined} /><span><strong>{t('Guardian confirmation')}</strong><small>{t('A responsible adult confirmed this training request.')}</small></span></label><FieldError errors={errors} name="guardianConsent" /></> : null}

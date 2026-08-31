@@ -51,6 +51,13 @@ WebAuthn/passkeys, arquivos JSON, Vitest, `node:test`, Playwright, nginx e Docke
   edição de perfil para quem está autenticado.
 - [x] IA restrita a alunos autenticados; o modo convidado continua disponível para treinos locais.
 
+- [x] Diretório público de academias por UF/município/busca, com horários, endereço e inventário
+  exibido pelo catálogo real de exercícios.
+- [x] Solicitação autenticada de novas academias/aparelhos, fila de moderação no Painel Dev e
+  aprovação somente por IDs canônicos do catálogo.
+- [x] Painel Dev compacto com cadastro de APIs de IA, solicitações de academia/aparelhos e lista
+  operacional de usuários com último acesso/presença.
+
 ### Entregue, parcial e futuro
 
 | Área | Situação em 1.3.0 | Limite atual |
@@ -431,6 +438,10 @@ O roadmap termina somente quando todos os fluxos E2E passam, código novo manté
   automático de tokens, cópia de rotina gerenciada e badges exatos.
 - [x] Aba “IA e academia” no Personal com projeção por grant, edição autorizada de perfil/academia
   e leitura autorizada do plano IA.
+- [x] Diretório/moderação de academias: aluno escolhe academia mesmo sem login; sugestões de novas
+  academias ou aparelhos exigem login, ficam pendentes e só entram no diretório após revisão Dev.
+- [x] Seleção de aparelhos unificada pelo catálogo de exercícios, com busca, filtros e imagens; o
+  sistema não mantém listas paralelas inventadas de equipamentos.
 - [ ] Billing/plano pago de IA: estrutura de uso existe, mas cobrança, limite comercial e checkout
   ficam para fase futura.
 

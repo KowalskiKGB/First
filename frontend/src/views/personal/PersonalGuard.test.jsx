@@ -88,7 +88,7 @@ describe('PersonalGuard', () => {
   it('redirects away from the personal area after explicit permission revocation', () => {
     access.profile = null;
     access.error = 'forbidden';
-    access.message = 'PermissÃ£o revogada';
+    access.message = 'Permissão revogada';
     const markup = renderToStaticMarkup(
       <MemoryRouter initialEntries={['/personal/alunos/c1/medidas']}>
         <PersonalGuard><span>privileged</span></PersonalGuard>

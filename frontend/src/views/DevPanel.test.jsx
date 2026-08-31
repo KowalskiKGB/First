@@ -28,9 +28,12 @@ vi.mock('../components/ui.jsx', () => ({
   SearchField: props => <input {...props} />,
   TextField: props => <input {...props} />,
 }))
-vi.mock('../lib/i18n.js', () => ({ dateLocale: () => 'pt-BR', t: value => value }))
+vi.mock('../lib/i18n.js', () => ({
+  dateLocale: () => 'pt-BR',
+  t: (value, ...args) => args.reduce((text, arg, index) => text.replaceAll(`{${index}}`, arg), value),
+}))
 
-import DevPanel, { DevDashboard, DevLogin, ModelChoices } from './DevPanel.jsx'
+import DevPanel, { DevDashboard, DevLogin, ModelChoices, presenceCopy } from './DevPanel.jsx'
 
 function findElements(node, predicate, found = []) {
   if (!React.isValidElement(node)) return found
@@ -130,6 +133,25 @@ describe('Dev AI panel UI contracts', () => {
     expect(harness.setters[1]).toHaveBeenCalledWith(['gpt-5-mini'])
     const clearKey = harness.setters[0].mock.calls.map(([value]) => value).find(value => typeof value === 'function')
     expect(clearKey({ ...draft, apiKey: 'old' })).toEqual({ ...draft, apiKey: '' })
+  })
+
+  it('clears stale model results when the selected provider changes', () => {
+    const slot = { provider: 'gemini', selectedModel: '', configured: true, testStatus: 'untested', active: false }
+    harness.reset([{ provider: 'gemini', selectedModel: '', apiKey: '' }, ['gpt-5-mini'], 'gpt', 'ready', '', 'old error'])
+    const dashboard = DevDashboard({
+      providers: [slot], usage: {}, window: '7d', selectedProvider: 'gemini',
+      onSelectProvider: vi.fn(), onWindow: vi.fn(), onLogout: vi.fn(), onChanged: vi.fn(),
+    })
+    const provider = findElements(dashboard, element => element.props.definition?.provider === 'gemini')[0]
+
+    provider.type(provider.props)
+    expect(harness.effects).toHaveLength(2)
+    harness.effects[1]()
+
+    expect(harness.setters[1]).toHaveBeenCalledWith([])
+    expect(harness.setters[2]).toHaveBeenCalledWith('')
+    expect(harness.setters[3]).toHaveBeenCalledWith('idle')
+    expect(harness.setters[5]).toHaveBeenCalledWith('')
   })
 
   it('keeps the model empty while loading models after a key paste', async () => {
@@ -314,6 +336,32 @@ describe('Dev AI panel UI contracts', () => {
     await flush()
     expect(harness.setters[6]).toHaveBeenCalledWith(expect.any(String))
   })
+
+  it('opens the active provider editor after loading an unlocked Dev session', async () => {
+    harness.reset([null, { username: '', password: '' }, [], '7d', {}, false, '', 'apis', ''])
+    harness.api.mockImplementation(async path => {
+      if (path === '/api/dev/session') return { unlocked: true, username: 'first_dev_saved' }
+      if (path === '/api/dev/ai/providers') {
+        return { providers: [
+          { provider: 'openai', configured: false, active: false },
+          { provider: 'gemini', configured: true, selectedModel: 'gemini-2.5-flash', testStatus: 'success', active: true },
+        ] }
+      }
+      if (path === '/api/dev/ai/usage?window=7d') return { usage: {} }
+      if (path === '/api/dev/gym-requests') return { requests: [] }
+      if (path === '/api/dev/users') return { users: [] }
+      return { ok: true }
+    })
+
+    DevPanel()
+    harness.effects[0]()
+    await flush()
+    await flush()
+
+    const chooseProvider = harness.setters[8].mock.calls.map(([value]) => value).find(value => typeof value === 'function')
+    expect(chooseProvider('')).toBe('gemini')
+    expect(chooseProvider('openai')).toBe('openai')
+  })
 })
 
 describe('Dev operations console contracts', () => {
@@ -324,6 +372,13 @@ describe('Dev operations console contracts', () => {
     { provider: 'gemini', configured: true, selectedModel: 'gemini-2.5-flash', testStatus: 'success', active: false },
     { provider: 'anthropic', configured: false, selectedModel: '', testStatus: 'untested', active: false },
   ]
+
+  it('describes how long an account has been offline', () => {
+    const now = Date.parse('2026-08-30T12:00:00Z')
+    expect(presenceCopy({ online: true }, now)).toBe('Online now')
+    expect(presenceCopy({ online: false, lastAccessAt: now - 90 * 60_000 }, now)).toBe('Offline for 1 h')
+    expect(presenceCopy({ online: false, lastAccessAt: null }, now)).toBe('Never online')
+  })
 
   it('organizes the console into APIs, requests and users tabs', () => {
     const onSection = vi.fn()
@@ -394,6 +449,7 @@ describe('Dev operations console contracts', () => {
       status: 'pending',
       equipmentName: 'Leg press 45°',
       exerciseId: 'leg-press-45',
+      payload: { exerciseIds: ['0043', '0085'], openingHoursNote: 'Segunda a sexta, 6:00 às 22:00' },
       gym: { id: 'gym-1', name: 'Academia X', municipality: 'Fortaleza', address: 'Rua ABC, 123' },
       requestedBy: { id: 'student-1', name: 'Ana Silva', email: 'ana@example.com' },
       createdAt: '2026-08-30T12:00:00Z',
@@ -418,6 +474,7 @@ describe('Dev operations console contracts', () => {
     expect(markup).toContain('Ana Silva')
     expect(markup).toContain('ana@example.com')
     expect(markup).toContain('Pending')
+    expect(markup).toContain('Segunda a sexta, 6:00 às 22:00')
     expect(markup).not.toContain('must-never-render')
   })
 
@@ -453,6 +510,7 @@ describe('Dev operations console contracts', () => {
     expect(markup).toContain('1,71 m')
     expect(markup).toContain('Muscle gain')
     expect(markup).toContain('Offline')
+    expect(markup).toContain('Offline for')
     expect(markup).not.toContain('scrypt-secret-hash')
     expect(markup).not.toContain('provider-secret')
   })

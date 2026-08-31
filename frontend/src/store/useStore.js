@@ -14,6 +14,7 @@ export const DEF = {
   unit: 'kg', restSec: 90, sound: true, keepAwake: true, lang: DEFAULT_LANG,
   theme: 'dark', accent: 'lime', body: 'male', targetW: null,
   bodyweight: [], routines: [], week: {}, dayPlan: {}, sourceSchedules: { ai: [], personal: [] },
+  selectedGym: null,
   aiProfile: {
     heightCm: '', goal: '', experience: 'intermediario', sessionsPerWeek: 4, minutesPerSession: 60,
     gymName: '', measurements: {}, targetAreas: [],
@@ -27,6 +28,35 @@ export const DEF = {
   reminder: { on: false, time: '08:00', tz: null }, effort: null
 }
 const clone = o => JSON.parse(JSON.stringify(o))
+
+function gymSelection(gym) {
+  const exerciseIds = [...new Set((Array.isArray(gym?.exerciseIds) ? gym.exerciseIds : [])
+    .filter(value => typeof value === 'string' && value.trim()))].slice(0, 200)
+  const snapshot = {
+    id: String(gym?.id || ''), directoryGymId: String(gym?.id || ''), name: String(gym?.name || '').trim(),
+    state: String(gym?.state || '').trim(), city: String(gym?.city || '').trim(), address: String(gym?.address || '').trim(),
+    status: ['verified', 'partner'].includes(gym?.status) ? gym.status : 'unverified',
+    openingHours: clone(Array.isArray(gym?.openingHours) ? gym.openingHours : []), exerciseIds,
+  }
+  return snapshot.id && snapshot.name ? snapshot : null
+}
+
+function withSelectedGym(state, snapshot) {
+  return {
+    ...state,
+    selectedGym: clone(snapshot),
+    aiProfile: {
+      ...state.aiProfile,
+      gymName: snapshot.name,
+      directoryGymId: snapshot.directoryGymId,
+      availableExerciseIds: [...snapshot.exerciseIds],
+      equipment: [],
+      specificMachines: snapshot.exerciseIds.length ? [{
+        name: 'Catálogo da academia', category: 'exercise-catalog', exerciseIds: [...snapshot.exerciseIds],
+      }] : [],
+    },
+  }
+}
 
 function loadState() {
   try {
@@ -103,6 +133,11 @@ export const useStore = create((set, get) => {
     },
     replaceState(S, push = false) { persist(clone(S), push) },
 
+    selectGym(gym) {
+      const snapshot = gymSelection(gym)
+      if (snapshot) persist(withSelectedGym(get().S, snapshot))
+    },
+
     syncPersonalPrograms(programs) {
       const current = get().S
       const next = mergePublishedPrograms(current, programs)
@@ -130,12 +165,17 @@ export const useStore = create((set, get) => {
         const { state } = await api('/api/data')
         const S = get().S
         const dirty = localStorage.getItem('gym_dirty') === '1'
+        const guestGym = !hasData(S) && S.selectedGym?.id && !state?.selectedGym?.id
+          ? gymSelection(S.selectedGym)
+          : null
         if (state && (!hasData(S) || ((state._ts || 0) >= (S._ts || 0) && !dirty))) {
           const active = S.active
-          const next = Object.assign(clone(DEF), state)
+          let next = Object.assign(clone(DEF), state)
           if (active) next.active = active
+          if (guestGym) next = withSelectedGym(next, guestGym)
           persist(next, false)
-        } else if (hasData(S)) { await get().pushState() }
+          if (guestGym) await get().pushState()
+        } else if (hasData(S) || S.selectedGym?.id) { await get().pushState() }
       } catch (e) { /* offline — keep local */ }
     },
 

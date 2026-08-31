@@ -10,10 +10,12 @@ import {
 import { failedGenerationUsage } from './ai-providers.js';
 
 const ACTIVE_JOB_STATUSES = new Set(['queued', 'running']);
+const SAFE_FAILURE_CODES = new Set(['provider_response_truncated']);
 const PUBLIC_GENERATION_ERROR = 'Não foi possível gerar o plano. Tente novamente mais tarde.';
 const PUBLIC_INTERRUPTION_ERROR = 'A geração foi interrompida por uma reinicialização. Crie um novo pedido.';
 
 const text = (value, max = 160) => typeof value === 'string' ? value.trim().slice(0, max) : '';
+const safeFailureCode = value => SAFE_FAILURE_CODES.has(value) ? value : null;
 class ExistingJobSelection extends Error {
   constructor(job) {
     super('existing AI job selected');
@@ -24,6 +26,7 @@ const publicJob = job => job ? {
   id: job.id,
   status: job.status,
   stage: job.stage,
+  failureCode: safeFailureCode(job.failureCode),
   publicError: job.publicError || null,
   contextHash: job.contextHash || '',
   planVersion: job.planVersion || null,
@@ -125,7 +128,7 @@ export function createAiJobService({
     let stage = 'organizing';
     const startedAt = Date.now();
     const started = now();
-    jobPatch(store, jobId, { status: 'running', stage, updatedAt: started, publicError: null });
+    jobPatch(store, jobId, { status: 'running', stage, updatedAt: started, failureCode: null, publicError: null });
     const initial = store.read();
     const job = initial.aiJobs.find(item => item.id === jobId);
     if (!job || job.status !== 'running') return;
@@ -192,6 +195,7 @@ export function createAiJobService({
             ...item,
             status: 'applied',
             stage: 'applying',
+            failureCode: null,
             publicError: null,
             contextHash: currentHash,
             planVersion: version,
@@ -214,8 +218,9 @@ export function createAiJobService({
           status: 'failed', studentId: job?.studentId, latencyMs: Date.now() - startedAt, timestamp: failedAt
         });
       }
+      const failureCode = safeFailureCode(error?.failureCode);
       const publicError = !providerCalled && error?.expose ? text(error.message, 240) : PUBLIC_GENERATION_ERROR;
-      const failed = jobPatch(store, jobId, { status: 'failed', stage, publicError, updatedAt: failedAt });
+      const failed = jobPatch(store, jobId, { status: 'failed', stage, failureCode, publicError, updatedAt: failedAt });
       return publicJob(failed.aiJobs.find(item => item.id === jobId));
     }
   };
@@ -241,7 +246,7 @@ export function createAiJobService({
           const createdAt = now();
           job = {
             id: randomId(), idempotencyKey: key, studentId: owner,
-            status: 'queued', stage: 'organizing', publicError: null,
+            status: 'queued', stage: 'organizing', failureCode: null, publicError: null,
             contextHash: '', planVersion: null, createdAt, updatedAt: createdAt
           };
           return { ...state, aiJobs: [...state.aiJobs, job] };
@@ -277,7 +282,7 @@ export function createAiJobService({
         aiJobs: state.aiJobs.map(job => {
           if (job.status !== 'running') return job;
           count += 1;
-          return { ...job, status: 'failed', publicError: PUBLIC_INTERRUPTION_ERROR, updatedAt: recoveredAt };
+          return { ...job, status: 'failed', failureCode: null, publicError: PUBLIC_INTERRUPTION_ERROR, updatedAt: recoveredAt };
         })
       }));
       return count;

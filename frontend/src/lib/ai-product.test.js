@@ -10,6 +10,7 @@ import {
   providerDisplayName,
   validateWizardStep,
 } from './ai-product.js'
+import { EXDB } from './exercises-data.js'
 
 const context = {
   profile: {
@@ -33,6 +34,31 @@ describe('AI product flow helpers', () => {
       specificMachines: [{ name: 'Leg press', category: 'Pernas', exerciseIds: ['0003'] }],
       guardianConsent: true,
     })
+  })
+
+  it('hydrates the directory snapshot and exact exercise inventory without widening equipment categories', () => {
+    const directorySnapshot = {
+      id: 'gym-fortaleza', name: 'Academia Centro', state: 'CE', city: 'Fortaleza', address: 'Rua A, 10',
+      status: 'verified', openingHours: [{ day: 1, open: '06:00', close: '22:00', closed: false }],
+      exerciseIds: ['0001', '0003'], updatedAt: '2026-08-30T12:00:00.000Z',
+    }
+    const draft = draftFromAiContext({
+      gym: {
+        name: 'Academia Centro', directoryGymId: 'gym-fortaleza', directorySnapshot,
+        genericEquipment: ['barbell'],
+        specificMachines: [{ name: 'Catálogo da academia', category: 'exercise-catalog', exerciseIds: ['0001', '0003'] }],
+      },
+    })
+
+    expect(draft).toMatchObject({
+      gymName: 'Academia Centro', directoryGymId: 'gym-fortaleza', availableExerciseIds: ['0001', '0003'],
+      directorySnapshot,
+    })
+    expect(draft.directorySnapshot).not.toBe(directorySnapshot)
+  })
+
+  it('maps the legacy combined signup goal to the canonical recomposition button', () => {
+    expect(draftFromAiContext({ profile: { goal: 'both' } }).goal).toBe('recomposition')
   })
 
   it('converts only body weight into the selected unit without round-trip drift', () => {
@@ -101,6 +127,17 @@ describe('AI product flow helpers', () => {
     expect(validateWizardStep({
       ...draft, specificMachines: [{ name: 'Leg press', category: '', exerciseIds: ['missing-id'] }],
     }, 3)).toHaveProperty('specificMachineExercises0')
+  })
+
+  it('accepts up to 200 exact catalogue exercises and rejects a larger inventory', () => {
+    const exerciseIds = EXDB.slice(0, 200).map(exercise => exercise.id)
+    const draft = {
+      ...draftFromAiContext(context), genericEquipment: [], availableExerciseIds: exerciseIds,
+      specificMachines: [{ name: 'Catálogo da academia', category: 'exercise-catalog', exerciseIds }],
+    }
+
+    expect(validateWizardStep(draft, 3)).toEqual({})
+    expect(validateWizardStep({ ...draft, availableExerciseIds: [...exerciseIds, EXDB[200].id] }, 3)).toHaveProperty('availableExerciseIds')
   })
 
   it('rejects server-invalid text, collection and integer limits', () => {
@@ -180,6 +217,32 @@ describe('AI product flow helpers', () => {
     expect(payloads.gym.specificMachines[0].exerciseIds).toEqual(['0003'])
     expect(payloads.measurements).toEqual([{ kind: 'weight', value: 62, unit: 'lb', observedAt: '2026-08-29' }])
     expect(canonicalDraftPayloads({ ...draft, ageBand: 'adult' }, 6, '2026-08-30').profile.guardianConsent).toBeNull()
+  })
+
+  it('persists the directory and exact inventory through one synthetic machine without enabling a generic category', () => {
+    const exerciseIds = EXDB.slice(0, 200).map(exercise => exercise.id)
+    const directorySnapshot = {
+      id: 'gym-fortaleza', name: 'Academia Centro', state: 'CE', city: 'Fortaleza', address: 'Rua A, 10',
+      status: 'verified', openingHours: [], exerciseIds,
+    }
+    const draft = {
+      ...draftFromAiContext(context), directoryGymId: 'gym-fortaleza', directorySnapshot,
+      genericEquipment: ['barbell'], availableExerciseIds: exerciseIds,
+      specificMachines: [
+        { name: 'Leg press', category: 'Pernas', exerciseIds: ['0003'] },
+        { name: 'Catálogo antigo', category: 'exercise-catalog', exerciseIds: ['0002'] },
+      ],
+    }
+
+    const payload = canonicalDraftPayloads(draft, 5, '2026-08-30').gym
+
+    expect(payload.directoryGymId).toBe('gym-fortaleza')
+    expect(payload.directorySnapshot).toEqual(directorySnapshot)
+    expect(payload.genericEquipment).toEqual([])
+    expect(payload.specificMachines.filter(machine => machine.category === 'exercise-catalog')).toEqual([
+      { name: 'Catálogo de exercícios', category: 'exercise-catalog', exerciseIds },
+    ])
+    expect(payload.specificMachines[0]).toEqual({ name: 'Leg press', category: 'Pernas', exerciseIds: ['0003'] })
   })
 
   it('keeps one idempotency key stable until the submission is cleared', () => {

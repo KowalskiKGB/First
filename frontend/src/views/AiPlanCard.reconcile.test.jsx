@@ -207,6 +207,34 @@ describe('AiPlanCard initial applied-plan reconciliation', () => {
     expect(harness.wizard.draft.waistCm).toBe(91)
   })
 
+  it('preserves the locally selected gym directory and exact catalogue inventory in the legacy fallback', async () => {
+    const directorySnapshot = {
+      id: 'gym-local', directoryGymId: 'gym-local', name: 'Academia Local', state: 'CE', city: 'Fortaleza',
+      address: 'Rua Local, 20', status: 'unverified', openingHours: [], exerciseIds: ['0001', '0003'],
+    }
+    harness.state = {
+      ...initialState(), selectedGym: directorySnapshot,
+      aiProfile: {
+        gymName: 'Academia Local', directoryGymId: 'gym-local', availableExerciseIds: ['0001', '0003'], equipment: [],
+        specificMachines: [{ name: 'Catálogo da academia', category: 'exercise-catalog', exerciseIds: ['0001', '0003'] }],
+      },
+    }
+
+    await mountAndLoad()
+    harness.effects = []
+    harness.stateCursor = 0
+    renderToStaticMarkup(<AiPlanCard />)
+    harness.overview.onOpen()
+    harness.stateCursor = 0
+    renderToStaticMarkup(<AiPlanCard />)
+
+    expect(harness.wizard.draft).toMatchObject({
+      gymName: 'Academia Local', directoryGymId: 'gym-local', availableExerciseIds: ['0001', '0003'],
+      directorySnapshot: expect.objectContaining({ id: 'gym-local', city: 'Fortaleza' }),
+    })
+    expect(harness.wizard.draft.specificMachines[0].exerciseIds).toEqual(['0001', '0003'])
+  })
+
   it('rejects an invalid completed wizard draft before syncing state or calling the API', async () => {
     await mountAndLoad()
     harness.effects = []
@@ -291,9 +319,9 @@ describe('AiPlanCard initial applied-plan reconciliation', () => {
       id: 'plan-previous',
       version: 2,
       contextHash: 'ctx-2',
-      justification: 'VersÃ£o anterior retida no servidor.',
+      justification: 'Versão anterior retida no servidor.',
       routines: [{
-        id: 'ai-routine-previous', name: 'ForÃ§a anterior', exercises: [
+        id: 'ai-routine-previous', name: 'Força anterior', exercises: [
           { id: 'ai-output-previous', exerciseId: '0001', mode: 'reps', sets: 2, repMin: 10, repMax: 12, restSeconds: 60 },
         ],
       }],

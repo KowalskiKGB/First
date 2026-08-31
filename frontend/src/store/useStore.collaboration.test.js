@@ -97,6 +97,37 @@ describe('account collaboration cleanup', () => {
     expect(store.getState().isGuest()).toBe(false);
   });
 
+  it('merges a guest gym selection into the server account without replacing its workouts', async () => {
+    const selectedGym = {
+      id: 'gym-ce', directoryGymId: 'gym-ce', name: 'Academia Centro', state: 'CE', city: 'Fortaleza',
+      address: 'Rua A, 10', status: 'unverified', openingHours: [], exerciseIds: ['0001'],
+    };
+    localStorage.removeItem('gym_user');
+    localStorage.setItem('gym_guest', '1');
+    localStorage.setItem('gym_state_v1', JSON.stringify({
+      selectedGym, aiProfile: { gymName: 'Academia Centro', availableExerciseIds: ['0001'] },
+      routines: [], workouts: [], bodyweight: [], _ts: 200,
+    }));
+    const serverState = {
+      routines: [{ id: 'server-routine', name: 'Treino salvo', ex: [] }],
+      workouts: [{ id: 'server-workout', d: '2026-08-29' }], bodyweight: [], _ts: 100,
+    };
+    apiMock.mockImplementation((path, options) => {
+      if (path === '/api/me') return Promise.resolve({ user: { id: 'u1', name: 'One' } });
+      if (path === '/api/data' && !options) return Promise.resolve({ state: serverState });
+      if (path === '/api/data' && options?.method === 'PUT') return Promise.resolve({ ok: true });
+      return Promise.resolve({});
+    });
+    const store = await appStore();
+
+    await store.getState().boot();
+
+    expect(store.getState().S.routines).toEqual(serverState.routines);
+    expect(store.getState().S.workouts).toEqual(serverState.workouts);
+    expect(store.getState().S.selectedGym).toMatchObject({ id: 'gym-ce', name: 'Academia Centro' });
+    expect(apiMock).toHaveBeenCalledWith('/api/data', expect.objectContaining({ method: 'PUT' }));
+  });
+
   it.each(['signOut', 'signOutAll'])('clears collaboration and context synchronously on %s', async action => {
     const store = await appStore();
     let finishLogout;

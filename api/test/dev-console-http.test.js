@@ -72,6 +72,10 @@ const collaborationFixture = () => ({
     studentId: 'student-a', name: GYM.name, genericEquipment: ['body weight'], specificMachines: [],
     createdAt: '2026-08-02T10:00:00.000Z', updatedAt: '2026-08-29T10:00:00.000Z'
   }],
+  measurements: [{
+    id: 'measurement-waist', clientId: null, studentUserId: 'student-a', kind: 'waist', side: null,
+    value: 81.5, unit: 'cm', observedAt: '2026-08-28', recordedBy: 'student-a', createdAt: '2026-08-28T12:00:00.000Z'
+  }],
   gymDirectory: [GYM],
   gymRequests: [REQUEST]
 });
@@ -197,6 +201,8 @@ test('Dev user list exposes useful account status without leaking account creden
   assert.equal(typeof student.online, 'boolean');
   assert.equal(student.lastAccessAt, USERS[1].lastAccessAt);
   assert.equal(student.lastLoginAt, USERS[1].lastLoginAt);
+  assert.deepEqual(student.roles, ['student']);
+  assert.equal(student.role, 'student');
 
   const serialized = JSON.stringify(body);
   for (const secret of [
@@ -221,6 +227,10 @@ test('Dev user detail joins student profile, gym and workout data with a safe pr
   assert.equal(body.trainingProfile.goal, 'weight_loss');
   assert.equal(body.trainingProfile.heightCm, 177);
   assert.equal(body.gymProfile.name, 'Academia Centro');
+  assert.deepEqual(body.measurements, [{
+    id: 'measurement-waist', kind: 'waist', side: null, value: 81.5, unit: 'cm',
+    observedAt: '2026-08-28', createdAt: '2026-08-28T12:00:00.000Z'
+  }]);
   assert.deepEqual(body.bodyweight, [{ d: '2026-08-29', w: 72.4 }]);
   assert.equal(body.routines[0].name, 'Treino A');
   assert.equal(body.workouts[0].id, 'workout-a');

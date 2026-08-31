@@ -1,4 +1,5 @@
 import { EXDB } from './exercises-data.js'
+import { AI_CATALOG_MACHINE_CATEGORY, catalogExerciseIds, editableSpecificMachines, withCatalogExerciseIds } from './ai-plan.js'
 
 const MEASUREMENT_FIELDS = Object.freeze({
   weight: 'weight', waist: 'waistCm', chest: 'chestCm', hip: 'hipCm',
@@ -8,9 +9,15 @@ const MEASUREMENT_FIELDS = Object.freeze({
 const DEFAULT_DRAFT = Object.freeze({
   ageBand: '', heightCm: '', weight: '', waistCm: '', chestCm: '', hipCm: '', armCm: '', thighCm: '', calfCm: '',
   goal: '', experience: 'intermediario', availableDays: [], minutesPerSession: 60, focusAreas: [],
-  gymName: '', genericEquipment: [], specificMachines: [], favoriteExerciseIds: [], avoidedExerciseIds: [],
+  gymName: '', directoryGymId: '', directorySnapshot: null, availableExerciseIds: [], genericEquipment: [], specificMachines: [], favoriteExerciseIds: [], avoidedExerciseIds: [],
   limitations: '', acuteRisk: false, medicalRestriction: false, consent: false, guardianConsent: false,
 })
+
+const cloneDirectorySnapshot = snapshot => snapshot && typeof snapshot === 'object' ? {
+  ...snapshot,
+  openingHours: (Array.isArray(snapshot.openingHours) ? snapshot.openingHours : []).map(entry => ({ ...entry })),
+  exerciseIds: [...(Array.isArray(snapshot.exerciseIds) ? snapshot.exerciseIds : [])],
+} : null
 
 function weightInUnit(measurement, targetUnit) {
   const value = measurement?.value
@@ -27,14 +34,21 @@ export function draftFromAiContext(context = {}, targetUnit = 'kg') {
   const gym = context.gym || {}
   const measurements = context.measurements || {}
   const values = Object.fromEntries(Object.entries(MEASUREMENT_FIELDS).map(([kind, field]) => [field, measurements[kind]?.value ?? '']))
+  const specificMachines = (gym.specificMachines || []).map(machine => ({ ...machine, exerciseIds: [...(machine.exerciseIds || [])] }))
+  const availableExerciseIds = catalogExerciseIds({ ...gym, specificMachines })
+  const directorySnapshot = cloneDirectorySnapshot(gym.directorySnapshot)
   return {
     ...DEFAULT_DRAFT,
     ...profile,
+    goal: profile.goal === 'both' ? 'recomposition' : profile.goal || '',
     ...values,
     weight: weightInUnit(measurements.weight, targetUnit),
     gymName: gym.name || '',
+    directoryGymId: gym.directoryGymId || directorySnapshot?.id || '',
+    directorySnapshot,
+    availableExerciseIds: availableExerciseIds.length ? availableExerciseIds : [...(directorySnapshot?.exerciseIds || [])],
     genericEquipment: [...(gym.genericEquipment || [])],
-    specificMachines: (gym.specificMachines || []).map(machine => ({ ...machine, exerciseIds: [...(machine.exerciseIds || [])] })),
+    specificMachines,
     availableDays: [...(profile.availableDays || [])],
     focusAreas: [...(profile.focusAreas || [])],
     favoriteExerciseIds: [...(profile.favoriteExerciseIds || [])],
@@ -87,14 +101,21 @@ export function validateWizardStep(draft = {}, step, unit = 'kg') {
     machines.forEach((machine, index) => {
       const name = typeof machine?.name === 'string' ? machine.name.trim() : ''
       const category = machine?.category == null ? '' : machine.category
+      const exerciseLimit = category === AI_CATALOG_MACHINE_CATEGORY ? 200 : 60
       errors = required(errors, `specificMachineName${index}`, name.length > 0 && name.length <= 100, 'Enter the machine name.')
       errors = required(errors, `specificMachineCategory${index}`, typeof category === 'string' && category.length <= 80, 'Enter a valid machine category.')
-      errors = required(errors, `specificMachineExercises${index}`, validStringList(machine?.exerciseIds, 60, 100, EXERCISE_IDS) && machine.exerciseIds.length > 0, 'Choose at least one supported exercise.')
+      errors = required(errors, `specificMachineExercises${index}`, validStringList(machine?.exerciseIds, exerciseLimit, 100, EXERCISE_IDS) && machine.exerciseIds.length > 0, 'Choose at least one supported exercise.')
     })
+    const availableExerciseIds = catalogExerciseIds(draft)
+    const validAvailableExercises = validStringList(availableExerciseIds, 200, 100, EXERCISE_IDS)
+    if (!validAvailableExercises) {
+      errors = required(errors, 'availableExerciseIds', false, 'Choose up to 200 supported exercises.')
+      errors = required(errors, 'genericEquipment', false, 'Choose up to 200 supported exercises.')
+    }
     const validEquipment = validStringList(draft.genericEquipment, 60, 100, EQUIPMENT_IDS)
     errors = required(errors, 'genericEquipment', validEquipment, 'Choose valid available equipment.')
-    const hasSpecific = machines.some(machine => String(machine?.name || '').trim() && validStringList(machine?.exerciseIds, 60, 100, EXERCISE_IDS) && machine.exerciseIds.length)
-    errors = required(errors, 'genericEquipment', (validEquipment && draft.genericEquipment.length > 0) || hasSpecific, 'Choose at least one available equipment item.')
+    const hasSpecific = machines.some(machine => String(machine?.name || '').trim() && validStringList(machine?.exerciseIds, machine?.category === AI_CATALOG_MACHINE_CATEGORY ? 200 : 60, 100, EXERCISE_IDS) && machine.exerciseIds.length)
+    errors = required(errors, 'genericEquipment', validAvailableExercises && (availableExerciseIds.length > 0 || (validEquipment && draft.genericEquipment.length > 0) || hasSpecific), 'Choose at least one available equipment item.')
     errors = required(errors, 'favoriteExerciseIds', validStringList(draft.favoriteExerciseIds, 60, 100, EXERCISE_IDS), 'Choose up to 60 supported exercises.')
     errors = required(errors, 'avoidedExerciseIds', validStringList(draft.avoidedExerciseIds, 60, 100, EXERCISE_IDS), 'Choose up to 60 supported exercises.')
     errors = required(errors, 'limitations', typeof draft.limitations === 'string' && draft.limitations.length <= 1000, 'Enter up to 1,000 characters.')
@@ -168,6 +189,8 @@ export function jobPresentation(job) {
 }
 
 export function canonicalDraftPayloads(draft, rev, observedAt, unit = 'kg') {
+  const availableExerciseIds = catalogExerciseIds(draft)
+  const specificMachines = withCatalogExerciseIds(editableSpecificMachines(draft.specificMachines), availableExerciseIds)
   return {
     profile: {
       rev, ageBand: draft.ageBand, heightCm: Number(draft.heightCm), goal: String(draft.goal || '').trim(),
@@ -177,10 +200,12 @@ export function canonicalDraftPayloads(draft, rev, observedAt, unit = 'kg') {
       consent: draft.consent === true, guardianConsent: draft.ageBand === 'adult' ? null : draft.guardianConsent === true,
     },
     gym: {
-      name: String(draft.gymName || '').trim(), genericEquipment: [...draft.genericEquipment],
-      specificMachines: draft.specificMachines.map(machine => ({
+      name: String(draft.gymName || '').trim(), genericEquipment: availableExerciseIds.length ? [] : [...draft.genericEquipment],
+      specificMachines: specificMachines.map(machine => ({
         ...machine, name: String(machine.name || '').trim(), category: String(machine.category || ''), exerciseIds: [...machine.exerciseIds],
       })),
+      ...(draft.directoryGymId ? { directoryGymId: String(draft.directoryGymId).trim() } : {}),
+      ...(draft.directorySnapshot ? { directorySnapshot: cloneDirectorySnapshot(draft.directorySnapshot) } : {}),
     },
     measurements: [
       ['weight', draft.weight, unit === 'lb' ? 'lb' : 'kg'], ['waist', draft.waistCm, 'cm'], ['chest', draft.chestCm, 'cm'],

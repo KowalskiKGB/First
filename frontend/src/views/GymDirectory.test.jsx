@@ -51,6 +51,7 @@ const gyms = [
     city: 'Fortaleza',
     address: 'Rua ABC, 123',
     status: 'unverified',
+    openingHoursNote: 'Segunda a sexta, 6:00 às 22:00',
     openingHours: [
       { day: 1, open: '06:00', close: '22:00', closed: false },
       { day: 0, closed: true },
@@ -94,6 +95,7 @@ describe('GymDirectory', () => {
     expect(markup).toContain('Rua ABC, 123')
     expect(markup).toContain('06:00')
     expect(markup).toContain('22:00')
+    expect(markup).toContain('Segunda a sexta, 6:00 às 22:00')
     expect(markup).toContain('exercise-catalog-picker')
     expect(markup).toContain('data-selected-ids="0043,0085"')
     expect(markup).toContain('data-read-only="true"')

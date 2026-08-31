@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { aiMissingFields, aiProfile, equipmentLabel, latestBodyWeight } from './ai-plan.js'
+import { aiMissingFields, aiProfile, catalogExerciseIds, equipmentLabel, latestBodyWeight } from './ai-plan.js'
 
 describe('AI plan helpers', () => {
   it('detects missing student data before generation', () => {
@@ -22,9 +22,23 @@ describe('AI plan helpers', () => {
       bodyweight: [{ d: '2026-08-29', w: 82 }],
       aiProfile: { heightCm: 180, goal: 'Força', gymName: 'First', equipment: ['barbell'] },
     })).toEqual([])
+    expect(aiMissingFields({
+      bodyweight: [{ d: '2026-08-29', w: 82 }],
+      aiProfile: {
+        heightCm: 180, goal: 'Força', gymName: 'Academia Centro', equipment: [],
+        availableExerciseIds: ['0001'], specificMachines: [],
+      },
+    })).toEqual([])
   })
 
   it('labels exercise equipment in pt-BR', () => {
     expect(equipmentLabel('leverage machine')).toBe('Máquinas articuladas')
+  })
+
+  it('falls back to the persisted catalogue group when the explicit list is empty', () => {
+    expect(catalogExerciseIds({
+      availableExerciseIds: [],
+      specificMachines: [{ category: 'exercise-catalog', exerciseIds: ['0001', '0003'] }],
+    })).toEqual(['0001', '0003'])
   })
 })

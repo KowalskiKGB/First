@@ -6,6 +6,7 @@ const MASTER_KEY_PATTERN = /^[0-9a-fA-F]{64}$/;
 const INVALID_STRUCTURED_OUTPUT = 'AI provider returned invalid structured output';
 const PROVIDER_TEST_FAILED = 'AI provider test failed';
 const PROVIDER_CREDENTIAL_REJECTED = 'The provider credential was rejected.';
+const PROVIDER_RESPONSE_TRUNCATED = 'provider_response_truncated';
 const PROVIDER_TEST_VALUE = Object.freeze({
   justification: 'Plano diagnostico seguro.',
   routines: [{
@@ -145,6 +146,7 @@ function schemaForProvider(provider, schema) {
 export function buildProviderRequest(providerValue, { apiKey, model, prompt, schema }) {
   const provider = requireProvider(providerValue);
   const outputSchema = schemaForProvider(provider, schema);
+  const isGpt5 = provider === 'openai' && /^gpt-5(?:$|[-.])/i.test(String(model || ''));
   if (provider === 'openai') return {
     url: 'https://api.openai.com/v1/responses',
     options: {
@@ -153,8 +155,12 @@ export function buildProviderRequest(providerValue, { apiKey, model, prompt, sch
       body: JSON.stringify({
         model, store: false,
         input: [{ role: 'system', content: systemPrompt() }, { role: 'user', content: prompt }],
-        text: { format: { type: 'json_schema', name: 'structured_response', strict: true, schema: outputSchema } },
-        max_output_tokens: 4000
+        text: {
+          format: { type: 'json_schema', name: 'structured_response', strict: true, schema: outputSchema },
+          ...(isGpt5 ? { verbosity: 'low' } : {})
+        },
+        max_output_tokens: isGpt5 ? 8000 : 4000,
+        ...(isGpt5 ? { reasoning: { effort: 'minimal' } } : {})
       })
     }
   };
@@ -230,21 +236,27 @@ function normalizedUsage(provider, model, data) {
   return { provider, model, inputTokens, outputTokens, totalTokens };
 }
 
+function truncatedResponseError() {
+  const error = new Error('AI provider response was truncated');
+  Object.defineProperty(error, 'failureCode', { value: PROVIDER_RESPONSE_TRUNCATED, enumerable: false });
+  return error;
+}
+
 function assertCompleteResponse(provider, data) {
   if (provider === 'openai') {
-    if (data.status === 'incomplete') throw new Error('AI provider response was truncated');
+    if (data.status === 'incomplete') throw truncatedResponseError();
     const refused = (data.output || []).flatMap(item => item.content || []).some(part => part.type === 'refusal' || part.refusal);
     if (refused) throw new Error('AI provider refused the structured request');
   }
   if (provider === 'gemini') {
     const reasons = (data.candidates || []).map(candidate => candidate.finishReason).filter(Boolean);
-    if (reasons.includes('MAX_TOKENS')) throw new Error('AI provider response was truncated');
+    if (reasons.includes('MAX_TOKENS')) throw truncatedResponseError();
     if (reasons.some(reason => !['STOP', 'FINISH_REASON_UNSPECIFIED'].includes(reason))) {
       throw new Error('AI provider refused the structured request');
     }
   }
   if (provider === 'anthropic') {
-    if (data.stop_reason === 'max_tokens') throw new Error('AI provider response was truncated');
+    if (data.stop_reason === 'max_tokens') throw truncatedResponseError();
     const refused = data.stop_reason === 'refusal' || data.stop_details?.type === 'refusal' ||
       (data.content || []).some(part => part.type === 'refusal' || part.refusal);
     if (refused) throw new Error('AI provider refused the structured request');

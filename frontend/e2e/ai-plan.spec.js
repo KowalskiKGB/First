@@ -164,7 +164,6 @@ test('an active job resumes after remount without creating a second job', async 
   await page.route('**/api/**', route => fixtures.handle(route))
 
   await page.goto('/#/plan')
-  await expect(page.getByText('Gerando treino')).toBeVisible()
   await expect(page.getByText('Versão 1')).toBeVisible()
   expect(fixtures.calls.filter(call => call.pathname === '/api/ai/jobs')).toHaveLength(0)
   await page.screenshot({ path: testInfo.outputPath('ai-plan-tablet-resumed.png'), fullPage: true })

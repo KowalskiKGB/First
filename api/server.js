@@ -10,11 +10,12 @@ import {
   generateAuthenticationOptions, verifyAuthenticationResponse
 } from '@simplewebauthn/server';
 import webpush from 'web-push';
-import { AI_EQUIPMENT } from './ai.js';
+import { AI_EQUIPMENT, AI_EXERCISES } from './ai.js';
 import { createAiJobRoutes, createAiJobService } from './ai-jobs.js';
 import { createAiRoutineRoutes, createAiRoutineService } from './ai-routines.js';
 import { bridgeAiUsageProperty } from './ai-usage.js';
 import { createDevAuth, hashDevPassword, isTrustedMutation, verifyDevPassword } from './dev-auth.js';
+import { createGymDirectoryRoutes } from './gym-directory.js';
 import { reminderForState } from './lib/workout-schedule.js';
 import {
   activateProvider,
@@ -371,6 +372,132 @@ function accountStatus(user, now = Date.now()) {
   return {
     online: !user.disabled && recentAt !== null,
     lastAccessAt: recentAt === null ? durableAt : Math.max(recentAt, durableAt || 0)
+  };
+}
+
+function accountRoles(user, collaboration) {
+  const profile = collaboration?.profiles?.find(item => item.userId === user.id);
+  const roles = Array.isArray(profile?.roles)
+    ? [...new Set(profile.roles.filter(role => ['student', 'trainer'].includes(role)))]
+    : [];
+  if (!roles.length && !isAdmin(user)) roles.push('student');
+  return roles;
+}
+
+function projectAccount(user, now = Date.now(), collaboration) {
+  const status = accountStatus(user, now);
+  const roles = accountRoles(user, collaboration);
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email || null,
+    created: user.created || null,
+    disabled: !!user.disabled,
+    admin: isAdmin(user),
+    roles,
+    role: isAdmin(user) ? 'admin' : roles.includes('trainer') ? 'personal' : 'student',
+    invitedBy: user.invitedBy || null,
+    online: status.online,
+    lastAccessAt: status.lastAccessAt,
+    lastLoginAt: Number.isFinite(user.lastLoginAt) ? user.lastLoginAt : null
+  };
+}
+
+function accountSummary(user, now = Date.now(), collaboration) {
+  const state = readState(user.id) || {};
+  const workouts = Array.isArray(state.workouts) ? state.workouts : [];
+  const lastWorkout = workouts.at(-1);
+  return {
+    ...projectAccount(user, now, collaboration),
+    workouts: workouts.length,
+    lastWorkout: lastWorkout?.d || null,
+    lastSync: state._ts || null,
+    hasPush: db.subs.some(subscription => subscription.userId === user.id),
+    live: livePresence(user.id)
+  };
+}
+
+function projectTrainingProfile(profile) {
+  if (!profile) return null;
+  return {
+    studentId: profile.studentId,
+    ageBand: profile.ageBand,
+    heightCm: profile.heightCm,
+    goal: profile.goal,
+    experience: profile.experience,
+    availableDays: Array.isArray(profile.availableDays) ? [...profile.availableDays] : [],
+    minutesPerSession: profile.minutesPerSession,
+    focusAreas: Array.isArray(profile.focusAreas) ? [...profile.focusAreas] : [],
+    favoriteExerciseIds: Array.isArray(profile.favoriteExerciseIds) ? [...profile.favoriteExerciseIds] : [],
+    avoidedExerciseIds: Array.isArray(profile.avoidedExerciseIds) ? [...profile.avoidedExerciseIds] : [],
+    limitations: profile.limitations || '',
+    acuteRisk: profile.acuteRisk === true,
+    medicalRestriction: profile.medicalRestriction === true,
+    consent: profile.consent === true,
+    guardianConsent: profile.guardianConsent ?? null,
+    createdAt: profile.createdAt || null,
+    updatedAt: profile.updatedAt || null
+  };
+}
+
+function projectGymProfile(gym) {
+  if (!gym) return null;
+  return {
+    studentId: gym.studentId,
+    name: gym.name,
+    ...(gym.directoryGymId ? { directoryGymId: gym.directoryGymId } : {}),
+    genericEquipment: Array.isArray(gym.genericEquipment) ? [...gym.genericEquipment] : [],
+    specificMachines: Array.isArray(gym.specificMachines)
+      ? gym.specificMachines.map(machine => ({
+          name: machine.name,
+          category: machine.category,
+          exerciseIds: Array.isArray(machine.exerciseIds) ? [...machine.exerciseIds] : []
+        }))
+      : [],
+    createdAt: gym.createdAt || null,
+    updatedAt: gym.updatedAt || null
+  };
+}
+
+function projectMeasurements(collaboration, userId) {
+  const clientIds = new Set((collaboration?.clients || [])
+    .filter(client => client.studentUserId === userId)
+    .map(client => client.id));
+  return (collaboration?.measurements || [])
+    .filter(item => item.studentUserId === userId || clientIds.has(item.clientId))
+    .slice()
+    .sort((left, right) => String(right.observedAt || '').localeCompare(String(left.observedAt || '')))
+    .slice(0, 100)
+    .map(item => ({
+      id: item.id,
+      kind: item.kind,
+      side: item.side ?? null,
+      value: item.value,
+      unit: item.unit,
+      observedAt: item.observedAt,
+      createdAt: item.createdAt
+    }));
+}
+
+function accountDetail(user, now = Date.now(), collaboration) {
+  const state = readState(user.id) || {};
+  const routines = Array.isArray(state.routines) ? state.routines : [];
+  const bodyweight = Array.isArray(state.bodyweight) ? state.bodyweight : [];
+  const workouts = Array.isArray(state.workouts) ? state.workouts : [];
+  return {
+    user: projectAccount(user, now, collaboration),
+    unit: state.unit || 'kg',
+    lastSync: state._ts || null,
+    now,
+    routines: routines.map(routine => ({
+      id: routine.id,
+      name: routine.name,
+      emoji: routine.emoji,
+      count: Array.isArray(routine.ex) ? routine.ex.length : 0
+    })),
+    bodyweight: bodyweight.map(entry => ({ ...entry })),
+    workouts: workouts.slice().reverse().map(workout => ({ ...workout })),
+    measurements: projectMeasurements(collaboration, user.id)
   };
 }
 
@@ -935,6 +1062,30 @@ const routes = {
     json(res, 200, { unlocked: !!username, ...(username ? { username } : {}) });
   },
 
+  'GET /api/dev/users': async (req, res) => {
+    if (!requireDev(req, res)) return;
+    const now = Date.now();
+    const collaboration = collaborationStore.read();
+    json(res, 200, { users: db.users.map(user => accountSummary(user, now, collaboration)), now });
+  },
+
+  'GET /api/dev/user': async (req, res) => {
+    if (!requireDev(req, res)) return;
+    const id = new URL(req.url, 'http://x').searchParams.get('id');
+    const user = db.users.find(item => item.id === id);
+    if (!user) return json(res, 404, { error: 'no such user' });
+    const collaboration = collaborationStore.read();
+    json(res, 200, {
+      ...accountDetail(user, Date.now(), collaboration),
+      trainingProfile: projectTrainingProfile(
+        collaboration.trainingProfiles.find(profile => profile.studentId === user.id)
+      ),
+      gymProfile: projectGymProfile(
+        collaboration.gymProfiles.find(gym => gym.studentId === user.id)
+      )
+    });
+  },
+
   'POST /api/dev/login': async (req, res) => {
     if (!requireTrustedWrite(req, res)) return;
     const body = await readBody(req);
@@ -1113,24 +1264,7 @@ const routes = {
   'GET /api/admin/users': async (req, res) => {
     if (!requireAdmin(req, res)) return;
     const now = Date.now();
-    const users = db.users.map(u => {
-      const S = readState(u.id) || {};
-      const workouts = S.workouts || [];
-      const last = workouts[workouts.length - 1];
-      const status = accountStatus(u, now);
-      return {
-        id: u.id, name: u.name, email: u.email || null, created: u.created || null,
-        disabled: !!u.disabled, admin: isAdmin(u), invitedBy: u.invitedBy || null,
-        online: status.online,
-        lastAccessAt: status.lastAccessAt,
-        lastLoginAt: Number.isFinite(u.lastLoginAt) ? u.lastLoginAt : null,
-        workouts: workouts.length,
-        lastWorkout: last ? last.d : null,
-        lastSync: S._ts || null,
-        hasPush: db.subs.some(s => s.userId === u.id),
-        live: livePresence(u.id)
-      };
-    });
+    const users = db.users.map(user => accountSummary(user, now));
     json(res, 200, { users, invite_only: INVITE_ONLY, now });
   },
 
@@ -1140,24 +1274,7 @@ const routes = {
     const id = new URL(req.url, 'http://x').searchParams.get('id');
     const u = db.users.find(x => x.id === id);
     if (!u) return json(res, 404, { error: 'no such user' });
-    const S = readState(u.id) || {};
-    const now = Date.now();
-    const status = accountStatus(u, now);
-    json(res, 200, {
-      user: {
-        id: u.id, name: u.name, email: u.email || null, created: u.created || null,
-        disabled: !!u.disabled, admin: isAdmin(u), invitedBy: u.invitedBy || null,
-        online: status.online,
-        lastAccessAt: status.lastAccessAt,
-        lastLoginAt: Number.isFinite(u.lastLoginAt) ? u.lastLoginAt : null
-      },
-      unit: S.unit || 'kg',
-      lastSync: S._ts || null,
-      now,
-      routines: (S.routines || []).map(r => ({ id: r.id, name: r.name, emoji: r.emoji, count: (r.ex || []).length })),
-      bodyweight: S.bodyweight || [],
-      workouts: (S.workouts || []).slice().reverse()   // newest first for display
-    });
+    json(res, 200, accountDetail(u));
   },
 
   'POST /api/admin/user/disable': async (req, res) => {
@@ -1257,6 +1374,15 @@ Object.assign(routes, createPersonalRoutes({
   readState,
   sendPush,
   store: collaborationStore
+}), createGymDirectoryRoutes({
+  store: collaborationStore,
+  readSession,
+  readBody,
+  json,
+  requireTrustedWrite,
+  requireDev,
+  catalogIds: AI_EXERCISES.map(exercise => exercise.id),
+  getUsers: () => db.users
 }), createAiJobRoutes({
   service: aiJobs,
   readSession,

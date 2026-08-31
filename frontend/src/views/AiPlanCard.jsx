@@ -26,6 +26,8 @@ function hasMaterializedPlan(state, plan) {
 
 function legacyDraft(state) {
   const profile = aiProfile(state)
+  const directorySnapshot = profile.directorySnapshot || state.selectedGym || null
+  const directoryGymId = profile.directoryGymId || directorySnapshot?.directoryGymId || directorySnapshot?.id || ''
   const localMeasurements = Object.fromEntries([
     ['waist', profile.measurements?.waistCm], ['chest', profile.measurements?.chestCm],
     ['hip', profile.measurements?.hipCm], ['arm', profile.measurements?.armCm],
@@ -39,7 +41,11 @@ function legacyDraft(state) {
       limitations: profile.limitations, acuteRisk: false, medicalRestriction: false, consent: profile.consent === true,
       guardianConsent: profile.guardianConsent === true,
     },
-    gym: { name: profile.gymName, genericEquipment: profile.equipment || [], specificMachines: [] },
+    gym: {
+      name: profile.gymName, directoryGymId, directorySnapshot,
+      availableExerciseIds: profile.availableExerciseIds || directorySnapshot?.exerciseIds || [],
+      genericEquipment: profile.equipment || [], specificMachines: profile.specificMachines || [],
+    },
     measurements: {
       ...localMeasurements,
       ...(latestBodyWeight(state) ? { weight: { value: latestBodyWeight(state).w, unit: state.unit || 'kg' } } : {}),
@@ -53,7 +59,7 @@ function draftWithLocalFallback(context, state) {
   const hasProfile = context?.profile && Object.keys(context.profile).length > 0
   const hasGym = context?.gym && Object.keys(context.gym).length > 0
   const profileFields = ['ageBand', 'heightCm', 'goal', 'experience', 'availableDays', 'minutesPerSession', 'focusAreas', 'favoriteExerciseIds', 'avoidedExerciseIds', 'limitations', 'acuteRisk', 'medicalRestriction', 'consent', 'guardianConsent']
-  const gymFields = ['gymName', 'genericEquipment', 'specificMachines']
+  const gymFields = ['gymName', 'directoryGymId', 'directorySnapshot', 'availableExerciseIds', 'genericEquipment', 'specificMachines']
   const measurementFields = { weight: 'weight', waist: 'waistCm', chest: 'chestCm', hip: 'hipCm', arm: 'armCm', thigh: 'thighCm', calf: 'calfCm' }
   const profileFallback = hasProfile ? {} : Object.fromEntries(profileFields.map(field => [field, local[field]]))
   const gymFallback = hasGym ? {} : Object.fromEntries(gymFields.map(field => [field, local[field]]))

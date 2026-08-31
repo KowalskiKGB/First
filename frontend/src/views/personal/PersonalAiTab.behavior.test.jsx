@@ -17,11 +17,13 @@ vi.mock('react', async importOriginal => ({
   useMemo: factory => factory(),
 }))
 vi.mock('../../components/AiPlanExperience.jsx', () => ({ MachineEditor: props => <div data-machine-editor {...props} /> }))
+vi.mock('../../components/ExerciseCatalogPicker.jsx', () => ({
+  default: function ExerciseCatalogPicker(props) { return <div data-exercise-catalog {...props} /> },
+}))
 vi.mock('../../components/Icon.jsx', () => ({ default: ({ name }) => <i data-icon={name} /> }))
 vi.mock('../../components/ui.jsx', () => ({
   Button: ({ children, ...props }) => <button {...props}>{children}</button>,
   NumberField: props => <input {...props} />,
-  SearchField: props => <input {...props} />,
   TextArea: props => <textarea {...props} />,
   TextField: props => <input {...props} />,
 }))
@@ -42,7 +44,14 @@ const profile = {
   limitations: 'Joelho sensível', acuteRisk: false, medicalRestriction: false, consent: true, guardianConsent: null,
   updatedAt: '2026-08-28T12:00:00Z',
 }
-const gym = { name: 'Academia Centro', genericEquipment: ['dumbbell'], specificMachines: [{ name: 'Crossover', category: 'Cabo', exerciseIds: ['0001'] }], updatedAt: '2026-08-28T12:00:00Z' }
+const gym = {
+  name: 'Academia Centro', directoryGymId: 'gym-centro',
+  directorySnapshot: { id: 'gym-centro', name: 'Academia Centro', state: 'CE', city: 'Fortaleza', address: 'Rua A, 10', status: 'verified', openingHours: [], exerciseIds: ['0001', '0003'] },
+  genericEquipment: ['dumbbell'], specificMachines: [
+    { name: 'Catálogo da academia', category: 'exercise-catalog', exerciseIds: ['0001', '0003'] },
+    { name: 'Crossover', category: 'Cabo', exerciseIds: ['0001'] },
+  ], updatedAt: '2026-08-28T12:00:00Z',
+}
 const plan = {
   id: 'plan-2', version: 2, provider: 'openai', model: 'gpt-5-mini', contextHash: 'context', justification: 'Plano seguro.', appliedAt: '2026-08-29T12:00:00Z',
   schedule: { 0: 'routine-time', 1: 'routine-reps' },
@@ -101,7 +110,6 @@ describe('Personal AI tab behavior', () => {
     const named = name => findElements(form, element => element.props.name === name)[0]
     named('personal-ai-age-band').props.onChange({ target: { value: 'under14' } })
     named('personal-ai-height').props.onChange(171)
-    named('personal-ai-goal').props.onChange({ target: { value: 'Mobilidade' } })
     named('personal-ai-experience').props.onChange({ target: { value: 'avancado' } })
     named('personal-ai-minutes').props.onChange(45)
     named('personal-ai-limitations').props.onChange({ target: { value: 'Sem impacto' } })
@@ -117,12 +125,14 @@ describe('Personal AI tab behavior', () => {
     const priorityButtons = findElements(priorities.type(priorities.props), element => element.type === 'button')
     priorityButtons.find(button => button.props.children === 'back').props.onClick()
     priorityButtons.find(button => button.props.children === 'chest').props.onClick()
+    findElements(form, element => element.type === 'button' && element.props.children === 'Strength')[0].props.onClick()
 
-    const preferences = findElements(form, element => element.type?.name === 'ExercisePreferenceEditor')
-    preferences[0].props.onChange(['0002'])
-    preferences[1].props.onChange(['0001'])
+    const catalogues = findElements(form, element => element.type?.name === 'ExerciseCatalogPicker')
+    catalogues.find(picker => picker.props.searchName === 'personal-ai-favorite-exercises').props.onChange(['0002'])
+    catalogues.find(picker => picker.props.searchName === 'personal-ai-avoided-exercises').props.onChange(['0001'])
 
     const updateResults = setDraft.mock.calls.filter(([value]) => typeof value === 'function').map(([update]) => update(profile))
+    expect(setDraft).toHaveBeenCalledWith(expect.objectContaining({ goal: 'strength' }))
     expect(updateResults).toContainEqual(expect.objectContaining({ availableDays: [3] }))
     expect(updateResults).toContainEqual(expect.objectContaining({ availableDays: [1, 2, 3] }))
     expect(updateResults).toContainEqual(expect.objectContaining({ favoriteExerciseIds: ['0002'], avoidedExerciseIds: [] }))
@@ -152,31 +162,18 @@ describe('Personal AI tab behavior', () => {
     expect(renderToStaticMarkup(gymMutation.props.children({ submit: vi.fn(), busy: false }))).toContain('Save gym')
   })
 
-  it('searches, selects and removes exercise preferences through accessible buttons', () => {
+  it('uses the shared exercise catalogue for personal preferences', () => {
     const root = PersonalAiTab({ client, measurements: [], grants: { trainingProfileWrite: true, aiPlanRead: false } })
     const editor = byTypeName(root, 'ProfileEditor')
     hooks.reset()
     const mutation = editor.type(editor.props)
     const form = mutation.props.children({ submit: vi.fn(), busy: false })
-    const picker = findElements(form, element => element.type?.name === 'ExercisePreferenceEditor')[0]
 
-    hooks.reset(['sit'])
-    const onChange = vi.fn()
-    const rendered = picker.type({ ...picker.props, selected: ['0001', 'missing'], onChange })
-    const search = findElements(rendered, element => element.props.name === 'personal-ai-favorite-exercises')[0]
-    search.props.onChange({ target: { value: 'squat' } })
-    search.props.onClear()
-    const buttons = findElements(rendered, element => element.type === 'button')
-    buttons.find(button => button.props['aria-label'] === 'Remove 3/4 sit-up').props.onClick()
-    buttons.find(button => button.props['aria-label'] === 'Remove missing').props.onClick()
-    buttons.find(button => !button.props['aria-label'] && button.props['aria-pressed'] === false)?.props.onClick()
-
-    expect(hooks.setters[0]).toHaveBeenCalledWith('')
-    expect(onChange).toHaveBeenCalledWith(['missing'])
-    expect(onChange).toHaveBeenCalledWith(['0001'])
-
-    hooks.reset(['x'])
-    expect(renderToStaticMarkup(picker.type({ ...picker.props, selected: [], onChange }))).not.toContain('exercise-preference-results')
+    expect(findElements(form, element => element.type?.name === 'ExercisePreferenceEditor')).toEqual([])
+    expect(findElements(form, element => element.type?.name === 'ExerciseCatalogPicker')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ props: expect.objectContaining({ searchName: 'personal-ai-favorite-exercises', selectedIds: ['0001'] }) }),
+      expect.objectContaining({ props: expect.objectContaining({ searchName: 'personal-ai-avoided-exercises', selectedIds: ['0002'] }) }),
+    ]))
   })
 
   it('submits and updates the canonical gym draft', () => {
@@ -191,14 +188,39 @@ describe('Personal AI tab behavior', () => {
 
     form.props.onSubmit({ preventDefault: vi.fn() })
     findElements(form, element => element.props.name === 'personal-ai-gym')[0].props.onChange({ target: { value: 'Nova academia' } })
-    const equipment = byTypeName(form, 'ToggleGrid')
-    findElements(equipment.type(equipment.props), element => element.type === 'button')[0].props.onClick()
+    const equipment = byTypeName(form, 'ExerciseCatalogPicker')
+    expect(equipment.props).toMatchObject({ searchName: 'personal-ai-equipment-search', selectedIds: ['0001', '0003'] })
+    equipment.props.onChange(['0002'])
     byTypeName(form, 'MachineEditor').props.onChange([])
 
-    expect(submit).toHaveBeenCalledWith(expect.objectContaining({ clientId: 'client-1', name: 'Academia Centro' }))
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({
+      clientId: 'client-1', name: 'Academia Centro', directoryGymId: 'gym-centro', genericEquipment: [],
+    }))
     expect(setDraft).toHaveBeenCalledWith(expect.objectContaining({ name: 'Nova academia' }))
-    expect(setDraft).toHaveBeenCalledWith(expect.objectContaining({ specificMachines: [] }))
+    expect(setDraft).toHaveBeenCalledWith(expect.objectContaining({ availableExerciseIds: ['0002'] }))
+    expect(setDraft).toHaveBeenCalledWith(expect.objectContaining({
+      specificMachines: [{ name: 'Catálogo de exercícios', category: 'exercise-catalog', exerciseIds: ['0001', '0003'] }],
+    }))
     expect(renderToStaticMarkup(form)).toContain('Saving…')
+  })
+
+  it('does not erase legacy generic equipment until an exact catalogue is selected', () => {
+    const legacyClient = {
+      ...client,
+      gymProfile: { name: 'Academia antiga', genericEquipment: ['dumbbell'], specificMachines: [], updatedAt: '2026-08-20T12:00:00Z' },
+    }
+    const root = PersonalAiTab({ client: legacyClient, measurements: [], grants: { trainingProfileWrite: true, aiPlanRead: false } })
+    const editor = byTypeName(root, 'GymEditor')
+    hooks.reset()
+    const mutation = editor.type(editor.props)
+    const submit = vi.fn()
+    const form = mutation.props.children({ submit, busy: false })
+
+    form.props.onSubmit({ preventDefault: vi.fn() })
+
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({
+      clientId: 'client-1', name: 'Academia antiga', genericEquipment: ['dumbbell'], specificMachines: [],
+    }))
   })
 
   it('renders empty, current and stale plan states with every prescription mode', () => {

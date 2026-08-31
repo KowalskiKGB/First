@@ -61,6 +61,39 @@ export const AI_EXPERIENCE = [
   ['avancado', 'Advanced']
 ]
 
+export const AI_GOALS = [
+  ['muscle_gain', 'Gain muscle'],
+  ['weight_loss', 'Lose weight'],
+  ['recomposition', 'Body recomposition'],
+  ['strength', 'Strength'],
+  ['conditioning', 'Conditioning'],
+  ['general_health', 'General health']
+]
+
+export const AI_CATALOG_MACHINE_CATEGORY = 'exercise-catalog'
+
+export function catalogExerciseIds(draft) {
+  if (Array.isArray(draft?.availableExerciseIds) && draft.availableExerciseIds.length) {
+    return [...new Set(draft.availableExerciseIds)]
+  }
+  const machine = (draft?.specificMachines || []).find(item => item?.category === AI_CATALOG_MACHINE_CATEGORY)
+  return [...new Set(machine?.exerciseIds || [])]
+}
+
+export function withCatalogExerciseIds(machines, exerciseIds) {
+  const specific = (machines || []).filter(machine => machine?.category !== AI_CATALOG_MACHINE_CATEGORY)
+  const ids = [...new Set(exerciseIds || [])]
+  return ids.length ? [...specific, { name: 'Catálogo de exercícios', category: AI_CATALOG_MACHINE_CATEGORY, exerciseIds: ids }] : specific
+}
+
+export function editableSpecificMachines(machines) {
+  return (machines || []).filter(machine => machine?.category !== AI_CATALOG_MACHINE_CATEGORY)
+}
+
+export function aiGoalLabel(goal) {
+  return AI_GOALS.find(([value]) => value === goal)?.[1] || goal
+}
+
 export function latestBodyWeight(state) {
   return [...(state.bodyweight || [])].sort((a, b) => String(b.d).localeCompare(String(a.d)))[0] || null
 }
@@ -92,6 +125,6 @@ export function aiMissingFields(state) {
   if (!profile.heightCm) missing.push('altura')
   if (!String(profile.goal || '').trim()) missing.push('objetivo')
   if (!String(profile.gymName || '').trim()) missing.push('academia')
-  if (!profile.equipment.length) missing.push('aparelhos')
+  if (!profile.equipment.length && !catalogExerciseIds(profile).length) missing.push('aparelhos')
   return missing
 }

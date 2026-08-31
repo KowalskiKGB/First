@@ -202,20 +202,10 @@ describe('Home schedule summary', () => {
   })
 
   it('lets a guest open the gym directory without requiring authentication first', () => {
-    const tree = Home()
-    const gymAction = findElements(tree, element => (
-      ['button', 'a'].includes(element.type)
-      && elementText(element).includes('Selecione sua academia')
-    ))[0]
+    const markup = renderToStaticMarkup(<Home />)
 
-    expect(gymAction).toBeDefined()
-    expect(elementText(gymAction)).toContain('Selecione sua academia')
-    if (gymAction.props.onClick) {
-      gymAction.props.onClick()
-      expect(harness.navigate).toHaveBeenCalledWith('/academias')
-    } else {
-      expect(gymAction.props.to).toBe('/academias')
-    }
+    expect(markup).toContain('href="/academias"')
+    expect(markup).toContain('Selecione sua academia')
   })
 
   it('uses one compact AI CTA and removes the generic training-rhythm copy', () => {
