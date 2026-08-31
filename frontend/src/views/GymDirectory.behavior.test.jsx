@@ -21,6 +21,7 @@ const harness = vi.hoisted(() => ({
 
 vi.mock('react', async importOriginal => ({
   ...(await importOriginal()),
+  useRef: initial => ({ current: initial }),
   useState: initial => {
     const index = harness.calls++
     const value = index < harness.values.length ? harness.values[index] : typeof initial === 'function' ? initial() : initial
@@ -189,6 +190,25 @@ describe('GymDirectory behavior', () => {
     expect(harness.api).toHaveBeenCalledWith('/api/gyms')
     expect(harness.setters[0]).toHaveBeenCalledWith(gyms)
     expect(harness.setters[1]).toHaveBeenCalledWith(2)
+  })
+
+  it('does not restore a selected gym locality over a newer user choice', async () => {
+    let resolveGyms
+    harness.api.mockImplementation(path => path === '/api/gyms'
+      ? new Promise(resolve => { resolveGyms = resolve })
+      : Promise.resolve({ municipalities: [] }))
+    const view = GymDirectory({ selectedGymId: 'gym-x', authenticated: false })
+    const stateSelect = findElements(view, element => element.props.name === 'gym-state')[0]
+
+    harness.effects[0]()
+    stateSelect.props.onChange({ target: { value: 'SP' } })
+    resolveGyms({ rev: 2, gyms })
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(harness.setters[2]).toHaveBeenCalledWith('SP')
+    expect(harness.setters[2]).toHaveBeenCalledTimes(1)
+    expect(harness.setters[3]).toHaveBeenCalledWith('')
+    expect(harness.setters[3]).toHaveBeenCalledTimes(1)
   })
 
   it('loads municipalities only after a UF is selected', async () => {

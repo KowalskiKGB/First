@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import ExerciseCatalogPicker from '../components/ExerciseCatalogPicker.jsx'
 import Icon from '../components/Icon.jsx'
@@ -107,6 +107,7 @@ export default function GymDirectory({
   const [newGym, setNewGym] = useState({ name: '', state: initial.state, city: initial.city, address: '', openingHoursNote: '', exerciseIds: [] })
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const localityTouched = useRef(false)
 
   useEffect(() => {
     if (Array.isArray(providedGyms)) {
@@ -120,11 +121,13 @@ export default function GymDirectory({
       const locality = gymInitialLocality(nextGyms, selectedGymId)
       setGyms(nextGyms)
       setRev(Number(result?.rev) || 0)
-      setState(value => value || locality.state)
-      setCity(value => value || locality.city)
+      if (!localityTouched.current && locality.state && locality.city) {
+        setState(locality.state)
+        setCity(locality.city)
+      }
     }).catch(() => { if (current) setMessage(t('Could not load gyms.')) })
     return () => { current = false }
-  }, [providedGyms])
+  }, [providedGyms, selectedGymId])
 
   useEffect(() => { if (selectedGymId) setDetailId(selectedGymId) }, [selectedGymId])
 
@@ -137,6 +140,7 @@ export default function GymDirectory({
 
   const changeState = event => {
     const nextState = event.target.value
+    localityTouched.current = true
     setState(nextState)
     setCity('')
     setQuery('')
@@ -237,7 +241,7 @@ export default function GymDirectory({
             {states.map(value => <option key={value} value={value}>{value}</option>)}
           </select>
         </label>
-        <MunicipalityField name="gym-city" uf={state} city={city} locality={locality} onChange={value => { setCity(value); setQuery(''); setDetailId(null) }} />
+        <MunicipalityField name="gym-city" uf={state} city={city} locality={locality} onChange={value => { localityTouched.current = true; setCity(value); setQuery(''); setDetailId(null) }} />
       </div>
       <label className="gym-directory-search"><span>{t('Search gyms')}</span>
         <span className="search"><Icon name="search" /><input name="gym-search" value={query} onChange={event => setQuery(event.target.value)} placeholder={t('Search by name or address')} disabled={!localityReady} /></span>

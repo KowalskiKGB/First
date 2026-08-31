@@ -176,6 +176,31 @@ test('only an authenticated student can queue an equipment suggestion and it doe
   assert.deepEqual(f.store.read().gymRequests[0].payload.exerciseIds, ['0003', '0001']);
 });
 
+test('gym registration accepts only a real Brazilian UF', async () => {
+  const f = await fixture(source());
+  const response = await invoke(f.routes, 'POST /api/gym-requests', {
+    user: { id: 'student-a' },
+    body: {
+      rev: 0,
+      kind: 'gym',
+      payload: {
+        name: 'Academia Inventada',
+        state: 'ZZ',
+        city: 'Cidade inexistente',
+        address: 'Rua sem cadastro, 1',
+        openingHours: [],
+        exerciseIds: []
+      }
+    }
+  });
+
+  assert.deepEqual({ status: response.status, body: response.body }, {
+    status: 400,
+    body: { error: 'invalid state' }
+  });
+  assert.deepEqual(f.store.read().gymRequests, []);
+});
+
 test('equipment suggestions are rate-limited per authenticated account', async () => {
   const f = await fixture(source());
   for (let index = 0; index < 20; index += 1) {

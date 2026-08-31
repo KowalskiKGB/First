@@ -100,6 +100,52 @@ test('keeps a bounded in-memory cache per UF', async () => {
   assert.notEqual(cached.body.municipalities[0].name, 'alterado pelo consumidor');
 });
 
+test('coalesces concurrent requests and cools down repeated upstream failures per UF', async () => {
+  let requests = 0;
+  let release;
+  const pending = new Promise(resolve => { release = resolve; });
+  const routes = createBrazilLocationsRoutes({
+    json,
+    fetchImpl: async () => {
+      requests += 1;
+      return pending;
+    }
+  });
+
+  const first = invoke(routes, 'GET /api/locations/municipalities', '/api/locations/municipalities?uf=CE');
+  const second = invoke(routes, 'GET /api/locations/municipalities', '/api/locations/municipalities?uf=CE');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(requests, 1);
+  release({ ok: true, json: async () => [{ id: 2304400, nome: 'Fortaleza' }] });
+  const [firstResponse, secondResponse] = await Promise.all([first, second]);
+  assert.deepEqual(secondResponse.body, firstResponse.body);
+
+  let clock = 1_000;
+  let failures = 0;
+  const failingRoutes = createBrazilLocationsRoutes({
+    json,
+    now: () => clock,
+    failureCooldownMs: 60_000,
+    fetchImpl: async () => {
+      failures += 1;
+      return { ok: false };
+    }
+  });
+  const firstFailure = await invoke(failingRoutes, 'GET /api/locations/municipalities', '/api/locations/municipalities?uf=RR');
+  const cooledDown = await invoke(failingRoutes, 'GET /api/locations/municipalities', '/api/locations/municipalities?uf=RR');
+  const safeFailure = {
+    status: 502,
+    body: { error: 'Não foi possível carregar os municípios. Digite o município manualmente.' }
+  };
+  assert.deepEqual({ status: firstFailure.status, body: firstFailure.body }, safeFailure);
+  assert.deepEqual({ status: cooledDown.status, body: cooledDown.body }, safeFailure);
+  assert.equal(failures, 1);
+  clock += 60_001;
+  const retried = await invoke(failingRoutes, 'GET /api/locations/municipalities', '/api/locations/municipalities?uf=RR');
+  assert.deepEqual({ status: retried.status, body: retried.body }, safeFailure);
+  assert.equal(failures, 2);
+});
+
 test('returns one fixed public error for upstream failures and timeouts', async () => {
   const leaked = 'upstream secret body';
   const rejectedRoutes = createBrazilLocationsRoutes({

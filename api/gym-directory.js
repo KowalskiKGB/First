@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { AI_EXERCISES } from './ai.js';
+import { isBrazilStateCode } from './brazil-locations.js';
 import { RevisionConflictError } from './lib/json-store.js';
 
 const REQUEST_KINDS = new Set(['gym', 'equipment', 'correction']);
@@ -47,7 +48,7 @@ function requestPayload(kind, value, catalogue) {
   const note = optionalText(value.note, 'note', 500);
   if (kind === 'gym') {
     const state = requiredText(value.state, 'state', 2).toUpperCase();
-    if (!/^[A-Z]{2}$/.test(state)) throw fail('invalid state');
+    if (!isBrazilStateCode(state)) throw fail('invalid state');
     return {
       name: requiredText(value.name, 'gym name', 120),
       state,

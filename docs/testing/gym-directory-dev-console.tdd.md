@@ -27,8 +27,8 @@ carrega os municípios da API oficial do IBGE, sem depender da existência prév
 
 | Verificação | Resultado |
 |---|---|
-| API com cobertura | 242 testes; 82,73% linhas e 80,87% branches no conjunto |
-| Frontend com cobertura | 562 testes; diretório com 87,91% e módulo de localidades com 93,10% de linhas |
+| API com cobertura | 244 testes; 82,81% linhas e 81,00% branches no conjunto |
+| Frontend com cobertura | 563 testes; diretório com 86,84% e módulo de localidades com 93,10% de linhas |
 | Playwright | 31 fluxos aprovados, incluindo mobile, tablet e desktop |
 | Auditoria npm | 0 vulnerabilidades na API e no frontend |
 | Segredos no diff | 0 candidatos; credenciais locais continuam ignoradas |
