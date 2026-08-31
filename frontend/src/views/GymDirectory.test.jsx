@@ -7,8 +7,13 @@ vi.mock('../lib/i18n.js', () => ({
   t: (message, ...args) => {
     const pt = {
       'Find your gym': 'Encontre sua academia',
+      'Where do you train?': 'Onde você treina?',
       State: 'UF',
       Municipality: 'Município',
+      'Select a state': 'Selecione a UF',
+      'Select a state first': 'Selecione a UF primeiro',
+      'Select a municipality': 'Selecione o município',
+      'Choose a state and municipality to see nearby gyms.': 'Escolha uma UF e um município para ver as academias.',
       'Search gyms': 'Pesquisar academia',
       'Search by name or address': 'Pesquise por nome ou endereço',
       'Select this gym': 'Selecionar academia',
@@ -81,10 +86,24 @@ describe('GymDirectory', () => {
     expect(markup).toContain('name="gym-state"')
     expect(markup).toContain('name="gym-city"')
     expect(markup).toContain('name="gym-search"')
-    expect(markup).toContain('value="CE"')
-    expect(markup).toContain('Fortaleza')
-    expect(markup).toContain('Segunda a sexta, 6:00 às 22:00')
+    expect(markup).toContain('Onde você treina?')
+    expect(markup.match(/<option/g)).toHaveLength(29)
+    expect(markup).toContain('Selecione a UF')
+    expect(markup).toContain('Selecione a UF primeiro')
+    expect(markup).toContain('Escolha uma UF e um município para ver as academias.')
+    expect(markup).not.toContain('No gyms found in this location.')
+    expect(markup).not.toContain('Academia X')
     expect(markup).not.toMatch(/faça login|entre para continuar/i)
+  })
+
+  it('preserves the locality of a previously selected gym', () => {
+    const markup = renderToStaticMarkup(
+      <GymDirectory gyms={gyms} selectedGymId="gym-y" onSelect={vi.fn()} />,
+    )
+
+    expect(markup).toContain('<option value="SP" selected="">SP</option>')
+    expect(markup).toContain('<option value="Campinas" selected="">Campinas</option>')
+    expect(markup).toContain('Academia Y')
   })
 
   it('shows address, opening hours and the shared exercise catalog in gym detail', () => {

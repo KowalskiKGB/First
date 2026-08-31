@@ -1574,17 +1574,23 @@ body:has(.ai-wizard) #tabbar{display:none}
 .gym-directory{min-width:0}
 .gym-directory-header{margin-bottom:14px}
 .gym-directory-header .personal-eyebrow{margin-bottom:4px}
-.gym-locality-card{padding:14px;border:var(--hair) solid var(--sep-op)}
+.gym-directory-header h1{max-width:100%;font-size:clamp(32px,9vw,44px);line-height:1.03;overflow-wrap:anywhere}
+.gym-locality-card{padding:18px;border:var(--hair) solid var(--sep-op)}
+.gym-locality-card .section-heading{margin:0 0 14px;padding:0;border:0}
+.gym-locality-card .section-heading h2{font-size:18px;line-height:1.2}
+.gym-locality-card .section-heading p{margin-top:4px;color:var(--label-2);font-size:12px;line-height:1.4}
 .gym-locality-fields{display:grid;grid-template-columns:minmax(86px,.38fr) minmax(0,1fr);gap:9px}
 .gym-locality-card label,.gym-new-request label,.gym-equipment-request label{
   display:flex;flex-direction:column;gap:6px;min-width:0;color:var(--label-2);font-size:12px;font-weight:600;
 }
-.gym-locality-card select,.gym-new-request input,.gym-equipment-request input,.gym-equipment-request textarea{
+.gym-locality-card select,.gym-locality-card input,.gym-new-request select,.gym-new-request input,.gym-equipment-request input,.gym-equipment-request textarea{
   width:100%;min-height:46px;padding:10px 12px;border:var(--hair) solid var(--sep-op);border-radius:var(--r);
   outline:0;background:var(--surface-2);color:var(--label);
 }
+.gym-locality-card select:disabled,.gym-locality-card input:disabled{cursor:not-allowed;opacity:.55}
+.gym-locality-card label>.small{font-weight:400;line-height:1.35}
 .gym-equipment-request textarea{min-height:96px;resize:vertical;line-height:1.4}
-.gym-locality-card select:focus-visible,.gym-new-request input:focus-visible,.gym-equipment-request input:focus-visible,.gym-equipment-request textarea:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.gym-locality-card select:focus-visible,.gym-locality-card input:focus-visible,.gym-new-request select:focus-visible,.gym-new-request input:focus-visible,.gym-equipment-request input:focus-visible,.gym-equipment-request textarea:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .gym-directory-search{margin-top:10px}
 .gym-directory-search .search{display:block;width:100%}
 .gym-directory-search .search input{width:100%;min-height:46px;padding:10px 12px 10px 35px;border:var(--hair) solid var(--sep-op);border-radius:var(--r);outline:0;background:var(--surface-2);color:var(--label)}
@@ -1610,7 +1616,8 @@ body:has(.ai-wizard) #tabbar{display:none}
 .gym-status{display:inline-flex;align-items:center;justify-content:center;min-height:26px;padding:4px 8px;border:var(--hair) solid currentColor;border-radius:999px;background:var(--surface-2);font-size:11px;font-weight:600;white-space:nowrap}
 .gym-status-partner,.gym-status-verified{color:var(--green)}
 .gym-status-unverified{color:var(--label-2)}
-.gym-empty{display:flex;align-items:center;gap:10px;margin:0;color:var(--label-2)}
+.gym-empty{display:flex;align-items:center;gap:10px;min-height:82px;margin:0;padding:16px;color:var(--label-2)}
+.gym-empty p{line-height:1.4}
 .gym-empty>.icn{color:var(--acc)}
 .gym-new-request-action,.gym-request-action{
   display:flex;align-items:center;justify-content:center;width:100%;min-height:44px;margin:8px 0 14px;padding:7px 10px;

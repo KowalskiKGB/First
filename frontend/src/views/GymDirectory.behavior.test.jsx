@@ -190,4 +190,33 @@ describe('GymDirectory behavior', () => {
     expect(harness.setters[0]).toHaveBeenCalledWith(gyms)
     expect(harness.setters[1]).toHaveBeenCalledWith(2)
   })
+
+  it('loads municipalities only after a UF is selected', async () => {
+    harness.reset([gyms, 7, 'CE', '', '', null, false, [], '', '', false, {
+      name: '', state: '', city: '', address: '', openingHoursNote: '', exerciseIds: [],
+    }, false, ''])
+    const response = { uf: 'CE', municipalities: [{ id: 2304400, name: 'Fortaleza' }] }
+    harness.api.mockResolvedValue(response)
+
+    GymDirectory({ gyms, authenticated: false })
+    harness.effects[2]()
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(harness.api).toHaveBeenCalledWith('/api/locations/municipalities?uf=CE')
+    expect(harness.setters[14]).toHaveBeenCalledWith(response.municipalities)
+    expect(harness.setters[15]).toHaveBeenCalledWith('ready')
+  })
+
+  it('shows a manual municipality field when the location service fails', () => {
+    harness.reset([gyms, 7, 'RR', '', '', null, false, [], '', '', false, {
+      name: '', state: '', city: '', address: '', openingHoursNote: '', exerciseIds: [],
+    }, false, '', [], 'error', 'Digite o município manualmente.'])
+
+    const markup = renderToStaticMarkup(<GymDirectory gyms={gyms} authenticated={false} />)
+
+    expect(markup).toContain('name="gym-city"')
+    expect(markup).toContain('role="alert"')
+    expect(markup).toContain('Digite o município manualmente.')
+    expect(markup).not.toContain('No gyms found in this location.')
+  })
 })

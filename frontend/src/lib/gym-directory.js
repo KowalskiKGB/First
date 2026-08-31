@@ -10,20 +10,28 @@ const uniqueStrings = (values, limit = 200) => [...new Set(
     .map(value => value.trim()),
 )].slice(0, limit)
 
-export function gymInitialLocality(gyms = []) {
-  const first = gyms.find(gym => gym?.state && gym?.city)
-  return { state: first?.state || '', city: first?.city || '' }
+const BRAZIL_STATE_CODES = Object.freeze([
+  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
+  'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO',
+])
+
+export function gymInitialLocality(gyms = [], selectedGymId = '') {
+  const selected = selectedGymId ? gyms.find(gym => gym?.id === selectedGymId) : null
+  return { state: selected?.state || '', city: selected?.city || '' }
 }
 
-export function gymStates(gyms = []) {
-  return uniqueStrings(gyms.map(gym => gym?.state), 27).sort((left, right) => left.localeCompare(right, 'pt-BR'))
+export function gymStates() {
+  return [...BRAZIL_STATE_CODES]
 }
 
-export function gymCities(gyms = [], state = '') {
+export function gymCities(gyms = [], state = '', municipalities = []) {
   const wantedState = normalizedText(state)
-  return uniqueStrings(gyms
-    .filter(gym => !wantedState || normalizedText(gym?.state) === wantedState)
-    .map(gym => gym?.city), 500)
+  const registered = gyms
+    .filter(gym => wantedState && normalizedText(gym?.state) === wantedState)
+    .map(gym => gym?.city)
+  const official = (Array.isArray(municipalities) ? municipalities : [])
+    .map(entry => typeof entry === 'string' ? entry : entry?.name)
+  return uniqueStrings([...official, ...registered], 6000)
     .sort((left, right) => left.localeCompare(right, 'pt-BR'))
 }
 

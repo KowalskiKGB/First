@@ -40,6 +40,50 @@ function openingHoursSummary(gym) {
   }).join(' · ')
 }
 
+function useMunicipalities(uf, gyms) {
+  const [municipalities, setMunicipalities] = useState([])
+  const [status, setStatus] = useState(uf ? 'loading' : 'idle')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!uf) {
+      setMunicipalities([])
+      setStatus('idle')
+      setError('')
+      return undefined
+    }
+    let current = true
+    setStatus('loading')
+    setError('')
+    api(`/api/locations/municipalities?uf=${encodeURIComponent(uf)}`).then(result => {
+      if (!current) return
+      setMunicipalities(Array.isArray(result?.municipalities) ? result.municipalities : [])
+      setStatus('ready')
+    }).catch(requestError => {
+      if (!current) return
+      setMunicipalities([])
+      setStatus('error')
+      setError(requestError?.message || 'Could not load municipalities. Type it manually.')
+    })
+    return () => { current = false }
+  }, [uf])
+
+  return { cities: gymCities(gyms, uf, municipalities), status, error }
+}
+
+function MunicipalityField({ name, uf, city, onChange, locality }) {
+  const loading = locality.status === 'loading'
+  const placeholder = !uf ? 'Select a state first' : loading ? 'Loading municipalities…' : 'Select a municipality'
+  return <label><span>{t('Municipality')}</span>
+    {locality.status === 'error'
+      ? <><input name={name} value={city} onChange={event => onChange(event.target.value)} maxLength={100} placeholder={t('Type the municipality')} required /><span className="muted small" role="alert">{t(locality.error)}</span></>
+      : <><select name={name} value={city} onChange={event => onChange(event.target.value)} disabled={!uf || loading} required>
+        <option value="">{t(placeholder)}</option>
+        {locality.cities.map(value => <option key={value} value={value}>{value}</option>)}
+      </select>{loading ? <span className="muted small" role="status">{t('Loading municipalities…')}</span> : null}</>}
+  </label>
+}
+
 export default function GymDirectory({
   gyms: providedGyms,
   selectedGymId = null,
@@ -48,7 +92,7 @@ export default function GymDirectory({
   onRequestGym,
   authenticated = true,
 }) {
-  const initial = gymInitialLocality(providedGyms)
+  const initial = gymInitialLocality(providedGyms, selectedGymId)
   const [gyms, setGyms] = useState(() => Array.isArray(providedGyms) ? providedGyms : [])
   const [rev, setRev] = useState(0)
   const [state, setState] = useState(initial.state)
@@ -73,7 +117,7 @@ export default function GymDirectory({
     api('/api/gyms').then(result => {
       if (!current) return
       const nextGyms = Array.isArray(result?.gyms) ? result.gyms : []
-      const locality = gymInitialLocality(nextGyms)
+      const locality = gymInitialLocality(nextGyms, selectedGymId)
       setGyms(nextGyms)
       setRev(Number(result?.rev) || 0)
       setState(value => value || locality.state)
@@ -84,15 +128,17 @@ export default function GymDirectory({
 
   useEffect(() => { if (selectedGymId) setDetailId(selectedGymId) }, [selectedGymId])
 
-  const states = useMemo(() => gymStates(gyms), [gyms])
-  const cities = useMemo(() => gymCities(gyms, state), [gyms, state])
-  const visibleGyms = useMemo(() => filterGyms(gyms, { state, city, query }), [gyms, state, city, query])
+  const locality = useMunicipalities(state, gyms)
+  const requestLocality = useMunicipalities(newGymOpen ? newGym.state : '', gyms)
+  const states = useMemo(() => gymStates(), [])
+  const localityReady = !!state && !!city
+  const visibleGyms = useMemo(() => localityReady ? filterGyms(gyms, { state, city, query }) : [], [gyms, state, city, query, localityReady])
   const detail = gyms.find(gym => gym.id === detailId) || null
 
   const changeState = event => {
     const nextState = event.target.value
     setState(nextState)
-    setCity(gymCities(gyms, nextState)[0] || '')
+    setCity('')
     setDetailId(null)
   }
 
@@ -111,7 +157,7 @@ export default function GymDirectory({
       return
     }
     setMessage('')
-    setNewGym(current => ({ ...current, state: current.state || state, city: current.city || city }))
+    setNewGym(current => ({ ...current, state: state || current.state, city: city || current.city }))
     setNewGymOpen(true)
   }
 
@@ -182,20 +228,18 @@ export default function GymDirectory({
     </header>
 
     <section className="card gym-locality-card" aria-label={t('Location')}>
+      <div className="section-heading"><div><h2>{t('Where do you train?')}</h2><p>{t('Choose your location to see gyms and available equipment.')}</p></div></div>
       <div className="gym-locality-fields">
         <label><span>{t('State')}</span>
           <select name="gym-state" value={state} onChange={changeState}>
+            <option value="">{t('Select a state')}</option>
             {states.map(value => <option key={value} value={value}>{value}</option>)}
           </select>
         </label>
-        <label><span>{t('Municipality')}</span>
-          <select name="gym-city" value={city} onChange={event => { setCity(event.target.value); setDetailId(null) }}>
-            {cities.map(value => <option key={value} value={value}>{value}</option>)}
-          </select>
-        </label>
+        <MunicipalityField name="gym-city" uf={state} city={city} locality={locality} onChange={value => { setCity(value); setDetailId(null) }} />
       </div>
       <label className="gym-directory-search"><span>{t('Search gyms')}</span>
-        <span className="search"><Icon name="search" /><input name="gym-search" value={query} onChange={event => setQuery(event.target.value)} placeholder={t('Search by name or address')} /></span>
+        <span className="search"><Icon name="search" /><input name="gym-search" value={query} onChange={event => setQuery(event.target.value)} placeholder={t('Search by name or address')} disabled={!localityReady} /></span>
       </label>
     </section>
 
@@ -206,7 +250,8 @@ export default function GymDirectory({
         <GymStatus status={gym.status} />
         <Icon name="chevronRight" />
       </button>)}
-      {!visibleGyms.length ? <div className="card gym-empty"><Icon name="search" /><p>{t('No gyms found in this location.')}</p></div> : null}
+      {!localityReady ? <div className="card gym-empty"><Icon name="globe" /><p>{t('Choose a state and municipality to see nearby gyms.')}</p></div> : null}
+      {localityReady && !visibleGyms.length ? <div className="card gym-empty"><Icon name="search" /><p>{t('No gyms found in this location.')}</p></div> : null}
     </section>
 
     <button type="button" className="text-action gym-new-request-action" onClick={askForGym}>{t('Could not find your gym? Request its registration')}</button>
@@ -214,8 +259,11 @@ export default function GymDirectory({
       <div className="section-heading"><div><h2>{t('Register a gym')}</h2><p>{t('It will appear publicly only after Dev review.')}</p></div></div>
       <label><span>{t('Gym name')}</span><input name="gym-request-gym-name" value={newGym.name} onChange={event => setNewGym(current => ({ ...current, name: event.target.value }))} maxLength={120} required /></label>
       <div className="gym-locality-fields">
-        <label><span>{t('State')}</span><input name="gym-request-state" value={newGym.state} onChange={event => setNewGym(current => ({ ...current, state: event.target.value }))} maxLength={2} required /></label>
-        <label><span>{t('Municipality')}</span><input name="gym-request-city" value={newGym.city} onChange={event => setNewGym(current => ({ ...current, city: event.target.value }))} maxLength={100} required /></label>
+        <label><span>{t('State')}</span><select name="gym-request-state" value={newGym.state} onChange={event => setNewGym(current => ({ ...current, state: event.target.value, city: '' }))} required>
+          <option value="">{t('Select a state')}</option>
+          {states.map(value => <option key={value} value={value}>{value}</option>)}
+        </select></label>
+        <MunicipalityField name="gym-request-city" uf={newGym.state} city={newGym.city} locality={requestLocality} onChange={value => setNewGym(current => ({ ...current, city: value }))} />
       </div>
       <label><span>{t('Address')}</span><input name="gym-request-address" value={newGym.address} onChange={event => setNewGym(current => ({ ...current, address: event.target.value }))} maxLength={180} required /></label>
       <label><span>{t('Opening hours')}</span><textarea name="gym-request-opening-hours" value={newGym.openingHoursNote} onChange={event => setNewGym(current => ({ ...current, openingHoursNote: event.target.value }))} maxLength={300} placeholder={t('Example: Monday to Friday, 6:00 to 22:00')} /></label>

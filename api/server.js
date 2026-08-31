@@ -15,6 +15,7 @@ import { createAiJobRoutes, createAiJobService } from './ai-jobs.js';
 import { createAiRoutineRoutes, createAiRoutineService } from './ai-routines.js';
 import { bridgeAiUsageProperty } from './ai-usage.js';
 import { createDevAuth, hashDevPassword, isTrustedMutation, verifyDevPassword } from './dev-auth.js';
+import { createBrazilLocationsRoutes } from './brazil-locations.js';
 import { createGymDirectoryRoutes } from './gym-directory.js';
 import { reminderForState } from './lib/workout-schedule.js';
 import {
@@ -1366,7 +1367,7 @@ Object.assign(routes, createPersonalRoutes({
   readState,
   sendPush,
   store: collaborationStore
-}), createGymDirectoryRoutes({
+}), createBrazilLocationsRoutes({ json }), createGymDirectoryRoutes({
   store: collaborationStore,
   readSession,
   readBody,

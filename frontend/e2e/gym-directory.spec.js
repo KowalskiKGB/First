@@ -44,6 +44,11 @@ const gyms = [
   },
 ]
 
+const municipalities = {
+  CE: [{ id: 2303709, name: 'Caucaia' }, { id: 2304400, name: 'Fortaleza' }],
+  SP: [{ id: 3509502, name: 'Campinas' }, { id: 3550308, name: 'São Paulo' }],
+}
+
 const emptyState = {
   lang: 'pt',
   theme: 'dark',
@@ -57,7 +62,7 @@ const emptyState = {
   sourceSchedules: { ai: [], personal: [] },
 }
 
-function gymFixtures({ authenticated = false } = {}) {
+function gymFixtures({ authenticated = false, failedUf = '', municipalityDelay = 0 } = {}) {
   const user = authenticated
     ? { id: 'student-gym-e2e', name: 'Aluno Academia', email: 'aluno.academia@example.com', admin: false }
     : null
@@ -72,7 +77,8 @@ function gymFixtures({ authenticated = false } = {}) {
     writes,
     async handle(route) {
       const request = route.request()
-      const { pathname } = new URL(request.url())
+      const url = new URL(request.url())
+      const { pathname } = url
       const method = request.method()
       const body = method === 'GET' ? null : request.postDataJSON()
       if (method !== 'GET') writes.push({ method, pathname, body })
@@ -82,6 +88,12 @@ function gymFixtures({ authenticated = false } = {}) {
       if (pathname === '/api/data' && method === 'PUT') return json(route, { ok: true })
       if (pathname === '/api/collaboration') return json(route, { rev: 1, profile: null, connections: [], notifications: [], programs: [] })
       if (pathname === '/api/gyms') return json(route, { rev: 7, gyms })
+      if (pathname === '/api/locations/municipalities') {
+        const uf = url.searchParams.get('uf')
+        if (municipalityDelay) await new Promise(resolve => setTimeout(resolve, municipalityDelay))
+        if (uf === failedUf) return json(route, { error: 'Não foi possível carregar os municípios. Digite o município manualmente.' }, 502)
+        return json(route, { uf, municipalities: municipalities[uf] || [] })
+      }
       if (pathname === '/api/gym-requests' && method === 'POST') return json(route, {
         rev: 8,
         request: { id: 'gym-request-e2e', status: 'pending', ...body },
@@ -101,7 +113,7 @@ function watchBrowser(page) {
 }
 
 test('guest filters locality and search, then opens a gym with its exact exercise catalog on mobile', async ({ page }, testInfo) => {
-  const fixtures = gymFixtures()
+  const fixtures = gymFixtures({ municipalityDelay: 150 })
   const errors = watchBrowser(page)
   await page.setViewportSize(MOBILE)
   await page.emulateMedia({ reducedMotion: 'reduce' })
@@ -112,13 +124,24 @@ test('guest filters locality and search, then opens a gym with its exact exercis
 
   const state = page.locator('[name="gym-state"]')
   const city = page.locator('[name="gym-city"]')
-  await expect(state.locator('option')).toHaveCount(2)
+  const search = page.locator('[name="gym-search"]')
+  await expect(state.locator('option')).toHaveCount(28)
+  await expect(state).toHaveValue('')
+  await expect(city).toBeDisabled()
+  await expect(search).toBeDisabled()
+  await expect(page.locator('.gym-result')).toHaveCount(0)
+  await expect(page.locator('.gym-empty')).toContainText(/UF.*município|state.*municipality/i)
+
   await state.selectOption('SP')
-  await expect(city).toHaveValue('Campinas')
+  await expect(city).toBeDisabled()
+  await expect(city.locator('option').first()).toContainText(/Carregando|Loading/i)
+  await expect(city).toBeEnabled()
+  await city.selectOption('Campinas')
   await expect(page.locator('.gym-result', { hasText: 'Academia Campinas' })).toBeVisible()
   await expect(page.locator('.gym-result', { hasText: 'Academia X' })).toHaveCount(0)
 
   await state.selectOption('CE')
+  await expect(city).toBeEnabled()
   await city.selectOption('Caucaia')
   await expect(page.locator('.gym-result', { hasText: 'Academia Litoral' })).toBeVisible()
   await city.selectOption('Fortaleza')
@@ -149,6 +172,27 @@ test('guest filters locality and search, then opens a gym with its exact exercis
   expect(errors.page).toEqual([])
 })
 
+test('municipality failure falls back to manual entry without showing a premature empty result', async ({ page }) => {
+  const fixtures = gymFixtures({ failedUf: 'RR' })
+  const errors = watchBrowser(page)
+  await page.setViewportSize(MOBILE)
+  await page.route('**/api/**', route => fixtures.handle(route))
+
+  await page.goto('/#/academias')
+  await page.locator('[name="gym-state"]').selectOption('RR')
+  const city = page.locator('input[name="gym-city"]')
+  await expect(city).toBeVisible()
+  await expect(page.getByRole('alert')).toContainText('Digite o município manualmente')
+  await expect(page.locator('.gym-results')).not.toContainText(/nenhuma academia|no gyms/i)
+
+  await city.fill('Boa Vista')
+  await expect(page.locator('[name="gym-search"]')).toBeEnabled()
+  await expect(page.locator('.gym-empty')).toContainText(/nenhuma academia|no gyms/i)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1)
+  expect(errors.console.every(message => /Failed to load resource.*502/.test(message))).toBe(true)
+  expect(errors.page).toEqual([])
+})
+
 test('signed-in student selects a gym and requests equipment by a real catalog ID on desktop', async ({ page }, testInfo) => {
   const fixtures = gymFixtures({ authenticated: true })
   const errors = watchBrowser(page)
@@ -157,6 +201,16 @@ test('signed-in student selects a gym and requests equipment by a real catalog I
   await page.route('**/api/**', route => fixtures.handle(route))
 
   await page.goto('/#/academias')
+  await page.locator('[name="gym-state"]').selectOption('CE')
+  await expect(page.locator('[name="gym-city"]')).toBeEnabled()
+  await page.locator('[name="gym-city"]').selectOption('Fortaleza')
+
+  await page.locator('.gym-new-request-action').click()
+  const gymRequest = page.locator('.gym-new-request')
+  await expect(gymRequest.locator('[name="gym-request-state"]')).toHaveValue('CE')
+  await expect(gymRequest.locator('[name="gym-request-city"]')).toHaveValue('Fortaleza')
+  await gymRequest.getByRole('button', { name: 'Cancelar' }).click()
+
   await page.locator('.gym-result', { hasText: 'Academia X' }).click()
   const detail = page.locator('.gym-detail')
   await detail.getByRole('button', { name: 'Selecionar esta academia' }).click()
