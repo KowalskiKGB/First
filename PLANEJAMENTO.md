@@ -50,6 +50,12 @@ WebAuthn/passkeys, arquivos JSON, Vitest, `node:test`, Playwright, nginx e Docke
 - [x] Entrada e cadastro movidos para a chamada principal do aluno; Configurações mantém somente a
   edição de perfil para quem está autenticado.
 - [x] IA restrita a alunos autenticados; o modo convidado continua disponível para treinos locais.
+- [x] First 1.4: `/devadmin` isolado, credencial Dev rotacionável sem trocar `AI_CONFIG_MASTER_KEY`,
+  mensagens distintas de autenticação/carregamento e seletor compacto de provedores.
+- [x] First 1.4: Academias inicia localização automaticamente ao entrar na tela, preenche
+  UF/município por geocodificação reversa, ordena por proximidade e preserva edição manual.
+- [x] First 1.4: nova identidade visual "caderno de treino" para Aluno, Personal e Dev, com
+  fontes locais, superfícies sólidas, alvos de 44px, movimento reduzível e sem gradientes.
 
 - [x] Diretório social público de academias por UF/município/busca, com horários, endereço,
   inventário pelo catálogo real de exercícios, detalhe, rota externa e seleção também para guest.

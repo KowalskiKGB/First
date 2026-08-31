@@ -135,10 +135,12 @@ Read this before hosting First for anyone other than yourself.
 
 ### Gym directory privacy and location
 
-- **Location is opt-in and foreground-only.** Web and Capacitor request one
-  `navigator.geolocation.getCurrentPosition` reading only after the user presses “Usar minha
-  localização”. Android declares coarse/fine foreground location and iOS declares
-  `NSLocationWhenInUseUsageDescription`; neither platform declares background location.
+- **Location is foreground-only and screen-scoped.** Web and Capacitor request one
+  `navigator.geolocation.getCurrentPosition` reading when the user enters the Academias screen.
+  The screen shows a compact locating state and keeps UF/municipality editable as fallback; it
+  retries only on a fresh entry to the screen, not repeatedly during the same mount. Android
+  declares coarse/fine foreground location and iOS declares `NSLocationWhenInUseUsageDescription`;
+  neither platform declares background location.
 - **Personal coordinates are transient.** The frontend holds them only in React memory to rank
   nearby gyms. It sends them only to `/api/location/reverse` to resolve UF/municipality; they are
   rounded to three decimal places before entering the request URL and are not written to the
