@@ -38,11 +38,13 @@ function coordinateVerification(value) {
   const provider = text(value.provider, 120);
   const url = text(value.url, 500);
   if (!provider || !/^https:\/\//i.test(url)) return null;
+  const note = text(value.note, 300);
   return {
     provider,
     url,
     verifiedAt: timestamp(value.verifiedAt),
-    confidence: CONFIDENCE.has(value.confidence) ? value.confidence : 'medium'
+    confidence: CONFIDENCE.has(value.confidence) ? value.confidence : 'medium',
+    ...(note ? { note } : {})
   };
 }
 
@@ -138,7 +140,9 @@ export function applyGymSeed(value) {
   const seedById = new Map(MACAPA_GYM_SEED.map(item => [item.id, item]));
   const directory = (Array.isArray(collaboration.gymDirectory) ? collaboration.gymDirectory : []).map(item => {
     const seed = seedById.get(item?.id);
-    if (!seed || !/^https:\/\/www\.google\.com\/maps\//i.test(item?.source?.url || '')) return structuredClone(item);
+    const hasGenericGoogleSource = /^https:\/\/www\.google\.com\/maps\//i.test(item?.source?.url || '');
+    const isStaleBestGym = item?.id === 'gym-macapa-best-gym' && item?.coordinateApproximate === true && item?.latitude === null && item?.longitude === null;
+    if (!seed || (!hasGenericGoogleSource && !isStaleBestGym)) return structuredClone(item);
     return {
       ...structuredClone(item),
       latitude: seed.latitude,

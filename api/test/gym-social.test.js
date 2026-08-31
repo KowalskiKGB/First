@@ -119,26 +119,29 @@ test('Macapá seed has verified metadata and applies once per version without re
     'gym-macapa-box-tucuju': [0.02, 0.022, -51.073, -51.07],
     'gym-macapa-t30-intensity': [0.03, 0.032, -51.063, -51.06],
     'gym-macapa-life-fit': [0.039, 0.042, -51.078, -51.075],
+    'gym-macapa-best-gym': [0.048, 0.05, -51.12, -51.116],
     'gym-macapa-iron-men': [0.017, 0.02, -51.065, -51.062],
     'gym-macapa-shape-fitness': [0.059, 0.061, -51.055, -51.052]
   };
   for (const entry of MACAPA_GYM_SEED) {
-    if (entry.coordinateApproximate) {
-      assert.equal(entry.id, 'gym-macapa-best-gym');
-      assert.equal(entry.latitude, null);
-      assert.equal(entry.longitude, null);
-    } else {
-      const [latMin, latMax, lonMin, lonMax] = coordinateBounds[entry.id];
-      assert.equal(Number.isFinite(entry.latitude) && entry.latitude >= latMin && entry.latitude <= latMax, true, entry.id);
-      assert.equal(Number.isFinite(entry.longitude) && entry.longitude >= lonMin && entry.longitude <= lonMax, true, entry.id);
-    }
-    assert.match(entry.source.url, /^https:\/\/(?:www\.)?openstreetmap\.org\/(?:node|way)\/|^https:\/\/nominatim\.openstreetmap\.org\/search\?/, entry.id);
+    const [latMin, latMax, lonMin, lonMax] = coordinateBounds[entry.id];
+    assert.equal(Number.isFinite(entry.latitude) && entry.latitude >= latMin && entry.latitude <= latMax, true, entry.id);
+    assert.equal(Number.isFinite(entry.longitude) && entry.longitude >= lonMin && entry.longitude <= lonMax, true, entry.id);
+    assert.match(entry.source.url, /^https:\/\/(?:www\.)?openstreetmap\.org\/(?:node|way)\/|^https:\/\/www\.econodata\.com\.br\/consulta-empresa\//, entry.id);
     assert.doesNotMatch(entry.source.url, /google\.com/i, entry.id);
     assert.ok(entry.source.label && entry.source.confidence && entry.source.verifiedAt, entry.id);
-    assert.match(entry.coordinateVerification.provider, /^OpenStreetMap/, entry.id);
-    assert.match(entry.coordinateVerification.url, /^https:\/\/(?:www\.)?openstreetmap\.org\/(?:node|way)\/|^https:\/\/nominatim\.openstreetmap\.org\/search\?/, entry.id);
+    assert.match(entry.coordinateVerification.provider, /^(?:OpenStreetMap|Google Maps center)/, entry.id);
+    assert.match(entry.coordinateVerification.url, /^https:\/\/(?:www\.)?openstreetmap\.org\/(?:node|way)\/|^https:\/\/(?:www\.)?google\.com\/maps\/search\/\?/, entry.id);
     assert.ok(entry.coordinateVerification.verifiedAt, entry.id);
   }
+  const bestGym = MACAPA_GYM_SEED.find(entry => entry.id === 'gym-macapa-best-gym');
+  assert.equal(bestGym.coordinateApproximate, true);
+  assert.equal(bestGym.latitude, 0.049152);
+  assert.equal(bestGym.longitude, -51.11808);
+  assert.equal(bestGym.source.url, 'https://www.econodata.com.br/consulta-empresa/51326678000108-academia-best-gym-ltda');
+  assert.equal(bestGym.coordinateVerification.provider, 'Google Maps center');
+  assert.match(bestGym.coordinateVerification.url, /^https:\/\/www\.google\.com\/maps\/search\/\?/, 'Best Gym map evidence');
+  assert.match(bestGym.coordinateVerification.note, /Marabaixo III, Macapá/, 'Best Gym coordinate evidence note');
 
   const seeded = applyGymSeed({ gymDirectory: [], gymSeedTombstones: ['gym-macapa-smart-fit'] });
   assert.equal(seeded.gymSeedVersion, MACAPA_GYM_SEED_VERSION);
@@ -155,6 +158,21 @@ test('Macapá seed has verified metadata and applies once per version without re
   });
   assert.equal(legacySeed.gymDirectory[0].latitude, MACAPA_GYM_SEED[0].latitude);
   assert.equal(legacySeed.gymDirectory[0].source.url, MACAPA_GYM_SEED[0].source.url);
+
+  const staleBest = applyGymSeed({
+    gymSeedVersion: 'macapa-2026-09-01',
+    gymDirectory: [{
+      ...bestGym,
+      latitude: null,
+      longitude: null,
+      source: { label: 'OpenStreetMap Nominatim', url: 'https://nominatim.openstreetmap.org/search?format=jsonv2&q=Best%20Gym', confidence: 'medium', verifiedAt: NOW },
+      coordinateVerification: { provider: 'OpenStreetMap Nominatim', url: 'https://nominatim.openstreetmap.org/search?format=jsonv2&q=Best%20Gym', confidence: 'medium', verifiedAt: NOW }
+    }]
+  });
+  assert.equal(staleBest.gymDirectory[0].latitude, 0.049152);
+  assert.equal(staleBest.gymDirectory[0].longitude, -51.11808);
+  assert.equal(staleBest.gymDirectory[0].source.url, bestGym.source.url);
+  assert.equal(staleBest.gymDirectory[0].coordinateVerification.provider, 'Google Maps center');
 });
 
 test('Macapá seed is applied by the production collaboration store exactly once', t => {
