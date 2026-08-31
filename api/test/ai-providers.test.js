@@ -146,6 +146,8 @@ test('provider requests remove only unsupported schema constraints without mutat
 
   assert.equal(hasSchemaKeyword(openai.text.format.schema, 'minLength'), true);
   assert.equal(hasSchemaKeyword(gemini.generationConfig.responseFormat.text.schema, 'minLength'), false);
+  assert.equal(hasSchemaKeyword(gemini.generationConfig.responseFormat.text.schema, 'anyOf'), false);
+  assert.equal(hasSchemaKeyword(gemini.generationConfig.responseFormat.text.schema, 'nullable'), true);
   assert.equal(hasSchemaKeyword(gemini.generationConfig.responseFormat.text.schema, 'minimum'), true);
   for (const keyword of ['minimum', 'maximum', 'minLength', 'maxLength']) {
     assert.equal(hasSchemaKeyword(anthropic.output_config.format.schema, keyword), false, keyword);
