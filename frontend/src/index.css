@@ -1649,10 +1649,9 @@ body:has(.ai-wizard) #tabbar{display:none}
 /* Gym social discovery: one dense signal rail, then quiet solid surfaces. */
 .gym-directory{width:min(100%,760px);min-width:0;margin-inline:auto}
 .gym-directory-header{margin-bottom:12px;padding-bottom:14px;border-bottom:var(--hair) solid var(--sep-op)}
-.gym-directory-header h1{font-size:clamp(34px,8vw,52px);font-weight:720;letter-spacing:-.05em}
+.gym-directory-header h1{font-size:clamp(34px,8vw,52px);font-weight:720;letter-spacing:0}
 .gym-directory-header p{max-width:470px;margin-top:7px;color:var(--label-2);font-size:13px;line-height:1.45}
 .gym-discovery{position:relative;display:grid;grid-template-columns:minmax(210px,.72fr) minmax(280px,1.28fr);gap:10px;margin-bottom:12px;padding:13px;border:var(--hair) solid var(--sep-op);border-radius:var(--r-card);background:var(--surface)}
-.gym-discovery::before{content:'';position:absolute;inset:13px auto 13px 0;width:3px;border-radius:0 3px 3px 0;background:var(--acc)}
 .gym-location-button{display:flex;align-items:center;gap:11px;min-height:58px;padding:9px 12px;border:var(--hair) solid var(--acc-line);border-radius:var(--r);background:var(--bg);color:var(--label);text-align:left;transition:opacity var(--fast),transform var(--fast) var(--ease)}
 .gym-location-button:active{transform:scale(.985)}
 .gym-location-button:disabled{opacity:.58}
@@ -1680,7 +1679,7 @@ body:has(.ai-wizard) #tabbar{display:none}
 .gym-card-title{display:flex;align-items:baseline;gap:7px;min-width:0}
 .gym-card-title strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gym-card-title small{overflow:hidden;color:var(--label-3);font:600 9px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace;text-overflow:ellipsis;text-transform:uppercase;white-space:nowrap}
-.gym-card-signal{display:flex;align-items:center;gap:5px;min-height:17px;padding-left:7px;border-left:2px solid var(--acc);font-size:11px;font-variant-numeric:tabular-nums}
+.gym-card-signal{display:flex;align-items:center;gap:5px;min-height:17px;font-size:11px;font-variant-numeric:tabular-nums}
 .gym-card-signal b{color:var(--label);font-weight:700}
 .gym-card-signal i{color:var(--label-2);font-style:normal}
 .gym-card-signal i.is-open{color:var(--green)}
@@ -1703,7 +1702,7 @@ body:has(.ai-wizard) #tabbar{display:none}
 .gym-detail-heading{align-items:center;padding:18px;border:var(--hair) solid var(--sep-op);border-radius:var(--r-card) var(--r-card) 0 0;background:var(--surface)}
 .gym-detail-heading .gym-monogram{width:58px;height:58px;border-radius:16px;font-size:17px}
 .gym-detail-heading .personal-eyebrow{margin:0;color:var(--acc);font-size:9px}
-.gym-detail-heading h1{font-size:clamp(25px,7vw,38px);letter-spacing:-.035em;text-wrap:balance}
+.gym-detail-heading h1{font-size:clamp(25px,7vw,38px);letter-spacing:0;text-wrap:balance}
 .gym-detail-heading p{margin-top:3px}
 .gym-detail-signal{display:flex;align-items:center;gap:7px;min-height:46px;padding:9px 14px;border:solid var(--sep-op);border-width:0 var(--hair) var(--hair);border-radius:0 0 var(--r-card) var(--r-card);background:var(--bg-el);overflow-x:auto}
 .gym-detail-signal>span{display:flex;align-items:center;gap:5px;margin-right:auto;white-space:nowrap}
