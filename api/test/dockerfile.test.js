@@ -5,13 +5,14 @@ import test from 'node:test';
 const dockerfile = fs.readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
 const dockerignore = fs.readFileSync(new URL('../../.dockerignore', import.meta.url), 'utf8');
 const compose = fs.readFileSync(new URL('../../docker-compose.yml', import.meta.url), 'utf8');
+const server = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
 
 test('production image includes every local module imported by the API', () => {
-  assert.match(dockerfile, /COPY [^\n]*\bpersonal\.js\b[^\n]* \.\//);
-  assert.match(dockerfile, /\bai-providers\.js\b/);
-  assert.match(dockerfile, /\bai-jobs\.js\b/);
-  assert.match(dockerfile, /\bai-usage\.js\b/);
-  assert.match(dockerfile, /\bdev-auth\.js\b/);
+  const rootImports = [...server.matchAll(/from ['"]\.\/([^/'"]+\.js)['"]/g)].map(match => match[1]);
+  assert.ok(rootImports.length > 0);
+  for (const moduleName of rootImports) {
+    assert.match(dockerfile, new RegExp(`\\bapi/${moduleName.replace('.', '\\.') }\\b`), `${moduleName} is missing from api/Dockerfile`);
+  }
   assert.match(dockerfile, /COPY api\/domain \.\/domain/);
   assert.match(dockerfile, /COPY api\/lib \.\/lib/);
 });
