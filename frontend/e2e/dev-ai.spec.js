@@ -53,7 +53,9 @@ function devFixtures(seed = {}) {
         return json(route, { request: gymRequests.find(item => item.id === body.id) })
       }
       if (pathname === '/api/dev/gym-requests') return json(route, { requests: gymRequests })
-      if (pathname === '/api/dev/users') return json(route, { users })
+      if (pathname === '/api/dev/users') return seed.failUsers
+        ? json(route, { error: 'temporary user index failure' }, 503)
+        : json(route, { users })
       if (pathname === '/api/dev/user') return json(route, userDetails[searchParams.get('id')] || { error: 'not found' }, userDetails[searchParams.get('id')] ? 200 : 404)
       if (pathname === '/api/dev/ai/models') {
         if (searchParams.get('provider') === 'gemini') return json(route, { error: 'The provider credential was rejected.' }, 422)
@@ -215,4 +217,17 @@ test('Dev reviews equipment requests and inspects registered users', async ({ pa
     pathname: '/api/dev/gym-requests/review',
     body: { id: 'request-1', decision: 'approve' },
   }))
+})
+
+test('an unavailable user index does not block AI provider configuration', async ({ page }) => {
+  const fixtures = devFixtures({ failUsers: true })
+  await page.route('**/api/**', route => fixtures.handle(route))
+  await page.goto('/devadmin')
+  await page.locator('[name="dev-username"]').fill('first_dev_demo')
+  await page.locator('[name="dev-password"]').fill('temporary-demo-password')
+  await page.getByRole('button', { name: 'Abrir Painel Dev' }).click()
+
+  await expect(page.locator('form[aria-labelledby="provider-openai"]')).toBeVisible()
+  await expect(page.getByText('Alguns dados do painel não puderam ser carregados.')).toBeVisible()
+  await expect(page.getByText('Credencial Dev inválida.')).toHaveCount(0)
 })
