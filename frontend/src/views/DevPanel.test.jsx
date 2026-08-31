@@ -426,21 +426,17 @@ describe('Dev operations console contracts', () => {
     const onView = vi.fn()
     const onReason = vi.fn()
     const onPrepareAction = vi.fn()
-    const console = <GymConsole
-      view="contributions"
-      onView={onView}
-      requests={[{
+    const requests = [{
         id: 'request-correction', kind: 'correction', status: 'pending', gymId: 'gym-1',
         gym: { id: 'gym-1', name: 'Academia Centro' },
         payload: { address: 'Rua Nova, 200', neighborhood: 'Centro' },
         createdAt: '2026-08-31T12:00:00Z',
-      }]}
-      gyms={[{ id: 'gym-1', name: 'Academia Centro', address: 'Rua Antiga, 10', neighborhood: 'Aldeota', status: 'verified', visibility: 'public', exerciseIds: [] }]}
-      selectedRequestId="request-correction"
-      reason=""
-      onReason={onReason}
-      onPrepareAction={onPrepareAction}
-    />
+      }]
+    const gyms = [{ id: 'gym-1', name: 'Academia Centro', address: 'Rua Antiga, 10', neighborhood: 'Aldeota', status: 'verified', visibility: 'public', exerciseIds: [] }]
+    const console = GymConsole({
+      view: 'contributions', onView, requests, gyms, selectedRequestId: 'request-correction',
+      reason: '', onReason, onPrepareAction,
+    })
     const markup = renderToStaticMarkup(console)
 
     expect(markup).toContain('Contributions')
@@ -452,17 +448,24 @@ describe('Dev operations console contracts', () => {
     expect(markup).toContain('Rua Nova, 200')
     expect(markup).not.toContain('submittedByUserId')
 
-    const textarea = findElements(console, element => element.props.name === 'gym-moderation-reason')[0]
+    const contributionPanel = byTypeName(console, 'ContributionConsole')
+    const contribution = contributionPanel.type(contributionPanel.props)
+    const moderationPanel = byTypeName(contribution, 'ModerationActions')
+    const moderation = moderationPanel.type(moderationPanel.props)
+    const textarea = findElements(moderation, element => element.props.name === 'gym-moderation-reason')[0]
     textarea.props.onChange({ target: { value: 'Cadastro confirmado na fonte.' } })
     expect(onReason).toHaveBeenCalledWith('Cadastro confirmado na fonte.')
-    const approve = findElements(console, element => element.props.children === 'Approve')[0]
+    const approve = findElements(moderation, element => element.props.children === 'Approve')[0]
     expect(approve.props.disabled).toBe(true)
 
     const ready = GymConsole({
-      view: 'contributions', requests: console.props.requests, gyms: console.props.gyms,
+      view: 'contributions', requests, gyms,
       selectedRequestId: 'request-correction', reason: 'Cadastro confirmado na fonte.', onPrepareAction,
     })
-    findElements(ready, element => element.props.children === 'Approve')[0].props.onClick()
+    const readyPanel = byTypeName(ready, 'ContributionConsole')
+    const readyContribution = readyPanel.type(readyPanel.props)
+    const readyActions = byTypeName(readyContribution, 'ModerationActions')
+    findElements(readyActions.type(readyActions.props), element => element.props.children === 'Approve')[0].props.onClick()
     expect(onPrepareAction).toHaveBeenCalledWith({ type: 'request', id: 'request-correction', action: 'approve' })
   })
 
@@ -478,8 +481,11 @@ describe('Dev operations console contracts', () => {
     })
     const directoryMarkup = renderToStaticMarkup(directory)
     expect(directoryMarkup).toContain('Site oficial')
-    expect(directoryMarkup).toContain('verified')
-    findElements(directory, element => element.props.children === 'Archive')[0].props.onClick()
+    expect(directoryMarkup).toContain('Verified')
+    const directoryPanel = byTypeName(directory, 'DirectoryConsole')
+    const directoryContent = directoryPanel.type(directoryPanel.props)
+    const directoryActions = byTypeName(directoryContent, 'ModerationActions')
+    findElements(directoryActions.type(directoryActions.props), element => element.props.children === 'Archive')[0].props.onClick()
     expect(onPrepareAction).toHaveBeenCalledWith({ type: 'gym', id: gym.id, action: 'archive' })
 
     const confirm = GymConsole({
@@ -497,7 +503,10 @@ describe('Dev operations console contracts', () => {
       reason: 'Comentário revisado.', onPrepareAction,
     })
     expect(renderToStaticMarkup(reviews)).toContain('Contato em texto removido.')
-    findElements(reviews, element => element.props.children === 'Restore')[0].props.onClick()
+    const reviewsPanel = byTypeName(reviews, 'ReviewConsole')
+    const reviewsContent = reviewsPanel.type(reviewsPanel.props)
+    const reviewActions = byTypeName(reviewsContent, 'ModerationActions')
+    findElements(reviewActions.type(reviewActions.props), element => element.props.children === 'Restore')[0].props.onClick()
     expect(onPrepareAction).toHaveBeenCalledWith({ type: 'review', id: review.id, action: 'restore' })
   })
 

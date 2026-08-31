@@ -273,10 +273,12 @@ test('Dev reviews equipment requests and inspects registered users', async ({ pa
   await page.locator('[name="dev-password"]').fill('temporary-demo-password')
   await page.getByRole('button', { name: 'Abrir Painel Dev' }).click()
 
-  await page.getByRole('tab', { name: 'Solicitações' }).click()
-  await expect(page.getByRole('heading', { name: 'Solicitações de academias e aparelhos' })).toBeVisible()
+  await page.getByRole('tab', { name: 'Academias' }).click()
+  await expect(page.getByRole('heading', { name: 'Academias' })).toBeVisible()
   await expect(page.getByText('Hack squat articulado').first()).toBeVisible()
+  await page.locator('[name="gym-moderation-reason"]').fill('Equipamento confirmado na unidade.')
   await page.getByRole('button', { name: 'Aprovar' }).click()
+  await page.getByRole('button', { name: 'Confirmar aprovação' }).click()
   await expect(page.getByText('Aprovada', { exact: true }).last()).toBeVisible()
 
   await page.getByRole('tab', { name: 'Usuários' }).click()
@@ -318,7 +320,7 @@ test('Dev compares contributions and safely moderates gyms and reviews with the 
   await page.getByRole('tab', { name: 'Academias' }).click()
 
   await expect(page.getByRole('tab', { name: 'Contribuições' })).toHaveAttribute('aria-selected', 'true')
-  await expect(page.getByText('Rua Antiga, 10')).toBeVisible()
+  await expect(page.getByLabel('Comparação antes e depois').getByText('Rua Antiga, 10')).toBeVisible()
   await expect(page.getByText('Rua Nova, 200')).toBeVisible()
   const reason = page.locator('[name="gym-moderation-reason"]')
   await expect(page.getByRole('button', { name: 'Aprovar' })).toBeDisabled()
@@ -332,11 +334,11 @@ test('Dev compares contributions and safely moderates gyms and reviews with the 
   await reason.fill('Unidade encerrada e fonte conferida.')
   await page.getByRole('button', { name: 'Arquivar' }).click()
   await page.getByRole('button', { name: 'Confirmar arquivamento' }).click()
-  await expect(page.getByText('Arquivada', { exact: true })).toBeVisible()
+  await expect(page.getByText('Arquivada', { exact: true }).last()).toBeVisible()
 
   await page.getByRole('tab', { name: 'Avaliações' }).click()
-  await page.getByRole('button', { name: 'Removidas' }).click()
-  await expect(page.getByText('Comentário revisado sem contato.')).toBeVisible()
+  await page.getByRole('button', { name: 'Removidas', exact: true }).click()
+  await expect(page.getByText('Comentário revisado sem contato.', { exact: true })).toBeVisible()
   await reason.fill('Comentário conferido e seguro para publicação.')
   await page.getByRole('button', { name: 'Restaurar' }).click()
   await page.getByRole('button', { name: 'Confirmar restauração' }).click()

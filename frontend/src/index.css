@@ -1766,6 +1766,30 @@ body:has(.ai-wizard) #tabbar{display:none}
 .dev-console-tabs button{min-height:44px;padding:8px;border-radius:9px;color:var(--label-2);font-size:13px;font-weight:600;transition:opacity var(--fast),transform var(--fast) var(--ease)}
 .dev-console-tabs button:active{transform:scale(.98)}
 .dev-console-tabs button[aria-selected="true"]{background:var(--surface-3);color:var(--label)}
+.dev-gym-tabs{display:flex;gap:4px;margin:10px 0 14px;padding:4px;border:var(--hair) solid var(--sep-op);border-radius:var(--r);background:var(--surface-2)}
+.dev-gym-tabs button{flex:1;min-height:44px;padding:8px;border-radius:9px;color:var(--label-2);font-size:12px;font-weight:650}
+.dev-gym-tabs button[aria-selected="true"]{background:var(--surface-3);color:var(--acc)}
+.dev-gym-tabs button:focus-visible,.dev-review-filters button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.dev-gym-console>.panel-heading p{max-width:620px;margin-top:4px;color:var(--label-2);font-size:12px;line-height:1.45}
+.dev-gym-panel>.search{margin-bottom:10px}
+.dev-comparison{display:flex;flex-direction:column;margin-top:14px;overflow:hidden;border:var(--hair) solid var(--sep-op);border-radius:var(--r);background:var(--sep-op)}
+.dev-comparison>div{display:grid;grid-template-columns:minmax(90px,.6fr) repeat(2,minmax(0,1fr));gap:var(--hair)}
+.dev-comparison>div>*{min-width:0;margin:0;padding:9px;background:var(--surface);font-size:11px;line-height:1.4;overflow-wrap:anywhere}
+.dev-comparison>div>span{color:var(--label-2);font-weight:600}
+.dev-comparison-head>*{color:var(--label-3);font:650 9px/1.3 ui-monospace,SFMono-Regular,Consolas,monospace;text-transform:uppercase}
+.dev-moderation-actions{display:flex;flex-direction:column;gap:9px;margin-top:14px;padding-top:14px;border-top:var(--hair) solid var(--sep-op)}
+.dev-moderation-actions label{gap:6px}
+.dev-moderation-actions textarea.field{min-height:76px;padding:10px;resize:vertical;border:var(--hair) solid var(--sep-op);background:var(--surface)}
+.dev-moderation-actions textarea.field:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.dev-moderation-actions>.dev-provider-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.dev-confirmation{padding:11px;border:var(--hair) solid var(--acc-line);border-radius:var(--r);background:var(--surface)}
+.dev-confirmation p{margin:0 0 9px;color:var(--label-2);font-size:12px}
+.dev-confirmation>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.dev-confirmation .btn{min-height:44px;margin:0}
+.dev-review-filters{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin-bottom:10px}
+.dev-review-filters button{min-height:44px;padding:7px;border:var(--hair) solid var(--sep-op);border-radius:9px;color:var(--label-2);font-size:11px;font-weight:600}
+.dev-review-filters button[aria-pressed="true"]{border-color:var(--acc-line);background:var(--surface-3);color:var(--acc)}
+.dev-review-comment{margin-top:14px;padding:12px;border-left:3px solid var(--acc);background:var(--surface);color:var(--label);font-size:13px;line-height:1.55;overflow-wrap:anywhere}
 .dev-provider-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:10px}
 .dev-provider-list .client-row{min-height:64px;padding:10px;background:var(--surface);transition:opacity var(--fast),transform var(--fast) var(--ease)}
 .dev-provider-list .client-row.is-selected{border-color:var(--acc);background:var(--surface-2)}
@@ -1814,6 +1838,7 @@ body:has(.ai-wizard) #tabbar{display:none}
   .dev-provider-list .status-badge{min-width:0;min-height:20px;padding:2px 4px;font-size:9px}
   .dev-console-split{grid-template-columns:1fr}
   .dev-console-split>.client-list{max-height:300px}
+  .dev-comparison>div{grid-template-columns:74px repeat(2,minmax(0,1fr))}
 }
 
 @media (max-width:430px){
@@ -1835,4 +1860,6 @@ body:has(.ai-wizard) #tabbar{display:none}
   .dev-provider-card>.dev-provider-actions,.dev-request-detail .dev-provider-actions{grid-template-columns:1fr}
   .dev-request-detail,.dev-user-detail{padding:12px}
   .dev-user-measurements dl{grid-template-columns:1fr}
+  .dev-review-filters{grid-template-columns:1fr 1fr}
+  .dev-confirmation>div,.dev-moderation-actions>.dev-provider-actions{grid-template-columns:1fr}
 }

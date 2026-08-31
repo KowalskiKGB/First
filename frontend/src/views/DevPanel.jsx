@@ -34,6 +34,45 @@ const measurementLabel = kind => ({
   weight: 'Weight', waist: 'Waist', chest: 'Chest', hip: 'Hips', arm: 'Arms', thigh: 'Thighs', calf: 'Calves',
 }[kind] || kind || 'Measurement')
 
+const requestKind = kind => ({ gym: 'New gym', equipment: 'Equipment', correction: 'Correction', closure: 'Closure report' }[kind] || 'Contribution')
+const gymStatus = status => ({ verified: 'Verified', unverified: 'Unverified', partner: 'Partner', closed: 'Closed', archived: 'Archived' }[status] || status || 'Unverified')
+const reviewStatus = status => ({ pending: 'Pending', published: 'Published', removed: 'Removed' }[status] || status || 'Pending')
+const moderationConfirmation = action => ({
+  approve: 'Confirm approval', reject: 'Confirm rejection', archive: 'Confirm archive',
+  restore: 'Confirm restore', publish: 'Confirm publication', remove: 'Confirm removal',
+}[action] || 'Confirm action')
+const comparableValue = value => {
+  if (Array.isArray(value)) return t('{0} items', number(value.length))
+  if (value == null || value === '') return t('Not informed')
+  return String(value)
+}
+
+export function contributionComparison(request, gym = {}) {
+  const payload = request?.payload || {}
+  if (request?.kind === 'gym') {
+    return ['name', 'state', 'city', 'address', 'openingHours', 'exerciseIds']
+      .filter(field => payload[field] != null)
+      .map(field => ({ field, before: t('Not in directory'), after: comparableValue(payload[field]) }))
+  }
+  if (request?.kind === 'equipment') {
+    const before = new Set(gym.exerciseIds || [])
+    const after = new Set([...before, ...(payload.exerciseIds || [])])
+    return [{ field: 'exerciseIds', before: comparableValue([...before]), after: comparableValue([...after]) }]
+  }
+  if (request?.kind === 'closure') {
+    return [{ field: 'status', before: gymStatus(gym.status), after: t('Approved report; directory stays unchanged') }]
+  }
+  return Object.entries(payload)
+    .filter(([field]) => field !== 'note')
+    .map(([field, value]) => ({ field, before: comparableValue(gym[field]), after: comparableValue(value) }))
+}
+
+const fieldLabel = field => ({
+  name: 'Name', networkName: 'Network', state: 'State', city: 'Municipality', address: 'Address',
+  neighborhood: 'Neighborhood', postalCode: 'Postal code', openingHours: 'Opening hours',
+  openingHoursNote: 'Opening hours', exerciseIds: 'Equipment', status: 'Status',
+}[field] || field)
+
 export function ModelChoices({ models, selected, onSelect }) {
   return <div className="model-results" role="group" aria-label={t('Available models')}>
     {models.slice(0, 40).map(model => <button type="button" translate="no" aria-pressed={selected === model} style={selected === model ? { color: 'var(--acc)' } : undefined} key={model} onClick={() => onSelect(model)}>{model}</button>)}
@@ -74,7 +113,7 @@ function UsageBoard({ usage, window, onWindow }) {
 }
 
 function ConsoleTabs({ section, onSection }) {
-  const tabs = [['apis', 'APIs'], ['requests', 'Requests'], ['users', 'Users']]
+  const tabs = [['apis', 'APIs'], ['gyms', 'Gyms'], ['users', 'Users']]
   return <nav className="dev-console-tabs" role="tablist" aria-label={t('Dev console sections')}>
     {tabs.map(([value, label]) => <button
       type="button"
@@ -127,38 +166,145 @@ function LegacyProviderConsole({ providers, onChanged }) {
   </section>
 }
 
-function RequestConsole({ requests = [], selectedRequestId, onSelectRequest, onReviewRequest, reviewingRequestId }) {
+function GymTabs({ view, onView }) {
+  return <nav className="dev-gym-tabs" role="tablist" aria-label={t('Gym moderation sections')}>
+    {[['contributions', 'Contributions'], ['directory', 'Directory'], ['reviews', 'Reviews']].map(([value, label]) => <button
+      type="button" role="tab" aria-selected={view === value} aria-controls={`dev-gym-${value}`} key={value}
+      onClick={() => onView?.(value)}
+    >{t(label)}</button>)}
+  </nav>
+}
+
+function ModerationActions({ type, id, actions, reason = '', pendingAction, busy, onReason, onPrepareAction, onConfirmAction, onCancelAction }) {
+  const pending = pendingAction?.type === type && pendingAction?.id === id ? pendingAction : null
+  return <div className="dev-moderation-actions">
+    <label><span>{t('Decision reason')}</span><textarea className="field" name="gym-moderation-reason" maxLength={300} value={reason} onChange={event => onReason?.(event.target.value)} placeholder={t('Add a short, factual reason')} /></label>
+    {pending ? <div className="dev-confirmation" role="alert">
+      <p>{t('Review the reason before confirming this action.')}</p>
+      <div>
+        <Button type="button" variant="primary" disabled={busy} onClick={() => onConfirmAction?.()}>{t(moderationConfirmation(pending.action))}</Button>
+        <Button type="button" disabled={busy} onClick={() => onCancelAction?.()}>{t('Cancel')}</Button>
+      </div>
+    </div> : <div className="dev-provider-actions">
+      {actions.map(({ action, label, primary = false }) => <Button
+        type="button" variant={primary ? 'primary' : undefined} disabled={busy || !reason.trim()} key={action}
+        onClick={() => onPrepareAction?.({ type, id, action })}
+      >{t(label)}</Button>)}
+    </div>}
+  </div>
+}
+
+function ContributionConsole({ requests, gyms, selectedRequestId, onSelectRequest, ...actions }) {
   const selected = requests.find(item => item.id === selectedRequestId) || requests[0]
-  const gym = selected?.gym || {}
+  const gym = gyms.find(item => item.id === selected?.gymId) || selected?.gym || {}
   const submitter = selected?.requestedBy || selected?.submittedBy || {}
-  const payload = selected?.payload || {}
-  return <section id="dev-panel-requests" role="tabpanel" aria-labelledby="dev-requests-title" className="personal-panel">
-    <div className="panel-heading"><div><span className="personal-eyebrow">{t('Moderation')}</span><h2 id="dev-requests-title">{t('Equipment requests')}</h2></div><span className="status-badge status-none">{number(requests.length)}</span></div>
+  const comparison = contributionComparison(selected, gym)
+  return <section id="dev-gym-contributions" role="tabpanel" className="dev-gym-panel">
     {requests.length ? <div className="dev-console-split">
-      <div className="client-list" aria-label={t('Requests')}>
+      <div className="client-list" aria-label={t('Contributions')}>
         {requests.map(request => <button className="client-row compact" type="button" aria-pressed={selected?.id === request.id} key={request.id} onClick={() => onSelectRequest?.(request.id)}>
-          <span className="client-row-main"><span className="client-row-title"><strong>{requestName(request)}</strong></span><span className="client-facts">{request.gym?.name || request.payload?.name || t('New gym')}</span></span>
+          <span className="client-row-main"><span className="client-row-title"><strong>{requestName(request)}</strong></span><span className="client-facts">{request.gym?.name || request.payload?.name || t(requestKind(request.kind))}</span></span>
           <span className={`status-badge status-${request.status === 'approved' ? 'confirmed' : request.status === 'rejected' ? 'late' : 'none'}`}>{t(requestStatus(request.status))}</span>
         </button>)}
       </div>
       {selected ? <article className="dev-request-detail">
-        <div className="dev-provider-head"><div><span className="personal-eyebrow">{t(selected.kind === 'gym' ? 'New gym' : 'Equipment')}</span><h3>{requestName(selected)}</h3></div><span className={`status-badge status-${selected.status === 'approved' ? 'confirmed' : selected.status === 'rejected' ? 'late' : 'none'}`}>{t(requestStatus(selected.status))}</span></div>
+        <div className="dev-provider-head"><div><span className="personal-eyebrow">{t(requestKind(selected.kind))}</span><h3>{selected.gym?.name || selected.payload?.name || requestName(selected)}</h3></div><span className={`status-badge status-${selected.status === 'approved' ? 'confirmed' : selected.status === 'rejected' ? 'late' : 'none'}`}>{t(requestStatus(selected.status))}</span></div>
+        <div className="dev-comparison" aria-label={t('Before and after comparison')}>
+          <div className="dev-comparison-head"><span>{t('Field')}</span><strong>{t('Before')}</strong><strong>{t('After')}</strong></div>
+          {comparison.map(row => <div key={row.field}><span>{t(fieldLabel(row.field))}</span><p>{row.before}</p><p>{row.after}</p></div>)}
+        </div>
         <dl className="dev-provider-meta">
-          <div><dt>{t('Gym')}</dt><dd>{gym.name || payload.name || t('Not informed')}</dd></div>
-          <div><dt>{t('Municipality')}</dt><dd>{gym.municipality || gym.city || payload.city || t('Not informed')}</dd></div>
-          <div><dt>{t('Address')}</dt><dd>{gym.address || payload.address || t('Not informed')}</dd></div>
+          <div><dt>{t('Municipality')}</dt><dd>{gym.municipality || gym.city || selected.payload?.city || t('Not informed')}</dd></div>
+          <div><dt>{t('Address')}</dt><dd>{gym.address || selected.payload?.address || t('Not informed')}</dd></div>
           <div><dt>{t('Requested by')}</dt><dd>{submitter.name || t('Not informed')}</dd></div>
           <div><dt>{t('Email')}</dt><dd>{submitter.email || t('Not informed')}</dd></div>
-          <div><dt>{t('Exercises')}</dt><dd>{number((payload.exerciseIds || selected.exerciseIds || []).length)}</dd></div>
-          <div><dt>{t('Notes')}</dt><dd>{payload.openingHoursNote || payload.note || t('Not informed')}</dd></div>
+          <div><dt>{t('Notes')}</dt><dd>{selected.payload?.note || selected.payload?.openingHoursNote || t('Not informed')}</dd></div>
           <div><dt>{t('Submitted')}</dt><dd>{selected.createdAt ? new Date(selected.createdAt).toLocaleString(dateLocale()) : t('Not informed')}</dd></div>
         </dl>
-        {selected.status === 'pending' && onReviewRequest ? <div className="dev-provider-actions">
-          <Button type="button" variant="primary" disabled={reviewingRequestId === selected.id} onClick={() => onReviewRequest(selected.id, 'approve')}>{t('Approve')}</Button>
-          <Button type="button" disabled={reviewingRequestId === selected.id} onClick={() => onReviewRequest(selected.id, 'reject')}>{t('Reject')}</Button>
-        </div> : null}
+        {selected.status === 'pending' ? <ModerationActions type="request" id={selected.id} actions={[{ action: 'approve', label: 'Approve', primary: true }, { action: 'reject', label: 'Reject' }]} {...actions} /> : null}
       </article> : null}
-    </div> : <p className="model-empty" role="status">{t('No requests awaiting review.')}</p>}
+    </div> : <p className="model-empty" role="status">{t('No contributions to review.')}</p>}
+  </section>
+}
+
+function DirectoryConsole({ gyms, selectedGymId, onSelectGym, search = '', onSearch, ...actions }) {
+  const term = search.trim().toLocaleLowerCase('pt-BR')
+  const visible = gyms.filter(gym => !term || `${gym.name} ${gym.city} ${gym.state} ${gym.address}`.toLocaleLowerCase('pt-BR').includes(term))
+  const selected = visible.find(item => item.id === selectedGymId) || visible[0]
+  const source = selected?.source || {}
+  return <section id="dev-gym-directory" role="tabpanel" className="dev-gym-panel">
+    <SearchField name="dev-gym-search" value={search} onChange={event => onSearch?.(event.target.value)} onClear={() => onSearch?.('')} placeholder={t('Search the directory')} aria-label={t('Search the directory')} />
+    {visible.length ? <div className="dev-console-split">
+      <div className="client-list" aria-label={t('Directory')}>
+        {visible.map(gym => <button className="client-row compact" type="button" aria-pressed={selected?.id === gym.id} key={gym.id} onClick={() => onSelectGym?.(gym.id)}>
+          <span className="client-row-main"><span className="client-row-title"><strong>{gym.name}</strong></span><span className="client-facts">{gym.city} / {gym.state} · {gym.address}</span></span>
+          <span className={`status-badge ${gym.status === 'archived' ? 'status-late' : 'status-confirmed'}`}>{t(gymStatus(gym.status))}</span>
+        </button>)}
+      </div>
+      {selected ? <article className="dev-request-detail">
+        <div className="dev-provider-head"><div><span className="personal-eyebrow">{t('Directory record')}</span><h3>{selected.name}</h3><p>{selected.address} · {selected.city} / {selected.state}</p></div><span className={`status-badge ${selected.status === 'archived' ? 'status-late' : 'status-confirmed'}`}>{t(gymStatus(selected.status))}</span></div>
+        <dl className="dev-provider-meta">
+          <div><dt>{t('Visibility')}</dt><dd>{selected.visibility || 'public'}</dd></div>
+          <div><dt>{t('Equipment')}</dt><dd>{number(selected.exerciseIds?.length)}</dd></div>
+          <div><dt>{t('Source')}</dt><dd>{source.label || t('Not informed')}</dd></div>
+          <div><dt>{t('Confidence')}</dt><dd>{source.confidence || t('Not informed')}</dd></div>
+          <div><dt>{t('Source URL')}</dt><dd>{source.url || t('Not informed')}</dd></div>
+          <div><dt>{t('Verified at')}</dt><dd>{source.verifiedAt || t('Not informed')}</dd></div>
+        </dl>
+        <ModerationActions type="gym" id={selected.id} actions={selected.status === 'archived' ? [{ action: 'restore', label: 'Restore', primary: true }] : [{ action: 'archive', label: 'Archive' }]} {...actions} />
+      </article> : null}
+    </div> : <p className="model-empty" role="status">{t('No gyms match this search.')}</p>}
+  </section>
+}
+
+function ReviewConsole({ reviews, gyms, selectedReviewId, onSelectReview, reviewFilter = 'all', onReviewFilter, ...actions }) {
+  const visible = reviewFilter === 'all' ? reviews : reviews.filter(review => review.status === reviewFilter)
+  const selected = visible.find(item => item.id === selectedReviewId) || visible[0]
+  const gym = gyms.find(item => item.id === selected?.gymId)
+  const reviewActions = selected?.status === 'removed'
+    ? [{ action: 'restore', label: 'Restore', primary: true }]
+    : selected?.status === 'pending'
+      ? [{ action: 'publish', label: 'Publish', primary: true }, { action: 'remove', label: 'Remove' }]
+      : [{ action: 'remove', label: 'Remove' }]
+  return <section id="dev-gym-reviews" role="tabpanel" className="dev-gym-panel">
+    <div className="dev-review-filters" role="group" aria-label={t('Review status')}>
+      {[['all', 'All'], ['pending', 'Pending'], ['published', 'Published'], ['removed', 'Removed']].map(([value, label]) => <button type="button" aria-pressed={reviewFilter === value} key={value} onClick={() => onReviewFilter?.(value)}>{t(label)}</button>)}
+    </div>
+    {visible.length ? <div className="dev-console-split">
+      <div className="client-list" aria-label={t('Reviews')}>
+        {visible.map(review => <button className="client-row compact" type="button" aria-pressed={selected?.id === review.id} key={review.id} onClick={() => onSelectReview?.(review.id)}>
+          <span className="client-row-main"><span className="client-row-title"><strong>{gyms.find(item => item.id === review.gymId)?.name || t('Unknown gym')}</strong></span><span className="client-facts">{number(review.rating)} / 5 · {review.comment || t('No comment')}</span></span>
+          <span className={`status-badge status-${review.status === 'published' ? 'confirmed' : review.status === 'removed' ? 'late' : 'none'}`}>{t(reviewStatus(review.status))}</span>
+        </button>)}
+      </div>
+      {selected ? <article className="dev-request-detail">
+        <div className="dev-provider-head"><div><span className="personal-eyebrow">{gym?.name || t('Unknown gym')}</span><h3>{number(selected.rating)} / 5</h3></div><span className={`status-badge status-${selected.status === 'published' ? 'confirmed' : selected.status === 'removed' ? 'late' : 'none'}`}>{t(reviewStatus(selected.status))}</span></div>
+        <p className="dev-review-comment">{selected.comment || t('No comment')}</p>
+        <dl className="dev-provider-meta">
+          <div><dt>{t('Requested by')}</dt><dd>{selected.submittedBy?.name || t('Not informed')}</dd></div>
+          <div><dt>{t('Email')}</dt><dd>{selected.submittedBy?.email || t('Not informed')}</dd></div>
+          <div><dt>{t('Submitted')}</dt><dd>{selected.createdAt ? new Date(selected.createdAt).toLocaleString(dateLocale()) : t('Not informed')}</dd></div>
+          <div><dt>{t('Demonstration')}</dt><dd>{t(selected.demo ? 'Yes' : 'No')}</dd></div>
+        </dl>
+        <ModerationActions type="review" id={selected.id} actions={reviewActions} {...actions} />
+      </article> : null}
+    </div> : <p className="model-empty" role="status">{t('No reviews in this status.')}</p>}
+  </section>
+}
+
+export function GymConsole({
+  view = 'contributions', onView, requests = [], gyms = [], reviews = [], selectedRequestId, onSelectRequest,
+  selectedGymId, onSelectGym, selectedReviewId, onSelectReview, search, onSearch, reviewFilter, onReviewFilter,
+  message = '', error = '', ...actions
+}) {
+  return <section id="dev-panel-gyms" role="tabpanel" aria-labelledby="dev-gyms-title" className="personal-panel dev-gym-console">
+    <div className="panel-heading"><div><span className="personal-eyebrow">{t('Moderation')}</span><h2 id="dev-gyms-title">{t('Gyms')}</h2><p>{t('Compare contributions, maintain the directory and moderate reviews.')}</p></div><span className="status-badge status-none">{number(requests.filter(item => item.status === 'pending').length)}</span></div>
+    <GymTabs view={view} onView={onView} />
+    {message ? <p className="personal-notice" role="status" aria-live="polite">{message}</p> : null}
+    {error ? <p className="form-error" role="alert">{error}</p> : null}
+    {view === 'contributions' ? <ContributionConsole requests={requests} gyms={gyms} selectedRequestId={selectedRequestId} onSelectRequest={onSelectRequest} {...actions} /> : null}
+    {view === 'directory' ? <DirectoryConsole gyms={gyms} selectedGymId={selectedGymId} onSelectGym={onSelectGym} search={search} onSearch={onSearch} {...actions} /> : null}
+    {view === 'reviews' ? <ReviewConsole reviews={reviews} gyms={gyms} selectedReviewId={selectedReviewId} onSelectReview={onSelectReview} reviewFilter={reviewFilter} onReviewFilter={onReviewFilter} {...actions} /> : null}
   </section>
 }
 
@@ -305,8 +451,11 @@ function ProviderCard({ definition, slot, onChanged }) {
 
 export function DevDashboard({
   providers = [], usage = {}, window = '7d', section = 'apis', selectedProvider,
-  requests = [], selectedRequestId, users = [], selectedUserId, selectedUser,
-  onSection, onSelectProvider, onSelectRequest, onReviewRequest, reviewingRequestId,
+  requests = [], selectedRequestId, gyms = [], selectedGymId, reviews = [], selectedReviewId,
+  gymView, gymSearch, reviewFilter, moderationReason, pendingAction, moderationBusy, moderationMessage, moderationError,
+  users = [], selectedUserId, selectedUser,
+  onSection, onSelectProvider, onSelectRequest, onSelectGym, onSelectReview, onGymView, onGymSearch, onReviewFilter,
+  onModerationReason, onPrepareAction, onConfirmAction, onCancelAction,
   onSelectUser, onWindow, onLogout, onChanged,
 }) {
   return (
@@ -319,7 +468,13 @@ export function DevDashboard({
           ? LegacyProviderConsole({ providers, onChanged })
           : ProviderConsole({ providers, selectedProvider, onSelectProvider, onChanged })}
       </> : null}
-      {section === 'requests' ? RequestConsole({ requests, selectedRequestId, onSelectRequest, onReviewRequest, reviewingRequestId }) : null}
+      {section === 'gyms' || section === 'requests' ? <GymConsole
+        view={gymView} onView={onGymView} requests={requests} selectedRequestId={selectedRequestId} onSelectRequest={onSelectRequest}
+        gyms={gyms} selectedGymId={selectedGymId} onSelectGym={onSelectGym} search={gymSearch} onSearch={onGymSearch}
+        reviews={reviews} selectedReviewId={selectedReviewId} onSelectReview={onSelectReview} reviewFilter={reviewFilter} onReviewFilter={onReviewFilter}
+        reason={moderationReason} pendingAction={pendingAction} busy={moderationBusy} message={moderationMessage} error={moderationError}
+        onReason={onModerationReason} onPrepareAction={onPrepareAction} onConfirmAction={onConfirmAction} onCancelAction={onCancelAction}
+      /> : null}
       {section === 'users' ? UserConsole({ users, selectedUserId, selectedUser, onSelectUser }) : null}
     </>
   )
@@ -341,7 +496,38 @@ export default function DevPanel() {
   const [users, setUsers] = useState([])
   const [selectedUserId, setSelectedUserId] = useState('')
   const [selectedUser, setSelectedUser] = useState(null)
-  const [reviewingRequestId, setReviewingRequestId] = useState('')
+  const [gyms, setGyms] = useState([])
+  const [selectedGymId, setSelectedGymId] = useState('')
+  const [reviews, setReviews] = useState([])
+  const [selectedReviewId, setSelectedReviewId] = useState('')
+  const [gymView, setGymView] = useState('contributions')
+  const [gymSearch, setGymSearch] = useState('')
+  const [reviewFilter, setReviewFilter] = useState('all')
+  const [collaborationRev, setCollaborationRev] = useState(0)
+  const [moderationReason, setModerationReason] = useState('')
+  const [pendingAction, setPendingAction] = useState(null)
+  const [moderationBusy, setModerationBusy] = useState(false)
+  const [moderationMessage, setModerationMessage] = useState('')
+  const [moderationError, setModerationError] = useState('')
+
+  const applyGymData = (requestData = {}, gymData = {}, reviewData = {}) => {
+    const nextRequests = requestData.requests || []
+    const nextGyms = gymData.gyms || []
+    const nextReviews = reviewData.reviews || []
+    const revisions = [requestData.rev, gymData.rev, reviewData.rev].filter(Number.isInteger)
+    if (revisions.length) setCollaborationRev(Math.max(...revisions))
+    setRequests(nextRequests); setGyms(nextGyms); setReviews(nextReviews)
+    setSelectedRequestId(current => nextRequests.some(item => item.id === current) ? current : nextRequests[0]?.id || '')
+    setSelectedGymId(current => nextGyms.some(item => item.id === current) ? current : nextGyms[0]?.id || '')
+    setSelectedReviewId(current => nextReviews.some(item => item.id === current) ? current : nextReviews[0]?.id || '')
+  }
+
+  const loadGymData = async () => {
+    const [requestData, gymData, reviewData] = await Promise.all([
+      api('/api/dev/gym-requests'), api('/api/dev/gyms'), api('/api/dev/gym-reviews'),
+    ])
+    applyGymData(requestData, gymData, reviewData)
+  }
 
   const loadDashboard = async selectedWindow => {
     setError('')
@@ -349,26 +535,28 @@ export default function DevPanel() {
       api('/api/dev/ai/providers'),
       api(`/api/dev/ai/usage?window=${selectedWindow}`),
     ])
-    const [requestResult, userResult] = await Promise.allSettled([
+    const [requestResult, gymResult, reviewResult, userResult] = await Promise.allSettled([
       api('/api/dev/gym-requests'),
+      api('/api/dev/gyms'),
+      api('/api/dev/gym-reviews'),
       api('/api/dev/users'),
     ])
     const requestData = requestResult.status === 'fulfilled' ? requestResult.value : {}
+    const gymData = gymResult.status === 'fulfilled' ? gymResult.value : {}
+    const reviewData = reviewResult.status === 'fulfilled' ? reviewResult.value : {}
     const userData = userResult.status === 'fulfilled' ? userResult.value : {}
-    if (requestResult.status === 'rejected' || userResult.status === 'rejected') {
+    if ([requestResult, gymResult, reviewResult, userResult].some(result => result.status === 'rejected')) {
       setError(t('Some console data could not be loaded.'))
     }
     const nextProviders = providerData.providers || []
-    const nextRequests = requestData.requests || []
     const nextUsers = userData.users || []
     setProviders(nextProviders); setUsage(usageData.usage || {})
-    setRequests(nextRequests); setUsers(nextUsers)
+    applyGymData(requestData, gymData, reviewData); setUsers(nextUsers)
     setSelectedProvider(current => {
       const activeProvider = nextProviders.find(item => item.active)?.provider
       if (!current) return activeProvider || 'openai'
       return DEV_PROVIDERS.some(item => item.provider === current) ? current : activeProvider || 'openai'
     })
-    setSelectedRequestId(current => nextRequests.some(item => item.id === current) ? current : nextRequests[0]?.id || '')
     setSelectedUserId(current => nextUsers.some(item => item.id === current) ? current : '')
   }
   useEffect(() => {
@@ -398,7 +586,7 @@ export default function DevPanel() {
   const logout = async () => {
     try {
       await api('/api/dev/logout', { method: 'POST', body: '{}' })
-      setProviders([]); setUsage({}); setRequests([]); setUsers([]); setSelectedUser(null)
+      setProviders([]); setUsage({}); setRequests([]); setGyms([]); setReviews([]); setUsers([]); setSelectedUser(null)
       setSession(value => ({ ...(value || {}), unlocked: false }))
     } catch (requestError) { toast(t(safeDevError(requestError, 'Could not log out of Dev.'))) }
   }
@@ -407,15 +595,35 @@ export default function DevPanel() {
     try { setSelectedUser(await api(`/api/dev/user?id=${encodeURIComponent(userId)}`)) }
     catch (requestError) { toast(t(safeDevError(requestError, 'User details could not be loaded.'))) }
   }
-  const reviewRequest = async (id, decision) => {
-    setReviewingRequestId(id)
+  const confirmModeration = async () => {
+    if (!pendingAction || !moderationReason.trim() || !Number.isInteger(collaborationRev)) return
+    setModerationBusy(true); setModerationError(''); setModerationMessage('')
     try {
-      await api('/api/dev/gym-requests/review', { method: 'POST', body: JSON.stringify({ id, decision }) })
-      const data = await api('/api/dev/gym-requests')
-      const nextRequests = data.requests || []
-      setRequests(nextRequests); setSelectedRequestId(current => nextRequests.some(item => item.id === current) ? current : nextRequests[0]?.id || '')
-    } catch (requestError) { toast(t(safeDevError(requestError, 'The request could not be reviewed.'))) }
-    finally { setReviewingRequestId('') }
+      const reason = moderationReason.trim()
+      let endpoint = '/api/dev/gym-requests/review'
+      let payload = { id: pendingAction.id, decision: pendingAction.action, reason, rev: collaborationRev }
+      if (pendingAction.type === 'gym') {
+        endpoint = '/api/dev/gym'
+        payload = { id: pendingAction.id, action: pendingAction.action, reason, rev: collaborationRev }
+      }
+      if (pendingAction.type === 'review') {
+        endpoint = '/api/dev/gym-review'
+        payload = { id: pendingAction.id, status: pendingAction.action === 'remove' ? 'removed' : 'published', reason, rev: collaborationRev }
+      }
+      const data = await api(endpoint, { method: pendingAction.type === 'request' ? 'POST' : 'PUT', body: JSON.stringify(payload) })
+      if (Number.isInteger(data.rev)) setCollaborationRev(data.rev)
+      await loadGymData()
+      const success = {
+        approve: 'Contribution approved.', reject: 'Contribution rejected.', archive: 'Gym archived.',
+        restore: pendingAction.type === 'review' ? 'Review restored.' : 'Gym restored.',
+        publish: 'Review published.', remove: 'Review removed.',
+      }[pendingAction.action]
+      setModerationMessage(t(success || 'Action completed.'))
+      setModerationReason(''); setPendingAction(null)
+    } catch (requestError) {
+      setModerationError(t(safeDevError(requestError, 'The moderation action could not be completed.')))
+      if (requestError?.status === 409) loadGymData().catch(() => {})
+    } finally { setModerationBusy(false) }
   }
 
   return (
@@ -427,10 +635,20 @@ export default function DevPanel() {
       {!session?.unlocked
         ? <DevLogin busy={busy} values={login} onChange={setLogin} onSubmit={unlock} error={error} />
         : <DevDashboard
-          providers={providers} usage={usage} window={window} section={section} selectedProvider={selectedProvider}
-          requests={requests} selectedRequestId={selectedRequestId} users={users} selectedUserId={selectedUserId} selectedUser={selectedUser}
-          reviewingRequestId={reviewingRequestId} onSection={setSection} onSelectProvider={setSelectedProvider}
-          onSelectRequest={setSelectedRequestId} onReviewRequest={reviewRequest} onSelectUser={selectUser}
+         providers={providers} usage={usage} window={window} section={section} selectedProvider={selectedProvider}
+          requests={requests} selectedRequestId={selectedRequestId} gyms={gyms} selectedGymId={selectedGymId}
+          reviews={reviews} selectedReviewId={selectedReviewId} gymView={gymView} gymSearch={gymSearch} reviewFilter={reviewFilter}
+          moderationReason={moderationReason} pendingAction={pendingAction} moderationBusy={moderationBusy}
+          moderationMessage={moderationMessage} moderationError={moderationError}
+          users={users} selectedUserId={selectedUserId} selectedUser={selectedUser}
+          onSection={value => { setSection(value); setPendingAction(null); setModerationReason('') }} onSelectProvider={setSelectedProvider}
+          onSelectRequest={value => { setSelectedRequestId(value); setPendingAction(null); setModerationReason('') }}
+          onSelectGym={value => { setSelectedGymId(value); setPendingAction(null); setModerationReason('') }}
+          onSelectReview={value => { setSelectedReviewId(value); setPendingAction(null); setModerationReason('') }}
+          onGymView={value => { setGymView(value); setPendingAction(null); setModerationReason(''); setModerationMessage(''); setModerationError('') }}
+          onGymSearch={setGymSearch} onReviewFilter={value => { setReviewFilter(value); setSelectedReviewId('') }}
+          onModerationReason={setModerationReason} onPrepareAction={setPendingAction} onConfirmAction={confirmModeration} onCancelAction={() => setPendingAction(null)}
+          onSelectUser={selectUser}
           onWindow={changeWindow} onLogout={logout} onChanged={() => loadDashboard(window)}
         />}
     </main>
