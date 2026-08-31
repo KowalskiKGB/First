@@ -37,6 +37,8 @@ vi.mock('../lib/i18n.js', () => ({
       'Rest day': 'Dia de descanso',
       'Leg Day': 'Dia de Pernas',
       'Select your gym': 'Selecione sua academia',
+      'Body weight': 'Peso corporal',
+      '{0} week streak': 'sequência de {0} semanas',
     }
     return args.reduce((value, arg, index) => value.replaceAll(`{${index}}`, arg), pt[message] || message)
   },
@@ -216,6 +218,31 @@ describe('Home schedule summary', () => {
 
     expect(markup).not.toContain('Ritmo de treino')
     expect(markup.match(/Montar treino com IA/g)).toHaveLength(1)
+  })
+
+  it('keeps AI as a secondary action after gym context and body evolution', () => {
+    harness.user = { id: 'student-1', name: 'Ana' }
+    harness.state = {
+      ...baseState(),
+      selectedGym: { id: 'gym-1', name: 'Alpha Gym', city: 'Macapá', state: 'AP', exerciseIds: ['0001', '0002'] },
+      bodyweight: [{ d: '2026-08-24', w: 70 }, { d: '2026-08-31', w: 69 }],
+      workouts: [{ id: 'done', d: '2026-08-29', entries: [] }],
+    }
+
+    const markup = renderToStaticMarkup(<Home />)
+    const todayIndex = markup.indexOf('class="today-row"')
+    const weekIndex = markup.indexOf('home-week-rail')
+    const gymIndex = markup.indexOf('Alpha Gym')
+    const evolutionIndex = markup.indexOf('Peso corporal')
+    const streakIndex = markup.indexOf('sequência')
+    const aiIndex = markup.indexOf('Montar treino com IA')
+
+    expect(todayIndex).toBeGreaterThan(-1)
+    expect(weekIndex).toBeGreaterThan(-1)
+    expect(gymIndex).toBeGreaterThan(weekIndex)
+    expect(evolutionIndex).toBeGreaterThan(gymIndex)
+    expect(streakIndex).toBeGreaterThan(evolutionIndex)
+    expect(aiIndex).toBeGreaterThan(streakIndex)
   })
 
   it('renders the week as compact cards with accessible training states', () => {

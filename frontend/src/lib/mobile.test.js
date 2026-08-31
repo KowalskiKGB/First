@@ -213,6 +213,18 @@ describe('Android hardware back button', () => {
     expect(back.app.exitApp).not.toHaveBeenCalled()
   })
 
+  it('lets an in-view detail consume back before exiting Android', async () => {
+    const handleBack = vi.fn(() => true)
+    const back = setupBackButton([], handleBack)
+
+    await back.press(false)
+
+    expect(handleBack).toHaveBeenCalledOnce()
+    expect(back.closeSheet).not.toHaveBeenCalled()
+    expect(back.goBack).not.toHaveBeenCalled()
+    expect(back.app.exitApp).not.toHaveBeenCalled()
+  })
+
   it('exits the Android app when there is no sheet or route to return to', async () => {
     const back = setupBackButton([])
 

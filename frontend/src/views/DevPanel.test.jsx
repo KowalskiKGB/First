@@ -63,6 +63,33 @@ describe('Dev AI panel UI contracts', () => {
     expect(renderToStaticMarkup(<DevDashboard providers={[]} usage={{}} window="7d" onWindow={() => {}} onLogout={() => {}} />)).toContain('Log out of Dev')
   })
 
+  it('renders Dev credential fields as copy-friendly secure inputs with reveal controls', () => {
+    const login = DevLogin({ busy: false, values: { username: '', password: '' }, onChange: vi.fn(), onSubmit: vi.fn(), error: '' })
+    const username = findElements(login, element => element.props.name === 'dev-username')[0]
+    const password = findElements(login, element => element.props.name === 'dev-password')[0]
+    const markup = renderToStaticMarkup(login)
+
+    expect(username.props.autoComplete).toBe('username')
+    expect(username.props.autoCapitalize).toBe('none')
+    expect(username.props.spellCheck).toBe(false)
+    expect(password.props.autoComplete).toBe('current-password')
+    expect(password.props.autoCapitalize).toBe('none')
+    expect(password.props.spellCheck).toBe(false)
+    expect(markup).toContain('Show password')
+    expect(markup).toContain('type="password"')
+
+    const dashboard = DevDashboard({
+      providers: [{ provider: 'openai', configured: false, selectedModel: '', testStatus: 'untested' }],
+      usage: {}, window: '7d', selectedProvider: 'openai', onWindow: vi.fn(), onLogout: vi.fn(),
+    })
+    const apiKey = findElements(dashboard, element => element.props.name === 'openai-api-key')[0]
+
+    expect(apiKey.props.autoComplete).toBe('new-password')
+    expect(apiKey.props.autoCapitalize).toBe('none')
+    expect(apiKey.props.spellCheck).toBe(false)
+    expect(renderToStaticMarkup(dashboard)).toContain('Show API key')
+  })
+
   it('always renders all three provider slots without exposing a key value', () => {
     const markup = renderToStaticMarkup(<DevDashboard
       providers={[{ provider: 'openai', configured: true, keyFingerprint: 'sha256:abc', selectedModel: 'gpt-5', testStatus: 'success', testedAt: '2026-08-29T12:00:00Z' }]}
@@ -840,6 +867,25 @@ describe('Dev operations console contracts', () => {
     expect(markup).toContain('Offline for')
     expect(markup).not.toContain('scrypt-secret-hash')
     expect(markup).not.toContain('provider-secret')
+  })
+
+  it('keeps a successful Dev login unlocked when dashboard data fails to load', async () => {
+    const session = { unlocked: false }
+    const login = { username: 'first_dev_test', password: 'temporary' }
+    harness.reset([session, login, [], '7d', {}, false, ''])
+    harness.api.mockImplementation(async path => {
+      if (path === '/api/dev/login') return { ok: true }
+      throw Object.assign(new Error('providers unavailable'), { status: 503 })
+    })
+    const panel = DevPanel()
+    const loginView = byTypeName(panel, 'DevLogin')
+
+    await loginView.props.onSubmit({ preventDefault: vi.fn() })
+
+    const unlockSession = harness.setters[0].mock.calls.map(([value]) => value).find(value => typeof value === 'function')
+    expect(unlockSession(null)).toEqual({ unlocked: true })
+    expect(harness.setters[6]).not.toHaveBeenCalledWith('Invalid Dev credential.')
+    expect(harness.setters[6]).toHaveBeenCalledWith('Some console data could not be loaded.')
   })
 
   it('keeps the registered-user panel stable while its first result is still loading', () => {

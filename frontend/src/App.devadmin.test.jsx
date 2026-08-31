@@ -6,12 +6,13 @@ const harness = vi.hoisted(() => ({
   boot: vi.fn(),
   collaborationLoad: vi.fn(),
   syncPersonalPrograms: vi.fn(),
+  routes: [],
 }))
 
 vi.mock('react-router-dom', () => ({
   HashRouter: ({ children }) => <div data-router="student-app">{children}</div>,
   Routes: ({ children }) => <>{children}</>,
-  Route: () => null,
+  Route: props => { harness.routes.push(props.path); return null },
   Navigate: () => <div data-view="redirect" />,
   useLocation: () => ({ pathname: '/home' }),
   useNavigate: () => vi.fn(),
@@ -66,7 +67,10 @@ vi.mock('./views/student/Connections.jsx', () => ({ default: () => null }))
 import App from './App.jsx'
 
 describe('literal /devadmin entry', () => {
-  afterEach(() => vi.unstubAllGlobals())
+  afterEach(() => {
+    harness.routes = []
+    vi.unstubAllGlobals()
+  })
 
   it.each(['/devadmin', '/devadmin/'])('renders only the protected Dev surface at %s without requiring a student session', pathname => {
     vi.stubGlobal('window', { location: { pathname }, scrollTo: vi.fn() })
@@ -78,5 +82,13 @@ describe('literal /devadmin entry', () => {
     expect(markup).not.toContain('data-view="student-login"')
     expect(markup).not.toContain('data-view="student-tabs"')
     expect(markup).not.toContain('data-router="student-app"')
+  })
+
+  it('keeps the statistics route available even when it is removed from primary navigation', () => {
+    vi.stubGlobal('window', { location: { pathname: '/' }, scrollTo: vi.fn() })
+
+    renderToStaticMarkup(<App />)
+
+    expect(harness.routes).toContain('/stats')
   })
 })

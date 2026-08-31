@@ -47,4 +47,11 @@ describe('Dev AI panel helpers', () => {
     expect(safeDevError({ status: 502, message: 'Gemini model request failed (429): leaked upstream body' }, 'Operation failed')).toBe('Operation failed')
     expect(safeDevError({ status: 500, message: 'upstream credential material' }, 'Operation failed')).toBe('Operation failed')
   })
+
+  it('uses distinct operator guidance for Dev authentication and availability failures', () => {
+    expect(safeDevError({ status: 401, message: 'password=leaked' }, 'Operation failed')).toBe('Invalid Dev credential.')
+    expect(safeDevError({ status: 403, message: 'invalid origin' }, 'Operation failed')).toBe('Open /devadmin from the configured production URL.')
+    expect(safeDevError({ status: 429, message: 'too many dev login attempts' }, 'Operation failed')).toBe('Too many Dev login attempts. Try again later.')
+    expect(safeDevError({ status: 503, message: 'dev credentials not configured' }, 'Operation failed')).toBe('Dev credential is not configured on the server.')
+  })
 })

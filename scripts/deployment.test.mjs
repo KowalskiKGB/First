@@ -82,6 +82,7 @@ test('the deployment template is complete and builds only this repository', () =
 
   const frontendPackage = JSON.parse(read('frontend/package.json'))
   assert.equal(frontendPackage.name, 'first-frontend')
+  assert.equal(frontendPackage.version, '1.4.0')
   assert.match(frontendPackage.scripts['build:mobile'], /copy-exercise-media\.mjs/)
   assert.match(read('frontend/.env.mobile'), /VITE_EXERCISE_MEDIA=1/)
   const apiPackage = JSON.parse(read('api/package.json'))
@@ -105,6 +106,8 @@ test('the deployment template is complete and builds only this repository', () =
   assert.match(androidGradle, /androidx\.credentials:credentials:/)
   assert.match(androidGradle, /androidx\.credentials:credentials-play-services-auth:/)
   assert.match(androidGradle, /androidx\.webkit:webkit:/)
+  assert.match(androidGradle, /versionCode 8/)
+  assert.match(androidGradle, /versionName "1\.4\.0"/)
   assert.match(androidManifest, /android:allowBackup="false"/)
   assert.match(androidManifest, /android:name="asset_statements"/)
   assert.match(androidManifest, /android:autoVerify="true"/)

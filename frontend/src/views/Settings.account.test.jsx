@@ -6,6 +6,7 @@ const harness = vi.hoisted(() => ({
   user: null,
   navigate: vi.fn(),
   toast: vi.fn(),
+  update: vi.fn(),
 }))
 
 vi.mock('react-router-dom', () => ({ useNavigate: () => harness.navigate }))
@@ -13,7 +14,7 @@ vi.mock('../store/useStore.js', () => {
   const state = {
     S: { lang: 'pt-BR', unit: 'kg', restSec: 90, sound: false, keepAwake: false, theme: 'dark', body: 'male', accent: 'lime', reminder: {} },
     get user() { return harness.user },
-    update: vi.fn(), replaceState: vi.fn(), setUser: vi.fn(), pullState: vi.fn(), pushState: vi.fn(),
+    update: harness.update, replaceState: vi.fn(), setUser: vi.fn(), pullState: vi.fn(), pushState: vi.fn(),
     signOut: vi.fn(), signOutAll: vi.fn(), resetDemo: vi.fn(),
   }
   const useStore = selector => selector ? selector(state) : state
@@ -49,7 +50,11 @@ vi.mock('../components/ui.jsx', () => ({
   Row: ({ title, subtitle, children }) => <div>{title}{subtitle}{children}</div>,
   SelectRow: ({ title }) => <div>{title}</div>,
   Switch: () => <input type="checkbox" readOnly />,
-  Segmented: () => <div />,
+  Segmented: ({ options = [], value, onChange }) => (
+    <div>
+      {options.map(option => <button key={option.value} type="button" aria-pressed={option.value === value} onClick={() => onChange?.(option.value)}>{option.label}</button>)}
+    </div>
+  ),
   Button: ({ children, ...props }) => <button {...props}>{children}</button>,
   TextField: props => <input {...props} />,
   NumberField: ({ decimal, nullable, value, ...props }) => <input value={value ?? ''} {...props} />,
@@ -64,6 +69,7 @@ describe('Settings account boundary', () => {
     harness.user = null
     harness.navigate.mockReset()
     harness.toast.mockReset()
+    harness.update.mockReset()
   })
 
   it('does not duplicate login or registration controls for a guest', () => {
@@ -112,5 +118,15 @@ describe('Settings account boundary', () => {
 
     expect(markup).toContain('name="profile-email"')
     expect(fieldTag(markup, 'profile-email')).not.toContain('required')
+  })
+
+  it('keeps dark and light theme choices available in settings', () => {
+    const markup = renderToStaticMarkup(<Settings />)
+
+    expect(markup).toContain('Theme')
+    expect(markup).toContain('Dark')
+    expect(markup).toContain('Light')
+    expect(markup).toContain('aria-pressed="true">Dark')
+    expect(markup).toContain('aria-pressed="false">Light')
   })
 })

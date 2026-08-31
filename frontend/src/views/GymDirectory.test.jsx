@@ -151,10 +151,10 @@ describe('GymDirectory', () => {
     expect(markup).toContain('Avaliações da comunidade')
   })
 
-  it('renders compact social filters and the explicit location action', () => {
+  it('renders compact social filters without the old explicit location action', () => {
     const markup = renderToStaticMarkup(<GymDirectory gyms={gyms} authenticated={false} />)
 
-    expect(markup).toContain('Usar minha localização')
+    expect(markup).not.toContain('Usar minha localização')
     expect(markup).toContain('Todas')
     expect(markup).toContain('Próximas')
     expect(markup).toContain('Favoritas')

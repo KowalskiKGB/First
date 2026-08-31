@@ -23,7 +23,7 @@ const gyms = [
 ]
 const emptyState = { lang: 'pt', theme: 'dark', accent: 'lime', unit: 'kg', bodyweight: [], workouts: [], routines: [], week: {}, dayPlan: {}, sourceSchedules: { ai: [], personal: [] } }
 
-function fixtures({ authenticated = false, conflictOnce = [] } = {}) {
+function fixtures({ authenticated = false, conflictOnce = [], reverseDelayMs = 0 } = {}) {
   const user = authenticated ? { id: 'student-e2e', name: 'Aluno Academia', email: 'aluno@example.com', admin: false } : null
   const writes = []
   const reads = []
@@ -31,6 +31,7 @@ function fixtures({ authenticated = false, conflictOnce = [] } = {}) {
   let rev = 7
   let favorite = false
   let reviews = [{ id: 'review-demo', gymId: 'gym-smart', rating: 5, comment: 'Ambiente de demonstração.', displayName: 'Demonstração', demo: true }]
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
   const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
   return {
     writes,
@@ -56,7 +57,10 @@ function fixtures({ authenticated = false, conflictOnce = [] } = {}) {
         const uf = url.searchParams.get('uf')
         return json(route, { uf, municipalities: uf === 'AP' ? [{ id: 1600303, name: 'Macapá' }] : [{ id: 2304400, name: 'Fortaleza' }] })
       }
-      if (url.pathname === '/api/location/reverse') return json(route, { state: 'AP', city: 'Macapá', attribution: '© OpenStreetMap contributors' })
+      if (url.pathname === '/api/location/reverse') {
+        if (reverseDelayMs) await wait(reverseDelayMs)
+        return json(route, { state: 'AP', city: 'Macapá', attribution: '© OpenStreetMap contributors' })
+      }
       const conflictKey = url.pathname === '/api/gym/favorite' ? 'favorite'
         : url.pathname === '/api/gym/review' ? 'review'
           : url.pathname === '/api/gym-requests' ? body.kind : ''
@@ -83,8 +87,8 @@ function watchBrowser(page) {
   return errors
 }
 
-test('guest opts into location, searches social signals and returns with focus on mobile', async ({ page, context }, testInfo) => {
-  const api = fixtures()
+test('guest is located automatically, searches social signals and returns with focus on mobile', async ({ page, context }, testInfo) => {
+  const api = fixtures({ reverseDelayMs: 250 })
   const errors = watchBrowser(page)
   await page.setViewportSize(MOBILE)
   await page.emulateMedia({ reducedMotion: 'reduce' })
@@ -93,7 +97,8 @@ test('guest opts into location, searches social signals and returns with focus o
   await page.route('**/api/**', route => api.handle(route))
 
   await page.goto('/#/academias')
-  await page.getByRole('button', { name: /Usar minha localização/ }).click()
+  await expect(page.getByRole('button', { name: /Usar minha localização/ })).toHaveCount(0)
+  await expect(page.getByText(/Localizando/)).toBeVisible()
   await expect(page.locator('[name="gym-state"]')).toHaveValue('AP')
   await expect(page.locator('[name="gym-city"]')).toHaveValue('Macapá')
   await expect(page.getByText('© OpenStreetMap contributors')).toBeVisible()
@@ -136,7 +141,7 @@ test('guest opts into location, searches social signals and returns with focus o
   expect(errors.page).toEqual([])
 })
 
-test('denied location leaves the manual UF and municipality flow usable', async ({ page, context }) => {
+test('denied automatic location leaves the manual UF and municipality flow usable', async ({ page, context }) => {
   const api = fixtures()
   const errors = watchBrowser(page)
   await page.setViewportSize(MOBILE)
@@ -144,12 +149,63 @@ test('denied location leaves the manual UF and municipality flow usable', async 
   await page.route('**/api/**', route => api.handle(route))
   await page.goto('/#/academias')
 
-  await page.getByRole('button', { name: /Usar minha localização/ }).click()
+  await expect(page.getByRole('button', { name: /Usar minha localização/ })).toHaveCount(0)
   await expect(page.locator('.gym-directory-message')).toContainText(/não permitida|identificar sua localização/i)
   await page.locator('[name="gym-state"]').selectOption('CE')
   await expect(page.locator('[name="gym-city"]')).toBeEnabled()
   await page.locator('[name="gym-city"]').selectOption('Fortaleza')
   await expect(page.locator('.gym-result', { hasText: 'Academia Fortaleza' })).toBeVisible()
+  expect(errors.page).toEqual([])
+})
+
+test('automatic location timeout keeps the manual UF and municipality fallback usable', async ({ page }) => {
+  const api = fixtures()
+  const errors = watchBrowser(page)
+  await page.setViewportSize(MOBILE)
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition(_success, error) {
+          setTimeout(() => error({ code: 3, message: 'timeout' }), 0)
+        },
+      },
+    })
+  })
+  await page.route('**/api/**', route => api.handle(route))
+
+  await page.goto('/#/academias')
+
+  await expect(page.getByRole('button', { name: /Usar minha localização/ })).toHaveCount(0)
+  await expect(page.locator('.gym-directory-message')).toContainText(/identificar sua localização|timeout/i)
+  await page.locator('[name="gym-state"]').selectOption('CE')
+  await expect(page.locator('[name="gym-city"]')).toBeEnabled()
+  await page.locator('[name="gym-city"]').selectOption('Fortaleza')
+  await expect(page.locator('.gym-result', { hasText: 'Academia Fortaleza' })).toBeVisible()
+  expect(errors.page).toEqual([])
+})
+
+test('manual locality choice wins over a late automatic reverse-geocode response', async ({ page, context }) => {
+  const api = fixtures({ reverseDelayMs: 800 })
+  const errors = watchBrowser(page)
+  await page.setViewportSize(MOBILE)
+  await context.grantPermissions(['geolocation'])
+  await context.setGeolocation({ latitude: 0.03545, longitude: -51.06656 })
+  await page.route('**/api/**', route => api.handle(route))
+
+  await page.goto('/#/academias')
+  await expect.poll(
+    () => api.reads.filter(read => read.pathname === '/api/location/reverse').length,
+    { timeout: 1000 },
+  ).toBe(1)
+  await page.locator('[name="gym-state"]').selectOption('CE')
+  await expect(page.locator('[name="gym-city"]')).toBeEnabled()
+  await page.locator('[name="gym-city"]').selectOption('Fortaleza')
+  await expect(page.locator('.gym-result', { hasText: 'Academia Fortaleza' })).toBeVisible()
+
+  await page.waitForTimeout(1000)
+  await expect(page.locator('[name="gym-state"]')).toHaveValue('CE')
+  await expect(page.locator('[name="gym-city"]')).toHaveValue('Fortaleza')
   expect(errors.page).toEqual([])
 })
 

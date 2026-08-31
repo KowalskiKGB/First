@@ -109,6 +109,43 @@ test('generator separates owner credentials from the ephemeral Coolify handoff',
   }
 })
 
+test('generator can rotate only the Dev credential without requiring an AI master key handoff', () => {
+  const sandbox = mkdtempSync(path.join(tmpdir(), 'first-release-dev-scope-'))
+  try {
+    const credentialsPath = path.join(sandbox, 'CREDENCIAIS_TESTE.md')
+    const handoffDirectory = path.join(sandbox, 'handoff')
+    const handoffPath = path.join(handoffDirectory, 'coolify-dev.json')
+    mkdirSync(handoffDirectory)
+
+    const result = run([
+      '--scope', 'dev',
+      '--url', 'https://first.example.test',
+      '--credentials-out', credentialsPath,
+      '--handoff-out', handoffPath,
+    ])
+    assert.equal(result.status, 0, 'dev-only credential rotation should succeed')
+
+    const credentials = readFileSync(credentialsPath, 'utf8')
+    const handoff = JSON.parse(readFileSync(handoffPath, 'utf8'))
+    const username = /- UsuÃ¡rio: ([^\r\n]+)/.exec(credentials)?.[1]
+    const password = /- Senha: ([^\r\n]+)/.exec(credentials)?.[1]
+
+    assert.equal(credentials.includes('`'), false, 'copyable credentials should not include Markdown delimiters')
+    assert.match(credentials, /- URL: https:\/\/first\.example\.test\/devadmin/)
+    assert.ok(/^first_dev_[a-f0-9]{24}$/.test(username), 'username format must be production-safe')
+    assert.ok(/^[A-Za-z0-9_-]{43}$/.test(password), 'password must encode 32 random bytes')
+    assert.deepEqual(Object.keys(handoff).sort(), [
+      'DEV_PANEL_PASSWORD_HASH',
+      'DEV_PANEL_USER',
+    ])
+    assert.equal(handoff.DEV_PANEL_USER, username)
+    assert.equal(verifyDevPassword(password, handoff.DEV_PANEL_PASSWORD_HASH), true)
+    assert.equal('AI_CONFIG_MASTER_KEY' in handoff, false)
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true })
+  }
+})
+
 test('generator refuses a handoff path inside the repository before writing anything', () => {
   const sandbox = mkdtempSync(path.join(tmpdir(), 'first-release-unsafe-'))
   const credentialsPath = path.join(sandbox, 'CREDENCIAIS_TESTE.md')
