@@ -1186,15 +1186,6 @@ const routes = {
     }
   },
 
-  'DELETE /api/dev/ai/provider': async (req, res) => {
-    if (!requireDev(req, res)) return;
-    if (!requireTrustedWrite(req, res)) return;
-    const body = await readBody(req);
-    db.aiProviders = db.aiProviders.filter(item => item.provider !== body.provider);
-    saveDb();
-    json(res, 200, { ok: true });
-  },
-
   'GET /api/push/public-key': async (req, res) => json(res, 200, { key: vapid.publicKey }),
 
   'POST /api/push/subscribe': async (req, res) => {

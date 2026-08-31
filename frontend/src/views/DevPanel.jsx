@@ -344,12 +344,20 @@ export default function DevPanel() {
   const [reviewingRequestId, setReviewingRequestId] = useState('')
 
   const loadDashboard = async selectedWindow => {
-    const [providerData, usageData, requestData, userData] = await Promise.all([
+    setError('')
+    const [providerData, usageData] = await Promise.all([
       api('/api/dev/ai/providers'),
       api(`/api/dev/ai/usage?window=${selectedWindow}`),
+    ])
+    const [requestResult, userResult] = await Promise.allSettled([
       api('/api/dev/gym-requests'),
       api('/api/dev/users'),
     ])
+    const requestData = requestResult.status === 'fulfilled' ? requestResult.value : {}
+    const userData = userResult.status === 'fulfilled' ? userResult.value : {}
+    if (requestResult.status === 'rejected' || userResult.status === 'rejected') {
+      setError(t('Some console data could not be loaded.'))
+    }
     const nextProviders = providerData.providers || []
     const nextRequests = requestData.requests || []
     const nextUsers = userData.users || []

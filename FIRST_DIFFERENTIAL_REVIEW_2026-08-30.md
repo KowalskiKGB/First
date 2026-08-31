@@ -7,11 +7,11 @@
 | CRITICAL | 0 |
 | HIGH | 0 |
 | MEDIUM | 2 |
-| LOW | 1 |
+| LOW | 0 |
 
-Overall risk: MEDIUM. Recommendation: approve after accepting the documented Dev-only operational exposure.
+Overall risk: MEDIUM. Recommendation: approve with the documented Dev-only operational limits.
 
-Scope reviewed: current working-tree diff over commit `2cf941b`, focusing on Dev auth, AI provider configuration, gym directory/moderation, user projections, collaboration schema migration, and AI generation/provider contracts.
+Scope reviewed: commit range `2cf941b..HEAD` plus the final working-tree hardening, focusing on Dev auth, AI provider configuration, gym directory/moderation, user projections, collaboration schema migration, and AI generation/provider contracts.
 
 ## What changed
 
@@ -45,31 +45,24 @@ The Dev users list maps every account through `accountSummary()`, which reads ea
 
 Minimal correction if user count grows: store last workout/count/last sync as account metadata during normal writes, or paginate `/api/dev/users`.
 
-### LOW: Dev AI provider delete route exists outside the public contract
-
-File: `api/server.js:1189-1195`
-
-`DELETE /api/dev/ai/provider` remains available even though the intended contract uses save/test/activate/deactivate. It is protected by Dev auth and exact Origin, so this is not an access bypass. It is extra surface that can remove provider configuration accidentally.
-
-Minimal correction: remove the route or hide it behind an explicit reset action with confirmation.
-
 ## Security checks with no blocking findings
 
-- Gym/equipment requests require a signed-in student and exact trusted write before mutation: `api/gym-directory.js:177-198`, global guard at `api/server.js:1416`.
+- Gym/equipment requests require a signed-in student and exact trusted write before mutation: `api/gym-directory.js:177-198`, global guard at `api/server.js:1407`.
 - Requests stay pending and only Dev approval changes the directory: `api/gym-directory.js:211-247`.
 - Approved equipment is constrained to catalogue exercise IDs: `api/gym-directory.js:24-29`, `api/gym-directory.js:232-235`.
 - Dev provider keys are encrypted and DTOs expose only fingerprint/config state: `api/ai-providers.js:35-76`.
 - Custom provider base URLs are rejected: `api/ai-providers.js:78-81`.
 - Gemini key is sent in header, not URL: `api/ai-providers.js:167-176`.
 - OpenAI requests set `store:false` and GPT-5 output budget was raised to reduce truncation: `api/ai-providers.js:150-164`.
-- Dev login and provider mutations require exact Origin through the global write guard and route guards: `api/server.js:1089-1165`, `api/server.js:1416`.
+- Dev login and provider mutations require exact Origin through the global write guard and route guards: `api/server.js:1089-1165`, `api/server.js:1407`.
+- The undocumented destructive provider delete route was removed; replacement and global activation/deactivation remain the supported operations.
 - Secret scan of non-test diff found no pasted AI key, plaintext Dev password, provider secret, scrypt hash, or `initialPassword`.
 
 ## Verification evidence
 
-- API tests: `231 passed`.
+- API tests: `232 passed`.
 - Frontend unit tests: `551 passed`.
-- E2E Playwright: `25 passed`.
+- E2E Playwright: `29 passed`.
 - API coverage: 82.42% lines, 80.58% branches.
 - Frontend global coverage is lower because of legacy modules, but the new/altered core modules are above 80% lines (`AiPlanExperience`, `ExerciseCatalogPicker`, `ai-plan`, `ai-product`, `Home`, `DevPanel`, `GymDirectory`, `PersonalAiTab`).
 - `npm audit --omit=dev`: 0 vulnerabilities in API and frontend.

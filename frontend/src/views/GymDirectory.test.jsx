@@ -83,6 +83,7 @@ describe('GymDirectory', () => {
     expect(markup).toContain('name="gym-search"')
     expect(markup).toContain('value="CE"')
     expect(markup).toContain('Fortaleza')
+    expect(markup).toContain('Segunda a sexta, 6:00 às 22:00')
     expect(markup).not.toMatch(/faça login|entre para continuar/i)
   })
 

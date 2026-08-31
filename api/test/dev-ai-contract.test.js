@@ -34,8 +34,7 @@ test('every Dev or AI mutation wired in server requires the trusted-origin guard
     'POST /api/dev/logout',
     'PUT /api/dev/ai/provider',
     'POST /api/dev/ai/provider/test',
-    'PUT /api/dev/ai/active',
-    'DELETE /api/dev/ai/provider'
+    'PUT /api/dev/ai/active'
   ]) assert.match(routeBody(route), /requireTrustedWrite\(req, res\)/, route);
   for (const route of ['POST /api/ai/jobs', 'POST /api/ai/plan/rollback']) {
     const start = jobsSource.indexOf(`'${route}'`);
@@ -51,6 +50,10 @@ test('server source contains neither persisted initial passwords nor provider ke
 
 test('activation fails closed when the AI master key is unavailable', () => {
   assert.match(routeBody('PUT /api/dev/ai/active'), /aiConfigurationEnabled\(\)/);
+});
+
+test('provider configuration has no undocumented destructive delete route', () => {
+  assert.equal(source.includes("'DELETE /api/dev/ai/provider'"), false);
 });
 
 test('production API image includes the AI routine endpoint module', () => {

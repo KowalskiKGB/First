@@ -31,6 +31,15 @@ function OpeningHours({ hours = [], note = '' }) {
   </>
 }
 
+function openingHoursSummary(gym) {
+  if (gym.openingHoursNote) return gym.openingHoursNote
+  if (!gym.openingHours?.length) return t('Hours not informed')
+  return gym.openingHours.map(entry => {
+    const day = t(DAY_LABELS[entry.day] || 'Day')
+    return entry.closed ? `${day}: ${t('Closed')}` : `${day}: ${entry.open}–${entry.close}`
+  }).join(' · ')
+}
+
 export default function GymDirectory({
   gyms: providedGyms,
   selectedGymId = null,
@@ -193,7 +202,7 @@ export default function GymDirectory({
     <section className="gym-results" aria-live="polite">
       {visibleGyms.map(gym => <button type="button" className={`card gym-result${gym.id === detailId ? ' is-open' : ''}`} key={gym.id} onClick={() => { setDetailId(gym.id); setRequestOpen(false); setMessage('') }}>
         <span className="gym-monogram" aria-hidden="true">{gymMonogram(gym.name)}</span>
-        <span className="gym-result-copy"><strong>{gym.name}</strong><span>{gym.address}</span><span>{gym.city} / {gym.state}</span></span>
+        <span className="gym-result-copy"><strong>{gym.name}</strong><span>{gym.address}</span><span>{gym.city} / {gym.state}</span><span className="gym-result-hours">{openingHoursSummary(gym)}</span></span>
         <GymStatus status={gym.status} />
         <Icon name="chevronRight" />
       </button>)}

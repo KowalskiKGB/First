@@ -1209,6 +1209,7 @@ export default {
   'Manage AI access, review requests and inspect registered accounts.': 'Gerencie o acesso à IA, analise solicitações e consulte as contas cadastradas.',
   'User details could not be loaded.': 'Não foi possível carregar os dados do usuário.',
   'The request could not be reviewed.': 'Não foi possível analisar a solicitação.',
+  'Some console data could not be loaded.': 'Alguns dados do painel não puderam ser carregados.',
 
   'Body recomposition': 'Recomposição corporal',
   'Conditioning': 'Condicionamento',
