@@ -15,6 +15,9 @@ function devFixtures(seed = {}) {
     ...providerSeeds.get(provider),
   }))
   let gymRequests = [...(seed.requests || [])]
+  let gyms = [...(seed.gyms || [])]
+  let gymReviews = [...(seed.reviews || [])]
+  let rev = seed.rev || 12
   const users = [...(seed.users || [])]
   const userDetails = seed.userDetails || {}
   const writes = []
@@ -49,12 +52,30 @@ function devFixtures(seed = {}) {
         return json(route, { usage: { requests: longWindow ? 30 : 7, failures: longWindow ? 3 : 1, totalTokens: longWindow ? 5400 : 1200, latencyMs: longWindow ? 9000 : 2100 } })
       }
       if (pathname === '/api/dev/gym-requests/review' && method === 'POST') {
-        gymRequests = gymRequests.map(item => item.id === body.id
+        rev += 1
+        gymRequests = gymRequests.map(item => item.id === (body.id || body.requestId)
           ? { ...item, status: body.decision === 'approve' ? 'approved' : 'rejected' }
           : item)
-        return json(route, { request: gymRequests.find(item => item.id === body.id) })
+        return json(route, { rev, request: gymRequests.find(item => item.id === (body.id || body.requestId)) })
       }
-      if (pathname === '/api/dev/gym-requests') return json(route, { requests: gymRequests })
+      if (pathname === '/api/dev/gym-requests') return json(route, { rev, requests: gymRequests })
+      if (pathname === '/api/dev/gyms' && method === 'GET') return json(route, { rev, gyms })
+      if (pathname === '/api/dev/gym' && method === 'PUT') {
+        rev += 1
+        gyms = gyms.map(gym => gym.id === body.id ? {
+          ...gym,
+          status: body.action === 'archive' ? 'archived' : gym.archivedStatus || 'unverified',
+          visibility: body.action === 'archive' ? 'hidden' : 'public',
+          ...(body.action === 'archive' ? { archivedStatus: gym.status } : {}),
+        } : gym)
+        return json(route, { rev, gym: gyms.find(gym => gym.id === body.id) })
+      }
+      if (pathname === '/api/dev/gym-reviews' && method === 'GET') return json(route, { rev, reviews: gymReviews })
+      if (pathname === '/api/dev/gym-review' && method === 'PUT') {
+        rev += 1
+        gymReviews = gymReviews.map(review => review.id === body.id ? { ...review, status: body.status } : review)
+        return json(route, { rev, review: gymReviews.find(review => review.id === body.id) })
+      }
       if (pathname === '/api/dev/users') return seed.failUsers
         ? json(route, { error: 'temporary user index failure' }, 503)
         : json(route, { users })
@@ -265,8 +286,68 @@ test('Dev reviews equipment requests and inspects registered users', async ({ pa
   await expect(page.getByText('Academia Centro')).toBeVisible()
   expect(fixtures.writes).toContainEqual(expect.objectContaining({
     pathname: '/api/dev/gym-requests/review',
-    body: { id: 'request-1', decision: 'approve' },
+    body: expect.objectContaining({ id: 'request-1', decision: 'approve' }),
   }))
+})
+
+test('Dev compares contributions and safely moderates gyms and reviews with the latest revision', async ({ page }) => {
+  const fixtures = devFixtures({
+    rev: 40,
+    requests: [{
+      id: 'request-correction', kind: 'correction', status: 'pending', gymId: 'gym-1',
+      gym: { id: 'gym-1', name: 'Academia Centro' },
+      payload: { address: 'Rua Nova, 200', neighborhood: 'Centro' }, createdAt: '2026-08-31T12:30:00.000Z',
+    }],
+    gyms: [{
+      id: 'gym-1', name: 'Academia Centro', state: 'AP', city: 'Macapá', address: 'Rua Antiga, 10', neighborhood: 'Aldeota',
+      status: 'verified', visibility: 'public', exerciseIds: [],
+      source: { label: 'Site oficial', url: 'https://example.com/gym', confidence: 'high', verifiedAt: '2026-08-30' },
+    }],
+    reviews: [{
+      id: 'review-1', gymId: 'gym-1', rating: 2, comment: 'Comentário revisado sem contato.', status: 'removed',
+      submittedBy: { name: 'Ana Silva', email: 'ana@example.com' }, createdAt: '2026-08-30T10:00:00.000Z',
+    }],
+  })
+  await page.setViewportSize(VIEWPORTS[0])
+  await page.route('**/api/**', route => fixtures.handle(route))
+
+  await page.goto('/devadmin')
+  await page.locator('[name="dev-username"]').fill('first_dev_demo')
+  await page.locator('[name="dev-password"]').fill('temporary-demo-password')
+  await page.getByRole('button', { name: 'Abrir Painel Dev' }).click()
+  await page.getByRole('tab', { name: 'Academias' }).click()
+
+  await expect(page.getByRole('tab', { name: 'Contribuições' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByText('Rua Antiga, 10')).toBeVisible()
+  await expect(page.getByText('Rua Nova, 200')).toBeVisible()
+  const reason = page.locator('[name="gym-moderation-reason"]')
+  await expect(page.getByRole('button', { name: 'Aprovar' })).toBeDisabled()
+  await reason.fill('Endereço confirmado na fonte oficial.')
+  await page.getByRole('button', { name: 'Aprovar' }).click()
+  await page.getByRole('button', { name: 'Confirmar aprovação' }).click()
+  await expect(page.getByText('Contribuição aprovada.')).toBeVisible()
+
+  await page.getByRole('tab', { name: 'Diretório' }).click()
+  await expect(page.getByText('Site oficial')).toBeVisible()
+  await reason.fill('Unidade encerrada e fonte conferida.')
+  await page.getByRole('button', { name: 'Arquivar' }).click()
+  await page.getByRole('button', { name: 'Confirmar arquivamento' }).click()
+  await expect(page.getByText('Arquivada', { exact: true })).toBeVisible()
+
+  await page.getByRole('tab', { name: 'Avaliações' }).click()
+  await page.getByRole('button', { name: 'Removidas' }).click()
+  await expect(page.getByText('Comentário revisado sem contato.')).toBeVisible()
+  await reason.fill('Comentário conferido e seguro para publicação.')
+  await page.getByRole('button', { name: 'Restaurar' }).click()
+  await page.getByRole('button', { name: 'Confirmar restauração' }).click()
+  await expect(page.getByText('Avaliação restaurada.')).toBeVisible()
+
+  expect(fixtures.writes.filter(write => ['/api/dev/gym-requests/review', '/api/dev/gym', '/api/dev/gym-review'].includes(write.pathname)).map(write => write.body)).toEqual([
+    { id: 'request-correction', decision: 'approve', reason: 'Endereço confirmado na fonte oficial.', rev: 40 },
+    { id: 'gym-1', action: 'archive', reason: 'Unidade encerrada e fonte conferida.', rev: 41 },
+    { id: 'review-1', status: 'published', reason: 'Comentário conferido e seguro para publicação.', rev: 42 },
+  ])
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1)
 })
 
 test('an unavailable user index does not block AI provider configuration', async ({ page }) => {

@@ -33,7 +33,7 @@ vi.mock('../lib/i18n.js', () => ({
   t: (value, ...args) => args.reduce((text, arg, index) => text.replaceAll(`{${index}}`, arg), value),
 }))
 
-import DevPanel, { DevDashboard, DevLogin, ModelChoices, presenceCopy } from './DevPanel.jsx'
+import DevPanel, { DevDashboard, DevLogin, GymConsole, ModelChoices, presenceCopy } from './DevPanel.jsx'
 
 function findElements(node, predicate, found = []) {
   if (!React.isValidElement(node)) return found
@@ -400,7 +400,7 @@ describe('Dev operations console contracts', () => {
     expect(presenceCopy({ online: false, lastAccessAt: null }, now)).toBe('Never online')
   })
 
-  it('organizes the console into APIs, requests and users tabs', () => {
+  it('organizes the console into APIs, gyms and users tabs', () => {
     const onSection = vi.fn()
     const dashboard = DevDashboard({
       providers,
@@ -414,12 +414,91 @@ describe('Dev operations console contracts', () => {
     const markup = renderToStaticMarkup(dashboard)
 
     expect(markup).toContain('role="tablist"')
-    for (const label of ['APIs', 'Requests', 'Users']) {
+    for (const label of ['APIs', 'Gyms', 'Users']) {
       const tab = findElements(dashboard, element => element.props.role === 'tab' && element.props.children === label)[0]
       expect(tab).toBeTruthy()
       tab.props.onClick()
     }
-    expect(onSection.mock.calls).toEqual([['apis'], ['requests'], ['users']])
+    expect(onSection.mock.calls).toEqual([['apis'], ['gyms'], ['users']])
+  })
+
+  it('compares a contribution before and after and requires a reason before review', () => {
+    const onView = vi.fn()
+    const onReason = vi.fn()
+    const onPrepareAction = vi.fn()
+    const console = <GymConsole
+      view="contributions"
+      onView={onView}
+      requests={[{
+        id: 'request-correction', kind: 'correction', status: 'pending', gymId: 'gym-1',
+        gym: { id: 'gym-1', name: 'Academia Centro' },
+        payload: { address: 'Rua Nova, 200', neighborhood: 'Centro' },
+        createdAt: '2026-08-31T12:00:00Z',
+      }]}
+      gyms={[{ id: 'gym-1', name: 'Academia Centro', address: 'Rua Antiga, 10', neighborhood: 'Aldeota', status: 'verified', visibility: 'public', exerciseIds: [] }]}
+      selectedRequestId="request-correction"
+      reason=""
+      onReason={onReason}
+      onPrepareAction={onPrepareAction}
+    />
+    const markup = renderToStaticMarkup(console)
+
+    expect(markup).toContain('Contributions')
+    expect(markup).toContain('Directory')
+    expect(markup).toContain('Reviews')
+    expect(markup).toContain('Before')
+    expect(markup).toContain('After')
+    expect(markup).toContain('Rua Antiga, 10')
+    expect(markup).toContain('Rua Nova, 200')
+    expect(markup).not.toContain('submittedByUserId')
+
+    const textarea = findElements(console, element => element.props.name === 'gym-moderation-reason')[0]
+    textarea.props.onChange({ target: { value: 'Cadastro confirmado na fonte.' } })
+    expect(onReason).toHaveBeenCalledWith('Cadastro confirmado na fonte.')
+    const approve = findElements(console, element => element.props.children === 'Approve')[0]
+    expect(approve.props.disabled).toBe(true)
+
+    const ready = GymConsole({
+      view: 'contributions', requests: console.props.requests, gyms: console.props.gyms,
+      selectedRequestId: 'request-correction', reason: 'Cadastro confirmado na fonte.', onPrepareAction,
+    })
+    findElements(ready, element => element.props.children === 'Approve')[0].props.onClick()
+    expect(onPrepareAction).toHaveBeenCalledWith({ type: 'request', id: 'request-correction', action: 'approve' })
+  })
+
+  it('inspects directory sources and confirms archive, restore and review moderation actions', () => {
+    const onPrepareAction = vi.fn()
+    const gym = {
+      id: 'gym-1', name: 'Academia Centro', state: 'AP', city: 'Macapá', address: 'Rua Central, 10',
+      status: 'verified', visibility: 'public', exerciseIds: ['0043'],
+      source: { label: 'Site oficial', url: 'https://example.com/gym', confidence: 'high', verifiedAt: '2026-08-30' },
+    }
+    const directory = GymConsole({
+      view: 'directory', gyms: [gym], selectedGymId: gym.id, reason: 'Unidade encerrou as atividades.', onPrepareAction,
+    })
+    const directoryMarkup = renderToStaticMarkup(directory)
+    expect(directoryMarkup).toContain('Site oficial')
+    expect(directoryMarkup).toContain('verified')
+    findElements(directory, element => element.props.children === 'Archive')[0].props.onClick()
+    expect(onPrepareAction).toHaveBeenCalledWith({ type: 'gym', id: gym.id, action: 'archive' })
+
+    const confirm = GymConsole({
+      view: 'directory', gyms: [gym], selectedGymId: gym.id, reason: 'Unidade encerrou as atividades.',
+      pendingAction: { type: 'gym', id: gym.id, action: 'archive' }, onConfirmAction: vi.fn(), onCancelAction: vi.fn(),
+    })
+    expect(renderToStaticMarkup(confirm)).toContain('Confirm archive')
+
+    const review = {
+      id: 'review-1', gymId: gym.id, rating: 2, comment: 'Contato em texto removido.', status: 'removed',
+      submittedBy: { name: 'Ana Silva', email: 'ana@example.com' }, createdAt: '2026-08-30T10:00:00Z',
+    }
+    const reviews = GymConsole({
+      view: 'reviews', gyms: [gym], reviews: [review], reviewFilter: 'removed', selectedReviewId: review.id,
+      reason: 'Comentário revisado.', onPrepareAction,
+    })
+    expect(renderToStaticMarkup(reviews)).toContain('Contato em texto removido.')
+    findElements(reviews, element => element.props.children === 'Restore')[0].props.onClick()
+    expect(onPrepareAction).toHaveBeenCalledWith({ type: 'review', id: review.id, action: 'restore' })
   })
 
   it('shows three compact provider choices but opens only the selected provider editor', () => {
